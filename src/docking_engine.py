@@ -118,16 +118,21 @@ def prepare_receptor(cleaned_pdb_path, output_pdbqt_path, venv_bin_dir):
         sys.executable, "-m", "meeko.cli.mk_prepare_receptor",
         "--read_pdb", cleaned_pdb_path,
         "-o", output_basename,
-        "-p"  # Write PDBQT file
+        "-p",                      # Write PDBQT file
+        "--allow_bad_res",         # skip residues with missing atoms instead of failing
+        "--default_altloc", "A",   # pick conformation 'A' where atoms have alternates
     ]
-    
+
     print(f"[Exec] Running command: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
-    
+
     if result.returncode != 0:
+        # Meeko prints its real error to stdout; show both streams so we can see it.
+        details = (result.stdout or "") + "\n" + (result.stderr or "")
+        details = details.strip()[-600:] or "(no output captured)"
         print("[Error] Receptor preparation failed!")
-        print(result.stderr)
-        raise RuntimeError(f"Receptor preparation failed: {result.stderr}")
+        print(details)
+        raise RuntimeError(f"Receptor preparation failed: {details}")
     
     # Meeko writes output as <output_basename>.pdbqt
     expected_output = f"{output_basename}.pdbqt"
