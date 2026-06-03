@@ -15,13 +15,18 @@ import py3Dmol
 DEFAULTS = {
     "protein_style":  "cartoon",      # cartoon | surface | stick | line | cartoon+surface
     "protein_color":  "spectrum",     # spectrum | grey | white | secondary structure
+    "cartoon_style":  "default",      # default | trace | rectangle | edged
+    "protein_opacity": 1.0,           # cartoon/surface opacity
     "surface_color":  "white",
     "surface_opacity": 0.6,
     "ligand_style":   "stick",        # stick | ball-and-stick | sphere | line
     "ligand_carbon":  "greenCarbon",  # *Carbon color scheme for the ligand
+    "ligand_radius":  0.22,           # thickness of the ligand sticks
     "show_residues":  True,
     "show_interactions": True,
     "show_labels":    True,
+    "label_size":     11,             # residue label font size
+    "zoom":           0.6,            # <1 = wider view, >1 = closer
     "background":     "#0a0f1e",
     "spin":           False,
 }
@@ -61,7 +66,12 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     pstyle = o["protein_style"]
     pcolor = _protein_color_spec(o["protein_color"])
     if pstyle in ("cartoon", "cartoon+surface"):
-        view.setStyle(protein, {"cartoon": dict(pcolor)})
+        cartoon = dict(pcolor)
+        cartoon.update({"thickness": 0.45, "arrows": True,
+                        "opacity": o.get("protein_opacity", 1.0)})   # smoother, Maestro-like ribbons
+        if o.get("cartoon_style", "default") != "default":
+            cartoon["style"] = o["cartoon_style"]
+        view.setStyle(protein, {"cartoon": cartoon})
     elif pstyle == "stick":
         view.setStyle(protein, {"stick": {"radius": 0.12, **({} if "colorscheme" in pcolor else pcolor)}})
     elif pstyle == "line":
@@ -76,11 +86,12 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     # ── ligand representation ──
     cs = o["ligand_carbon"]
     lstyle = o["ligand_style"]
+    lr = o.get("ligand_radius", 0.22)
     if lstyle == "stick":
-        view.addStyle(ligand, {"stick": {"colorscheme": cs, "radius": 0.18}})
+        view.addStyle(ligand, {"stick": {"colorscheme": cs, "radius": lr}})
     elif lstyle == "ball-and-stick":
-        view.addStyle(ligand, {"stick": {"colorscheme": cs, "radius": 0.12}})
-        view.addStyle(ligand, {"sphere": {"colorscheme": cs, "scale": 0.30}})
+        view.addStyle(ligand, {"stick": {"colorscheme": cs, "radius": lr * 0.6}})
+        view.addStyle(ligand, {"sphere": {"colorscheme": cs, "scale": 0.32}})
     elif lstyle == "sphere":
         view.addStyle(ligand, {"sphere": {"colorscheme": cs}})
     elif lstyle == "line":
@@ -108,13 +119,13 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
                 seen.add(ln["label"])
                 view.addLabel(ln["label"], {
                     "position": {"x": p2[0], "y": p2[1], "z": p2[2]},
-                    "fontSize": 11, "fontColor": "white",
+                    "fontSize": o.get("label_size", 11), "fontColor": "white",
                     "backgroundColor": "0x111827", "backgroundOpacity": 0.7,
                 })
 
     view.setBackgroundColor(_hex(o["background"]))
     view.zoomTo({"resn": "LIG"})
-    view.zoom(0.6)
+    view.zoom(o.get("zoom", 0.6))
     if o["spin"]:
         view.spin(True)
     return view._make_html()

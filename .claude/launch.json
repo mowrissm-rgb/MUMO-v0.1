@@ -14,6 +14,12 @@
       "port": 8504
     },
     {
+      "name": "mumo-chat",
+      "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
+      "runtimeArgs": ["run", "src/mumo_chat.py", "--server.port", "8506", "--server.headless", "true"],
+      "port": 8506
+    },
+    {
       "name": "mumo-app",
       "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
       "runtimeArgs": ["run", "src/app.py", "--server.port", "8501", "--server.headless", "true"],

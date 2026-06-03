@@ -16,3 +16,7 @@ bin/p2rank_2.5.1/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Secrets — never commit API keys
+mumo_config.json
+.streamlit/secrets.toml

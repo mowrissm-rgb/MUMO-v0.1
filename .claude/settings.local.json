@@ -44,7 +44,31 @@
       "Bash(gh --version)",
       "Bash(gh auth *)",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git branch *)",
+      "Bash(git commit -q -m 'MUMO v0.1 — multi-agent drug discovery platform \\(engines complete\\) *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(.venv/Scripts/python.exe -m py_compile src/agents/interaction_analyst.py)",
+      "Bash(git commit -q -m 'Fix cloud deploy: install PLIP via bioconda + crash-proof interaction analyst *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(.venv/Scripts/python.exe -m pip show meeko)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(git commit -q -m 'Fix cloud deploy: add scipy + gemmi \\(meeko'\\\\''s undeclared dependencies\\) *)",
+      "Bash(git commit -q -m 'Fix cloud docking: locate mk_prepare_receptor & vina next to the Python binary *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(.venv/Scripts/python.exe -m meeko.cli.mk_prepare_receptor --help)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"=== now in D:\\\\\\\\my vault\\\\\\\\MUMO ===\")",
+      "Bash(cd \"/d/my vault\" && echo \"=== wiki/ tree ===\" && find wiki -type f 2>/dev/null | head -60; echo \"\"; echo \"=== does synthesis/ exist? ===\"; ls wiki/synthesis 2>&1; echo \"=== entities/ ===\"; ls wiki/entities 2>&1 | head)",
+      "Bash(.venv/Scripts/python.exe -m py_compile src/preview_pipeline.py src/brain.py src/llm_client.py)",
+      "Bash(PYTHONUTF8=1 .venv/Scripts/python.exe src/agents/admet.py)",
+      "Bash(grep -v \"Parse Error\\\\|position\\\\|\\\\^\\\\|^aspirin$\\\\|^ibuprofen$\\\\|^caffeine$\")",
+      "Bash(.venv/Scripts/python.exe -m py_compile src/mumo_chat.py src/pipeline.py)",
+      "Bash(.venv/Scripts/python.exe -m py_compile src/mumo_chat.py)",
+      "Bash(.venv/Scripts/python.exe -m py_compile src/mumo_chat.py src/brain.py)",
+      "Bash(.venv/Scripts/python.exe -m py_compile src/mumo_chat.py src/viz.py)"
     ]
   }
 }
