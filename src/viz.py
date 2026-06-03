@@ -29,6 +29,7 @@ DEFAULTS = {
     "zoom":           0.6,            # <1 = wider view, >1 = closer
     "background":     "#0a0f1e",
     "spin":           False,
+    "pocket_only":    False,          # False = whole protein; True = binding-site crop (lighter)
 }
 
 
@@ -98,7 +99,9 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
         o.update(options)
 
     with open(complex_pdb_path) as f:
-        pdb = _crop_to_pocket(f.read())   # only the pocket → tiny payload, cloud-safe
+        pdb = f.read()
+    if o.get("pocket_only"):
+        pdb = _crop_to_pocket(pdb)   # optional: lighter binding-site-only view
 
     pstyle = o["protein_style"]
     pcolor = _protein_color_spec(o["protein_color"])    # {"color":...} or {"colorscheme":...}

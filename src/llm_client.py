@@ -69,7 +69,7 @@ class LLM:
         if self.provider in ("openai", "groq"):
             url = ("https://api.openai.com/v1/chat/completions" if self.provider == "openai"
                    else "https://api.groq.com/openai/v1/chat/completions")
-            r = requests.post(url, timeout=90,
+            r = requests.post(url, timeout=30,
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json={"model": self.model, "temperature": temperature,
                       "max_tokens": max_tokens,
@@ -79,7 +79,7 @@ class LLM:
             return r.json()["choices"][0]["message"]["content"]
 
         if self.provider == "anthropic":
-            r = requests.post("https://api.anthropic.com/v1/messages", timeout=90,
+            r = requests.post("https://api.anthropic.com/v1/messages", timeout=30,
                 headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01"},
                 json={"model": self.model, "max_tokens": max_tokens,
                       "system": system,
@@ -90,7 +90,7 @@ class LLM:
         if self.provider == "gemini":
             url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
                    f"{self.model}:generateContent?key={self.api_key}")
-            r = requests.post(url, timeout=90,
+            r = requests.post(url, timeout=30,
                 json={"system_instruction": {"parts": [{"text": system}]},
                       "contents": [{"parts": [{"text": user}]}]})
             r.raise_for_status()

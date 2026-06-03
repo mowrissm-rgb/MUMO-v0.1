@@ -12,6 +12,7 @@ Theme follows the user (light → dark text, dark → light text). No forced col
 """
 
 import os, sys, re
+import json as _json
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -55,149 +56,117 @@ def theme_bg():
         return "#0b0d12"
 
 
-# ── tiny helpers ──
 def say(text):
     ss.messages.append({"role": "assistant", "content": text})
 
-def parse_int(msg, default):
-    m = re.search(r"\d+", msg)
-    return max(1, min(20, int(m.group()))) if m else default
 
-def is_yes(msg):
-    return any(w in msg.lower() for w in
-               ["yes", "yeah", "yep", "sure", "ok", "okay", "proceed", "go ahead",
-                "correct", "use it", "do it", "perfect", "right"])
+# ── LLM-driven conversation — the brain reads every reply IN CONTEXT ──
+CONV_SYSTEM = (
+    "You are MUMO, a warm, intelligent drug-discovery assistant. Your job is to dock a "
+    "ligand into a protein target and report the result. To run a docking you need:\n"
+    "• TARGET: a gene/protein name (CFTR, EGFR…) or a 4-character PDB ID (6LU7, 1NFK…), "
+    "OR a DISEASE (you derive the target from it).\n"
+    "• LIGAND (optional): a drug name (aspirin, lupeol…) or a SMILES string. If the user "
+    "has none, you scout candidates automatically.\n"
+    "• TIER: report style — Simple, Standard, or Ambitious.\n\n"
+    "Act like a smart human assistant:\n"
+    "• Read each message IN CONTEXT of the conversation and what is already known.\n"
+    "• If a message is off-topic, vague or random (e.g. 'hi', 'ok', 'm', 'thanks', 'lol'), "
+    "reply warmly and gently RE-ASK for the next thing you need. NEVER invent or assume "
+    "values the user did not actually give, and NEVER move forward on nonsense.\n"
+    "• Fix obvious gene typos (CTRF→CFTR, EGRF→EGFR) and recognise drug names.\n"
+    "• Ask for what's missing one item at a time, briefly and naturally.\n"
+    "• Set ready_to_dock=true ONLY when you have (a target OR a disease) AND a tier.\n"
+    "• Set analyze_only=true if the user only wants a molecule's drug-likeness, no docking.\n\n"
+    "Reply with ONLY a JSON object and nothing else:\n"
+    '{"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
+    '"ligand": <drug name or SMILES the user gave|null>, '
+    '"tier": <"Simple"|"Standard"|"Ambitious"|null>, '
+    '"reply": "<your short friendly message>", '
+    '"ready_to_dock": <true|false>, "analyze_only": <true|false>}'
+)
 
-def parse_tier(msg):
-    l = msg.lower()
-    return "Simple" if "simple" in l else "Ambitious" if "ambit" in l else "Standard"
 
-def pick_target(msg, candidates):
-    up = msg.upper()
-    for c in candidates:
-        if c["symbol"].upper() in up:
-            return c["symbol"]
-    if is_yes(msg):
-        return candidates[0]["symbol"]
-    m = re.search(r"[A-Z][A-Z0-9]{1,6}", up)
-    return m.group() if m else candidates[0]["symbol"]
+def _history_text(n=10):
+    return "\n".join(f'{m["role"]}: {m["content"]}' for m in ss.messages[-n:])
 
 
-# ── conversation flow (asks one question, then waits) ──
-def ask_after_target():
-    """Once a target is set, ask for ligand (or count), then tier."""
-    c = ss.convo
-    if c.get("ligand_smiles"):
-        say("Which **report style** would you like — *Simple*, *Standard*, or *Ambitious*? (default Standard)")
-        ss.stage = "tier"
-    elif re.match(r"^[1-9][A-Za-z0-9]{3}$", c["target"] or ""):
-        # PDB-ID targets can't be scouted by name — ask for a specific ligand
-        say(f"What **ligand** should I dock into **{c['target']}**? Give me a drug name "
-            f"(e.g. *lupeol*) or a SMILES.")
-        ss.stage = "await_ligand"
-    else:
-        say(f"How many **ligands** should I scout from ChEMBL for **{c['target']}**? (default 5) "
-            f"— or just name a specific ligand and I'll use that.")
-        ss.stage = "n_ligands"
-
-def handle(msg):
+def converse(msg):
+    """One conversational turn, driven by the LLM (with a minimal no-key fallback)."""
     ss.messages.append({"role": "user", "content": msg})
-    stage = ss.stage
+    c = ss.convo
 
-    if stage == "start":
+    # ── no LLM key: minimal rule-based fallback ──
+    if _llm is None:
+        intent = parse_intent(msg, None)["intent"]
+        if intent["target"] or intent["disease"]:
+            c.update({"target": intent["target"], "disease": intent["disease"], "tier": "Standard"})
+            if intent["ligand"]:
+                smi, label = resolve_ligand(intent["ligand"])
+                if smi:
+                    c["ligand_smiles"], c["ligand_label"] = smi, label
+            say("Running it now (basic mode — add an LLM key for full conversation). Results below. ⚙️")
+            ss.run_now = True
+        else:
+            say("Tell me a target and a ligand, e.g. *“dock 6LU7 with aspirin”*. "
+                "(Add an LLM key in secrets for smart conversation.)")
+        return
+
+    # ── LLM-driven turn ──
+    known = {k: c.get(k) for k in ("disease", "target", "ligand", "tier")}
+    prompt = (f"Known so far: {_json.dumps(known)}\n\n"
+              f"Conversation:\n{_history_text()}\n\n"
+              f'The user just said: "{msg}"\n\nReturn the JSON.')
+    try:
         with st.spinner("Thinking…"):
-            intent = parse_intent(msg, _llm)["intent"]
-        c = ss.convo = {"disease": intent["disease"], "target": intent["target"],
-                        "ligand_smiles": None, "ligand_label": None,
-                        "n_ligands": None, "tier": None, "candidates": None}
-        if intent["ligand"]:
-            smi, label = resolve_ligand(intent["ligand"])
-            if smi:
-                c["ligand_smiles"], c["ligand_label"] = smi, label
+            raw = _llm.chat(CONV_SYSTEM, prompt, temperature=0.3, max_tokens=400)
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        data = _json.loads(match.group(0))
+    except Exception:
+        say("Sorry — my brain hiccupped just now. Could you say that again?")
+        return
 
-        # decide the route — disease first (evidence-based target finding via Open Targets)
-        if c["disease"]:
-            c["target"] = None   # don't trust the LLM's guess; we'll find it from evidence
-            say(f"Got it — a disease: **{c['disease']}**. How many candidate **targets** "
-                f"should I consider before picking the best one? (default 5)")
-            ss.stage = "n_targets"
-        elif c["target"]:
-            c["candidates"] = [{"symbol": c["target"]}]
-            if c["ligand_label"]:
-                lig_phrase = (f" with **{c['ligand_label']}**"
-                              if c["ligand_label"] != "your molecule"
-                              else " with the molecule you gave")
-            else:
-                lig_phrase = ""
-            say(f"Got it — target **{c['target']}**{lig_phrase}. "
-                f"Shall I proceed with this target? (yes / or name another)")
-            ss.stage = "confirm_target"
-        elif c["ligand_smiles"]:
-            say(f"Got it — molecule **{c['ligand_label']}**, but no target given, so I can't dock yet. "
-                f"Here's its **drug-likeness** on the right. Give me a target or disease and I'll dock it.")
-            ss.results = {"druglikeness": druglikeness(c["ligand_smiles"]),
-                          "lig_label": c["ligand_label"], "lig_smiles": c["ligand_smiles"]}
-            ss.panel_open = True
-            ss.stage = "start"
-        else:
-            say("I can start from a **disease**, a **target** (gene or PDB ID), or a **ligand** "
-                "(drug name or SMILES). What are we working on?")
-            ss.stage = "start"
+    for k in ("disease", "target", "ligand", "tier"):
+        if data.get(k):
+            c[k] = data[k]
+    say(data.get("reply") or "Okay.")
 
-    elif stage == "n_targets":
-        c = ss.convo
-        n = parse_int(msg, 5)
-        with st.spinner(f"Searching Open Targets for {c['disease']}…"):
-            _, targets = find_targets(c["disease"], n)
-        c["candidates"] = targets
-        lst = ", ".join(f"{t['symbol']} ({t['score']})" for t in targets[:n])
-        say(f"Top evidence-scored targets: {lst}.\n\nI'd go with **{targets[0]['symbol']}** "
-            f"(highest evidence). Use it, or name another from the list?")
-        ss.stage = "confirm_target"
-
-    elif stage == "confirm_target":
-        c = ss.convo
-        c["target"] = pick_target(msg, c["candidates"])
-        say(f"Locked target: **{c['target']}**.")
-        ask_after_target()
-
-    elif stage == "await_ligand":
-        smi, label = resolve_ligand(msg.strip())
+    # analyze-only → drug-likeness, no docking
+    if data.get("analyze_only") and c.get("ligand"):
+        smi, label = resolve_ligand(str(c["ligand"]))
         if smi:
-            ss.convo["ligand_smiles"], ss.convo["ligand_label"] = smi, label
-            say(f"Got **{label}**. Which **report style** — *Simple*, *Standard*, or *Ambitious*? (default Standard)")
-            ss.stage = "tier"
-        else:
-            say("I couldn't recognise that molecule. Try a known drug name (e.g. *lupeol*, "
-                "*aspirin*) or a valid SMILES.")
+            ss.results = {"druglikeness": druglikeness(smi), "lig_label": label, "lig_smiles": smi}
+        return
 
-    elif stage == "n_ligands":
-        # the user might give a specific ligand here instead of a number
-        smi, label = resolve_ligand(msg.strip())
-        if smi and not re.fullmatch(r"\D*\d{1,2}\D*", msg.strip()):
-            ss.convo["ligand_smiles"], ss.convo["ligand_label"] = smi, label
-            say(f"Got it — I'll dock **{label}**. Which **report style** — *Simple*, "
-                f"*Standard*, or *Ambitious*? (default Standard)")
+    if data.get("ready_to_dock"):
+        # always resolve the CURRENT ligand fresh (don't reuse a previous one)
+        if c.get("ligand"):
+            smi, label = resolve_ligand(str(c["ligand"]))
+            c["ligand_smiles"], c["ligand_label"] = (smi, label) if smi else (None, None)
         else:
-            ss.convo["n_ligands"] = parse_int(msg, 5)
-            say("Which **report style** — *Simple*, *Standard*, or *Ambitious*? (default Standard)")
-        ss.stage = "tier"
-
-    elif stage == "tier":
-        ss.convo["tier"] = parse_tier(msg)
-        say("On it — running the full pipeline now. Results will appear below. ⚙️")
-        ss.stage = "running"
+            c["ligand_smiles"] = None
+        c["tier"] = c.get("tier") or "Standard"
         ss.run_now = True
 
 
 def build_target(c):
     """Turn the chosen target string into a dockable target dict (gene or PDB ID)."""
     t = c["target"]
-    if re.match(r"^[1-9][A-Za-z0-9]{3}$", t):       # PDB ID
-        r = requests.get(f"https://files.rcsb.org/download/{t}.pdb", timeout=30)
+    if re.match(r"^[1-9][A-Za-z0-9]{3}$", t):       # PDB ID — fetch from RCSB (with retries)
+        content = None
+        for attempt in range(3):
+            try:
+                r = requests.get(f"https://files.rcsb.org/download/{t}.pdb", timeout=45)
+                if r.status_code == 200 and r.content:
+                    content = r.content
+                    break
+            except Exception:
+                pass
+        if content is None:
+            raise RuntimeError(f"Couldn't download {t} from RCSB (network was slow). Please try again.")
         raw = os.path.join(DATA, f"{t}_chat.pdb")
         with open(raw, "wb") as f:
-            f.write(r.content)
+            f.write(content)
         center, size, pocket = auto_grid_from_pdb(raw)
         return {"gene": t, "pdb_path": raw, "center": center, "size": size, "source": f"PDB {t} · {pocket}"}
     return {"gene": t, "pdb_path": None, "center": None, "size": None, "source": "gene (AlphaFold)"}
@@ -205,11 +174,24 @@ def build_target(c):
 
 def run_pipeline(status_area):
     c = ss.convo
+    # resolve a disease into its top target (Open Targets) if we don't have one
+    if not c.get("target") and c.get("disease"):
+        status_area.write(f"🔎 Finding the top target for {c['disease']}…")
+        try:
+            _, tl = find_targets(c["disease"], 5)
+            if tl:
+                c["target"] = tl[0]["symbol"]
+        except Exception:
+            pass
+    if not c.get("target"):
+        say("I couldn't pin down a target — tell me a gene, PDB ID, or disease.")
+        return
+
     tgt = build_target(c)
     if c.get("ligand_smiles"):
         ligands = [{"label": c["ligand_label"], "smiles": c["ligand_smiles"]}]
     else:
-        n = c.get("n_ligands") or 5
+        n = c.get("n_ligands") or 3
         status_area.write(f"🔬 Scouting {n} ligands for {tgt['gene']}…")
         try:
             _, ligs = find_ligands(tgt["gene"], limit=n)
@@ -247,8 +229,8 @@ def run_pipeline(status_area):
         say(f"✅ Done! Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
             f"kcal/mol** against {meta['gene']}. Full results & 3D pose are below.\n\n{rep}")
     else:
-        say("The docking didn't produce a valid pose — see the right panel.")
-    ss.stage = "start"
+        say("The docking didn't produce a valid pose — see the results below.")
+    ss.convo = {}   # reset for the next, independent request
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -274,7 +256,7 @@ with st.sidebar:
 # ── read chat input (pinned at bottom) ──
 user_input = st.chat_input("Message MUMO…  e.g. “find a drug for cystic fibrosis”")
 if user_input and user_input.strip():
-    handle(user_input.strip())
+    converse(user_input.strip())
 
 # ── run the pipeline (full width; opens the panel when done) ──
 if ss.run_now:
@@ -338,6 +320,8 @@ def render_results():
                 show_labels = e[2].checkbox("Labels", value=True, key="v_lab")
                 spin = e[3].checkbox("Spin", value=False, key="v_spin")
 
+                pocket_only = st.checkbox("Pocket only (lighter view)", value=False, key="v_pocket")
+
             opts = {"protein_style": protein_style, "protein_color": protein_color,
                     "cartoon_style": cartoon_style, "protein_opacity": protein_opacity,
                     "surface_color": surface_color, "surface_opacity": surface_opacity,
@@ -345,6 +329,7 @@ def render_results():
                     "ligand_radius": ligand_radius, "zoom": zoom,
                     "show_residues": show_residues, "show_interactions": show_interactions,
                     "show_labels": show_labels, "label_size": label_size, "spin": spin,
+                    "pocket_only": pocket_only,
                     "background": theme_bg()}   # bg auto-follows the app theme
             entry = r["viz"][choice]
             try:
