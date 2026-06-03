@@ -85,13 +85,19 @@ def pick_target(msg, candidates):
 
 # ── conversation flow (asks one question, then waits) ──
 def ask_after_target():
-    """Once a target is set, ask for ligand count (or skip if ligand given), then tier."""
+    """Once a target is set, ask for ligand (or count), then tier."""
     c = ss.convo
     if c.get("ligand_smiles"):
         say("Which **report style** would you like — *Simple*, *Standard*, or *Ambitious*? (default Standard)")
         ss.stage = "tier"
+    elif re.match(r"^[1-9][A-Za-z0-9]{3}$", c["target"] or ""):
+        # PDB-ID targets can't be scouted by name — ask for a specific ligand
+        say(f"What **ligand** should I dock into **{c['target']}**? Give me a drug name "
+            f"(e.g. *lupeol*) or a SMILES.")
+        ss.stage = "await_ligand"
     else:
-        say(f"How many **ligands** should I scout from ChEMBL for **{c['target']}**? (default 5)")
+        say(f"How many **ligands** should I scout from ChEMBL for **{c['target']}**? (default 5) "
+            f"— or just name a specific ligand and I'll use that.")
         ss.stage = "n_ligands"
 
 def handle(msg):
@@ -155,14 +161,31 @@ def handle(msg):
         say(f"Locked target: **{c['target']}**.")
         ask_after_target()
 
+    elif stage == "await_ligand":
+        smi, label = resolve_ligand(msg.strip())
+        if smi:
+            ss.convo["ligand_smiles"], ss.convo["ligand_label"] = smi, label
+            say(f"Got **{label}**. Which **report style** — *Simple*, *Standard*, or *Ambitious*? (default Standard)")
+            ss.stage = "tier"
+        else:
+            say("I couldn't recognise that molecule. Try a known drug name (e.g. *lupeol*, "
+                "*aspirin*) or a valid SMILES.")
+
     elif stage == "n_ligands":
-        ss.convo["n_ligands"] = parse_int(msg, 5)
-        say("Which **report style** — *Simple*, *Standard*, or *Ambitious*? (default Standard)")
+        # the user might give a specific ligand here instead of a number
+        smi, label = resolve_ligand(msg.strip())
+        if smi and not re.fullmatch(r"\D*\d{1,2}\D*", msg.strip()):
+            ss.convo["ligand_smiles"], ss.convo["ligand_label"] = smi, label
+            say(f"Got it — I'll dock **{label}**. Which **report style** — *Simple*, "
+                f"*Standard*, or *Ambitious*? (default Standard)")
+        else:
+            ss.convo["n_ligands"] = parse_int(msg, 5)
+            say("Which **report style** — *Simple*, *Standard*, or *Ambitious*? (default Standard)")
         ss.stage = "tier"
 
     elif stage == "tier":
         ss.convo["tier"] = parse_tier(msg)
-        say(f"On it — running the full pipeline now. Watch the right panel. ⚙️")
+        say("On it — running the full pipeline now. Results will appear below. ⚙️")
         ss.stage = "running"
         ss.run_now = True
 
@@ -186,9 +209,21 @@ def run_pipeline(status_area):
     if c.get("ligand_smiles"):
         ligands = [{"label": c["ligand_label"], "smiles": c["ligand_smiles"]}]
     else:
-        status_area.write(f"🔬 Scouting {c['n_ligands']} ligands for {tgt['gene']}…")
-        _, ligs = find_ligands(tgt["gene"], limit=c["n_ligands"])
+        n = c.get("n_ligands") or 5
+        status_area.write(f"🔬 Scouting {n} ligands for {tgt['gene']}…")
+        try:
+            _, ligs = find_ligands(tgt["gene"], limit=n)
+        except Exception:
+            ligs = []
         ligands = [{"label": l["chembl_id"], "smiles": l["smiles"]} for l in ligs]
+
+    # guard: nothing to dock (e.g. scouting a raw PDB ID returns nothing)
+    if not ligands:
+        say(f"⚠️ I couldn't find ligands to dock against **{tgt['gene']}**. "
+            f"Scouting works for gene/protein targets, not raw PDB IDs — "
+            f"tell me a specific ligand, e.g. *“dock {tgt['gene']} with aspirin”*.")
+        ss.stage = "start"
+        return
 
     rows, viz, meta = dock_pipeline(tgt, ligands, VINA, DATA, VENV,
                                     status=lambda m: status_area.write(m))
@@ -210,7 +245,7 @@ def run_pipeline(status_area):
                             "interacting_residues": _sp(top["All interacting residues"])},
                            _llm, ss.results["tier"])
         say(f"✅ Done! Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
-            f"kcal/mol** against {meta['gene']}. Full results & 3D pose are on the right.\n\n{rep}")
+            f"kcal/mol** against {meta['gene']}. Full results & 3D pose are below.\n\n{rep}")
     else:
         say("The docking didn't produce a valid pose — see the right panel.")
     ss.stage = "start"
