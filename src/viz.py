@@ -140,10 +140,16 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
 
     # ── interacting residues ──
     if o["show_residues"]:
-        resi = [str(r) for r in ia.get("residue_numbers", [])]
-        if resi:
-            js.append(f'v.addStyle({{resi:{_json.dumps(resi)}}}, '
-                      f'{{stick:{{colorscheme:"cyanCarbon", radius:0.15}}}});')
+        residues = ia.get("residues")
+        if residues:                       # chain-aware: highlight the EXACT residue
+            for rr in residues:
+                js.append(f'v.addStyle({{chain:{_json.dumps(rr["chain"])}, resi:{rr["resi"]}}}, '
+                          f'{{stick:{{colorscheme:"cyanCarbon", radius:0.15}}}});')
+        else:                              # fallback (older results without chain)
+            resi = [str(r) for r in ia.get("residue_numbers", [])]
+            if resi:
+                js.append(f'v.addStyle({{resi:{_json.dumps(resi)}}}, '
+                          f'{{stick:{{colorscheme:"cyanCarbon", radius:0.15}}}});')
 
     # ── interaction lines + labels ──
     if o["show_interactions"]:

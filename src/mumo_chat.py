@@ -34,7 +34,7 @@ DATA = os.path.join(BASE, "data"); os.makedirs(DATA, exist_ok=True)
 VENV = os.path.join(BASE, ".venv", "Scripts" if os.name == "nt" else "bin")
 VINA = ensure_vina()
 
-st.set_page_config(page_title="MUMO", page_icon="🧬", layout="centered")
+st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="centered")
 
 # ── MUMO product theme (dark, gradient logo, teal accent) ──
 st.markdown("""
@@ -76,6 +76,8 @@ st.markdown("""
     border: 1px solid rgba(148,163,184,0.10);
     border-radius: 14px; padding:.4rem .6rem;
 }
+[data-testid^="stChatMessageAvatar"] { display:none !important; }
+[data-testid="stChatMessageContent"] { margin-left:0 !important; }
 [data-testid="stChatInput"] {
     border: 1px solid rgba(148,163,184,0.15) !important;
     border-radius: 16px !important; background: #0f1626 !important;
@@ -182,6 +184,7 @@ CONV_SYSTEM = (
     "('lung mucus protein'→MUC5B).\n"
     "• If a message is random/off-topic ('hi','ok','m'), reply warmly and gently steer "
     "back. NEVER invent values the user did not give.\n"
+    "• NEVER use emojis. Keep a clean, professional tone in every reply.\n"
     "• Choose ACTION each turn:\n"
     "   - 'dock'    : you have a target OR disease and the user wants to run it.\n"
     "   - 'analyze' : the user only wants a molecule's drug-likeness, no docking.\n"
@@ -246,7 +249,7 @@ def converse(msg):
                 c["ligand"] = intent["ligand"]
             c["ligand_objs"] = _resolve_ligands(c.get("ligand"))
             say("Running it now (basic mode — add an LLM key to unlock questions, "
-                "teaching and result explanations). Results below. ⚙️")
+                "teaching and result explanations). Results below.")
             ss.run_now = True
         else:
             say("Tell me a target and a ligand, e.g. *“dock 6LU7 with aspirin”*. "
@@ -320,7 +323,7 @@ def run_pipeline(status_area):
     c = ss.convo
     # resolve a disease into its top target (Open Targets) if we don't have one
     if not c.get("target") and c.get("disease"):
-        status_area.write(f"🔎 Finding the top target for {c['disease']}…")
+        status_area.write(f"Finding the top target for {c['disease']}…")
         try:
             _, tl = find_targets(c["disease"], 5)
             if tl:
@@ -336,7 +339,7 @@ def run_pipeline(status_area):
         ligands = c["ligand_objs"]
     else:
         n = c.get("n_ligands") or 3
-        status_area.write(f"🔬 Scouting {n} ligands for {tgt['gene']}…")
+        status_area.write(f"Scouting {n} ligands for {tgt['gene']}…")
         try:
             _, ligs = find_ligands(tgt["gene"], limit=n)
         except Exception:
@@ -345,7 +348,7 @@ def run_pipeline(status_area):
 
     # guard: nothing to dock (e.g. scouting a raw PDB ID returns nothing)
     if not ligands:
-        say(f"⚠️ I couldn't find ligands to dock against **{tgt['gene']}**. "
+        say(f"I couldn't find ligands to dock against **{tgt['gene']}**. "
             f"Scouting works for gene/protein targets, not raw PDB IDs — "
             f"tell me a specific ligand, e.g. *“dock {tgt['gene']} with aspirin”*.")
         ss.stage = "start"
@@ -370,7 +373,7 @@ def run_pipeline(status_area):
                             "n_hydrophobic": int(top["Hydrophobic"]),
                             "interacting_residues": _sp(top["All interacting residues"])},
                            _llm, ss.results["tier"])
-        say(f"✅ Done! Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
+        say(f"Done. Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
             f"kcal/mol** against {meta['gene']}. Full results & 3D pose are below.\n\n{rep}")
     else:
         say("The docking didn't produce a valid pose — see the results below.")
@@ -385,7 +388,7 @@ def run_pipeline(status_area):
 with st.sidebar:
     st.markdown(f"<div class='mumo-brand'>{mol_logo(26, 'mgSide')}<span class='wm'>MUMO</span></div>",
                 unsafe_allow_html=True)
-    if st.button("➕  New chat", use_container_width=True):
+    if st.button("New chat", use_container_width=True):
         if ss.messages:
             title = next((m["content"] for m in ss.messages if m["role"] == "user"), "Chat")
             ss.history.insert(0, {"title": title[:40], "messages": ss.messages, "results": ss.results})
@@ -394,7 +397,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("History")
     for i, h in enumerate(ss.history[:15]):
-        if st.button(f"💬 {h['title']}", key=f"h{i}", use_container_width=True):
+        if st.button(f"{h['title']}", key=f"h{i}", use_container_width=True):
             ss.messages, ss.results, ss.stage = h["messages"], h["results"], "start"
             st.rerun()
 
@@ -409,10 +412,10 @@ if ss.run_now:
     with st.status("Running the pipeline…", expanded=True) as status_area:
         try:
             run_pipeline(status_area)
-            status_area.update(label="Done ✅", state="complete")
+            status_area.update(label="Done", state="complete")
             ss.panel_open = True
         except Exception as e:
-            say(f"⚠️ The run hit a snag: {e}")
+            say(f"The run hit a snag: {e}")
             status_area.update(label="Failed", state="error")
     st.rerun()
 

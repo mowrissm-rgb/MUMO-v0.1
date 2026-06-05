@@ -157,7 +157,8 @@ def write_report(results, llm=None, tier="Standard"):
     """
     if llm is not None:
         try:
-            system = _REPORT_SYSTEM.get(tier, _REPORT_SYSTEM["Standard"])
+            system = (_REPORT_SYSTEM.get(tier, _REPORT_SYSTEM["Standard"])
+                      + " Do not use any emojis; keep it clean and professional.")
             user = "Docking result:\n" + json.dumps(results, indent=2)
             return llm.chat(system, user, temperature=0.3, max_tokens=600)
         except Exception:

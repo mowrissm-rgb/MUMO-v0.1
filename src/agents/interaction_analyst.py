@@ -65,6 +65,7 @@ def _empty_result(note):
         "n_saltbridges": 0, "saltbridge_residues": [],
         "n_halogen": 0, "n_pication": 0, "n_waterbridges": 0,
         "interacting_residues": [], "lines": [], "residue_numbers": [],
+        "residues": [],
         "note": note,
         "svg_2d": "",
     }
@@ -109,39 +110,78 @@ def _residue_tag(i):
     return f"{i.restype}{i.resnr}({i.reschain})"
 
 
-def _xyz(obj):
-    """Get an (x,y,z) tuple from a pybel atom (.coords) or a ring center (.center)."""
+# One colour per interaction type — used by the 3D lines AND the 2D diagram so
+# they always agree.
+_COLORS = {
+    "H-bond": "blue", "Hydrophobic": "grey", "Pi-stack": "green",
+    "Salt bridge": "orange", "Halogen": "cyan", "Pi-cation": "purple",
+}
+
+
+def _pt(obj):
+    """Best-effort (x,y,z) for a pybel atom (.coords), a ring/charge centre
+    (.center), or a halogen sub-atom (.x/.o). Returns None if nothing usable."""
+    if obj is None:
+        return None
     if hasattr(obj, "coords"):
-        return tuple(obj.coords)
-    return tuple(obj)   # already a coordinate list/array
-
-
-def _extract_lines(site):
-    """
-    Build a list of interaction 'lines' to draw in 3D:
-        {type, p1:(x,y,z), p2:(x,y,z), color, label}
-    Each line connects the two atoms/centres involved in an interaction.
-    Wrapped in try/except per item so one odd record never breaks the picture.
-    """
-    lines = []
-    def add(kind, a, b, color, label):
         try:
-            lines.append({"type": kind, "p1": _xyz(a), "p2": _xyz(b),
-                          "color": color, "label": label})
+            return tuple(obj.coords)
         except Exception:
             pass
+    if hasattr(obj, "center"):
+        try:
+            return tuple(obj.center)
+        except Exception:
+            pass
+    for sub in ("x", "o"):
+        s = getattr(obj, sub, None)
+        if s is not None and hasattr(s, "coords"):
+            try:
+                return tuple(s.coords)
+            except Exception:
+                pass
+    return None
 
-    for h in list(site.hbonds_ldon) + list(site.hbonds_pdon):
-        add("H-bond", h.a, h.d, "blue", _residue_tag(h))
+
+def _collect_interactions(site):
+    """
+    THE single source of truth. Walk every interaction PLIP found for this binding
+    site and return one flat list of records — each with its type, residue, the
+    ligand-side and protein-side 3D points, the measured distance, and a colour.
+    The CSV counts, the 2D diagram and the 3D lines are ALL derived from this list,
+    so they can never disagree. Interactions whose 3D points can't be resolved are
+    dropped (so a counted interaction is always a drawable one).
+    """
+    recs = []
+
+    def add(itype, obj, lig, prot, dist):
+        lp, pp = _pt(lig), _pt(prot)
+        if lp is None or pp is None:
+            return
+        recs.append({
+            "type": itype, "restype": obj.restype, "resnr": int(obj.resnr),
+            "reschain": obj.reschain, "tag": f"{obj.restype}{obj.resnr}({obj.reschain})",
+            "lig_xyz": lp, "prot_xyz": pp,
+            "distance": float(dist) if dist else 0.0, "color": _COLORS[itype],
+        })
+
+    for b in list(site.hbonds_ldon) + list(site.hbonds_pdon):
+        lig, prot = (b.a, b.d) if b.protisdon else (b.d, b.a)   # ligand = acceptor if protein donates
+        add("H-bond", b, lig, prot, getattr(b, "distance_ad", getattr(b, "distance", 0)))
     for c in site.hydrophobic_contacts:
-        add("Hydrophobic", c.ligatom, c.bsatom, "grey", _residue_tag(c))
+        add("Hydrophobic", c, c.ligatom, c.bsatom, getattr(c, "distance", 0))
     for p in site.pistacking:
-        add("Pi-stacking", p.ligandring.center, p.proteinring.center, "green", _residue_tag(p))
+        add("Pi-stack", p, p.ligandring, p.proteinring, getattr(p, "distance", 0))
     for s in list(site.saltbridge_lneg) + list(site.saltbridge_pneg):
-        add("Salt bridge", s.positive.center, s.negative.center, "orange", _residue_tag(s))
+        lig, prot = (s.negative, s.positive) if s.protispos else (s.positive, s.negative)
+        add("Salt bridge", s, lig, prot, getattr(s, "distance", 0))
     for x in site.halogen_bonds:
-        add("Halogen", x.don.x, x.acc.o, "cyan", _residue_tag(x))
-    return lines
+        add("Halogen", x, getattr(x, "don", None), getattr(x, "acc", None), getattr(x, "distance", 0))
+    for p in site.pication_laro:                                # ligand provides the ring
+        add("Pi-cation", p, getattr(p, "ring", None), getattr(p, "charge", None), getattr(p, "distance", 0))
+    for p in site.pication_paro:                                # ligand provides the charge
+        add("Pi-cation", p, getattr(p, "charge", None), getattr(p, "ring", None), getattr(p, "distance", 0))
+    return recs
 
 
 def analyze_interactions(receptor_pdb, ligand_pdbqt, out_complex_pdb):
@@ -175,52 +215,60 @@ def _run_plip(receptor_pdb, ligand_pdbqt, out_complex_pdb):
                 len(site.hydrophobic_contacts) + len(site.pistacking) +
                 len(site.saltbridge_lneg) + len(site.saltbridge_pneg) +
                 len(site.halogen_bonds) + len(site.pication_laro) +
-                len(site.pication_paro) + len(site.water_bridges))
+                len(site.pication_paro))
 
     site = max(complex_mol.interaction_sets.values(), key=total)
 
-    hbonds = list(site.hbonds_ldon) + list(site.hbonds_pdon)
-    hydrophobic = list(site.hydrophobic_contacts)
-    pistacking = list(site.pistacking)
-    saltbridges = list(site.saltbridge_lneg) + list(site.saltbridge_pneg)
-    halogens = list(site.halogen_bonds)
-    pication = list(site.pication_laro) + list(site.pication_paro)
-    waterbridges = list(site.water_bridges)
+    # ── everything below derives from ONE canonical list, so CSV == 2D == 3D ──
+    recs = _collect_interactions(site)
 
-    all_residues = sorted({_residue_tag(i) for group in
-                           (hbonds, hydrophobic, pistacking, saltbridges, halogens, pication)
-                           for i in group})
+    def _by(t):
+        return [r for r in recs if r["type"] == t]
+
+    def _tags(rs):
+        seen = []
+        for r in rs:
+            if r["tag"] not in seen:
+                seen.append(r["tag"])
+        return seen
+
+    hb, hy, pi = _by("H-bond"), _by("Hydrophobic"), _by("Pi-stack")
+    sb, hal, pc = _by("Salt bridge"), _by("Halogen"), _by("Pi-cation")
+
+    lines = [{"type": r["type"], "p1": r["lig_xyz"], "p2": r["prot_xyz"],
+              "color": r["color"],
+              "label": (f'{r["tag"]} · {r["distance"]:.2f} Å'
+                        if r["distance"] else r["tag"])} for r in recs]
+
+    residues, seen_res = [], set()
+    for r in recs:
+        k = (r["reschain"], r["resnr"])
+        if k not in seen_res:
+            seen_res.add(k)
+            residues.append({"chain": r["reschain"], "resi": r["resnr"]})
 
     return {
-        "total_interactions": (len(hbonds) + len(hydrophobic) + len(pistacking) +
-                               len(saltbridges) + len(halogens) + len(pication) +
-                               len(waterbridges)),
-        "n_hbonds": len(hbonds),
-        "hbond_residues": [_residue_tag(i) for i in hbonds],
-        "n_hydrophobic": len(hydrophobic),
-        "hydrophobic_residues": [_residue_tag(i) for i in hydrophobic],
-        "n_pistacking": len(pistacking),
-        "pistacking_residues": [_residue_tag(i) for i in pistacking],
-        "n_saltbridges": len(saltbridges),
-        "saltbridge_residues": [_residue_tag(i) for i in saltbridges],
-        "n_halogen": len(halogens),
-        "n_pication": len(pication),
-        "n_waterbridges": len(waterbridges),
-        "interacting_residues": all_residues,
-        "lines": _extract_lines(site),       # 3D coords for drawing interactions
-        "residue_numbers": sorted({i.resnr for group in
-                                   (hbonds, hydrophobic, pistacking, saltbridges, halogens, pication)
-                                   for i in group}),
-        "svg_2d": generate_2d_interaction_svg(out_complex_pdb, site),
+        "total_interactions": len(recs),
+        "n_hbonds": len(hb), "hbond_residues": _tags(hb),
+        "n_hydrophobic": len(hy), "hydrophobic_residues": _tags(hy),
+        "n_pistacking": len(pi), "pistacking_residues": _tags(pi),
+        "n_saltbridges": len(sb), "saltbridge_residues": _tags(sb),
+        "n_halogen": len(hal), "n_pication": len(pc), "n_waterbridges": 0,
+        "interacting_residues": sorted({r["tag"] for r in recs}),
+        "lines": lines,                       # 3D dashed lines (with distances)
+        "residue_numbers": sorted({r["resnr"] for r in recs}),
+        "residues": residues,                 # chain-aware (fixes wrong-residue highlight)
+        "svg_2d": generate_2d_interaction_svg(out_complex_pdb, recs),
     }
 
 
-def generate_2d_interaction_svg(complex_pdb_path, site):
+def generate_2d_interaction_svg(complex_pdb_path, records):
     """
-    Build a professional 2D ligand-interaction diagram (Maestro / LigPlot style):
-    the ligand is drawn in the centre, and every interacting residue is shown as a
-    labelled bubble around it, connected by a colour-coded dashed line to the ligand
-    atom it touches. Colour encodes the interaction type. Pure RDKit — no extra deps.
+    Build a professional 2D ligand-interaction diagram (Maestro / LigPlot style)
+    from the SAME canonical interaction list used for the CSV and the 3D view, so
+    all three always agree. The ligand is drawn in the centre and every interacting
+    residue is a labelled bubble linked by a colour-coded dashed line to the ligand
+    atom it touches. Pure RDKit — no extra deps.
     """
     try:
         import math
@@ -247,21 +295,10 @@ def generate_2d_interaction_svg(complex_pdb_path, site):
         if mol is None or mol.GetNumConformers() == 0:
             return ""
 
-        # PLIP reports ligand atoms by their GLOBAL index in the full complex, which
-        # does NOT match RDKit's local ligand indices. So we match each interaction's
-        # ligand atom to the nearest RDKit atom by its 3D coordinate (read BEFORE we
-        # overwrite the conformer with 2D coords).
+        # Match each interaction's ligand-side point to the nearest RDKit atom by 3D
+        # coordinate (read BEFORE Compute2DCoords overwrites the conformer).
         conf = mol.GetConformer()
         rd_pos = [conf.GetAtomPosition(i) for i in range(mol.GetNumAtoms())]
-
-        def _xyz(obj):
-            if obj is None:
-                return None
-            if hasattr(obj, "coords"):
-                return tuple(obj.coords)
-            if hasattr(obj, "center"):
-                return tuple(obj.center)
-            return None
 
         def _nearest(xyz):
             if xyz is None:
@@ -273,33 +310,16 @@ def generate_2d_interaction_svg(complex_pdb_path, site):
                     best, bi = d, i
             return bi
 
-        # ── collect interactions: (atom_idx, restype, resnr, reschain, itype) ──
+        # ── collect interactions FROM THE CANONICAL LIST: (idx, res…, itype) ──
         interactions, highlight_atoms, atom_colors = [], [], {}
-
-        def add(ligobj, restype, resnr, reschain, itype):
-            idx = _nearest(_xyz(ligobj))
+        for r in records:
+            idx = _nearest(r.get("lig_xyz"))
             if idx is None:
-                return
-            atom_colors[idx] = COLORS_RGB[itype]
+                continue
+            atom_colors[idx] = COLORS_RGB[r["type"]]
             if idx not in highlight_atoms:
                 highlight_atoms.append(idx)
-            interactions.append((idx, restype, int(resnr), reschain, itype))
-
-        for b in list(site.hbonds_ldon) + list(site.hbonds_pdon):
-            add(b.a if b.protisdon else b.d, b.restype, b.resnr, b.reschain, "H-bond")
-        for c in site.hydrophobic_contacts:
-            add(c.ligatom, c.restype, c.resnr, c.reschain, "Hydrophobic")
-        for x in site.halogen_bonds:
-            add(getattr(x, "don", None), x.restype, x.resnr, x.reschain, "Halogen")
-        for s in list(site.saltbridge_lneg) + list(site.saltbridge_pneg):
-            add(s.negative if s.protispos else s.positive,
-                s.restype, s.resnr, s.reschain, "Salt bridge")
-        for p in site.pistacking:
-            add(p.ligandring, p.restype, p.resnr, p.reschain, "Pi-stack")
-        for p in site.pication_laro:
-            add(getattr(p, "ring", None), p.restype, p.resnr, p.reschain, "Pi-cation")
-        for p in site.pication_paro:
-            add(getattr(p, "charge", None), p.restype, p.resnr, p.reschain, "Pi-cation")
+            interactions.append((idx, r["restype"], int(r["resnr"]), r["reschain"], r["type"]))
 
         # ── draw the ligand, leaving a wide margin for the residue bubbles ──
         rdDepictor.Compute2DCoords(mol)

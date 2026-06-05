@@ -30,19 +30,19 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None)
       rows = list of result dicts (one per ligand)
       viz  = {ligand_label: {complex path, interaction lines/residues}}
     """
-    status(f"🎯 Building the {tgt['gene']} structure and finding its pocket…")
+    status(f"Building the {tgt['gene']} structure and finding its pocket…")
     pdb_path, center, size, pocket = resolve_receptor(tgt, data_dir)
 
     cleaned = os.path.join(data_dir, "c_cleaned.pdb")
     receptor = os.path.join(data_dir, "c_receptor.pdbqt")
     clean_protein_pdb(pdb_path, cleaned)
     prepare_receptor(cleaned, receptor, venv_dir)
-    status(f"⚗️ Receptor ready ({pocket}). Docking {len(ligands)} ligand(s)…")
+    status(f"Receptor ready ({pocket}). Docking {len(ligands)} ligand(s)…")
 
     rows, viz = [], {}
     for k, lig in enumerate(ligands):
         label = lig["label"]
-        status(f"⚙️ Docking {label} ({k+1}/{len(ligands)})…")
+        status(f"Docking {label} ({k+1}/{len(ligands)})…")
         try:
             ligf = os.path.join(data_dir, f"c_lig_{k}.pdbqt")
             outp = os.path.join(data_dir, f"c_out_{k}.pdbqt")
@@ -62,7 +62,8 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None)
                 "All interacting residues": "; ".join(ia["interacting_residues"]) or "-",
             })
             viz[label] = {"complex": cmplx,
-                          "ia": {"lines": ia["lines"], "residue_numbers": ia["residue_numbers"], "svg_2d": ia.get("svg_2d", "")}}
+                          "ia": {"lines": ia["lines"], "residue_numbers": ia["residue_numbers"],
+                                 "residues": ia.get("residues", []), "svg_2d": ia.get("svg_2d", "")}}
         except Exception as le:
             rows.append({"Ligand": label, "SMILES": lig["smiles"],
                          "Best affinity (kcal/mol)": "FAILED", "Poses": 0,
