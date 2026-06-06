@@ -11,7 +11,7 @@ Layout:  [ left sidebar = chat history ]  [ chat ]  [ results panel ]
 Theme follows the user (light → dark text, dark → light text). No forced colors.
 """
 
-import os, sys, re, hashlib
+import os, sys, re
 import json as _json
 import streamlit as st
 import streamlit.components.v1 as components
@@ -81,25 +81,6 @@ st.markdown("""
 [data-testid="stChatInput"] {
     border: 1px solid rgba(148,163,184,0.15) !important;
     border-radius: 16px !important; background: #0f1626 !important;
-}
-/* leave room on the right of the textarea for the mic + send */
-[data-testid="stChatInput"] textarea { padding-right: 84px !important; }
-
-/* Mic: hide everything except the record button, float it inside the input bar */
-[data-testid="stAudioInput"] [data-testid="stWidgetLabel"],
-[data-testid="stAudioInput"] [data-testid="stAudioInputWaveSurfer"],
-[data-testid="stAudioInput"] [data-testid="stAudioInputWaveformTimeCode"],
-[data-testid="stAudioInput"] [data-testid="stElementToolbar"] { display:none !important; }
-[data-testid="stAudioInput"] {
-    position: fixed; z-index: 1001; bottom: 58px; right: 74px;
-    width: 40px !important; min-width: 40px !important; height: 40px;
-    background: transparent !important; border: none !important;
-    box-shadow: none !important; padding: 0 !important; margin: 0 !important;
-}
-[data-testid="stAudioInput"] > div,
-[data-testid="stAudioInput"] [data-testid="stAudioInputActionButton"] {
-    background: transparent !important; border: none !important;
-    width: 40px !important; height: 40px !important; min-height: 40px !important;
 }
 
 /* Welcome hero */
@@ -427,10 +408,6 @@ with st.sidebar:
         ss.messages, ss.stage, ss.convo, ss.results, ss.run_now = [], "start", {}, None, False
         st.rerun()
 
-    ss.setdefault("voice_out", False)
-    ss.voice_out = st.toggle("Voice replies", value=ss.voice_out,
-                             help="MUMO reads its answers aloud")
-
     st.markdown("---")
     st.caption("History")
     for i, h in enumerate(ss.history[:15]):
@@ -572,34 +549,3 @@ render_chat()
 if ss.results:
     st.divider()
     render_results()
-
-# ── mic docked INSIDE the chat box (its widget is overlaid onto the input bar via CSS) ──
-_voice_audio = st.audio_input("Speak to MUMO", label_visibility="collapsed")
-if _voice_audio is not None:
-    _adata = _voice_audio.getvalue()
-    _ah = hashlib.md5(_adata).hexdigest() if _adata else None
-    if _ah and _ah != ss.get("last_audio_hash"):
-        ss.last_audio_hash = _ah
-        if _llm and _llm.can_transcribe():
-            try:
-                with st.spinner("Transcribing your voice…"):
-                    spoken = _llm.transcribe(_adata)
-                if spoken.strip():
-                    converse(spoken.strip())
-            except Exception as e:
-                say(f"Voice transcription failed: {e}")
-        else:
-            say("Voice input needs a Groq key — add the LLM secret to enable it.")
-        st.rerun()
-
-# ── spoken reply: read MUMO's newest message aloud (browser speech, $0) ──
-if ss.get("voice_out") and ss.messages and ss.messages[-1]["role"] == "assistant":
-    _spk_key = f"{len(ss.messages)}:{ss.messages[-1]['content'][:24]}"
-    if ss.get("last_spoken") != _spk_key:
-        ss.last_spoken = _spk_key
-        _spk = re.sub(r"[*#`_>~\[\]()]", "", ss.messages[-1]["content"])
-        _spk = re.sub(r"\s+", " ", _spk).strip()[:800]   # keep it snappy
-        components.html(
-            "<script>try{const u=new SpeechSynthesisUtterance(" + _json.dumps(_spk) + ");"
-            "u.rate=1.0;u.pitch=1.0;window.speechSynthesis.cancel();"
-            "window.speechSynthesis.speak(u);}catch(e){}</script>", height=0)
