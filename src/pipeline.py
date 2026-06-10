@@ -24,7 +24,7 @@ def resolve_receptor(tgt, data_dir):
 
 
 def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
-                  exhaustiveness=16, n_replicas=3, seed=42):
+                  exhaustiveness=12, n_replicas=2, seed=42):
     """
     Prepare the receptor once and dock every ligand.
 
@@ -74,23 +74,23 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
             best, modes, outp = res["best_score"], res["modes"], res["out_pdbqt"]
             ia = analyze_interactions(cleaned, outp, cmplx)
             rows.append({
-                "Ligand": label, "SMILES": lig["smiles"],
+                "Ligand": label,
                 "Best affinity (kcal/mol)": best,
                 "Mean ± SD (kcal/mol)": (f"{res['mean']} ± {res['sd']}" if eff_rep > 1 else "—"),
-                "Confidence": res["confidence"], "Poses": len(modes),
+                "Confidence": res["confidence"],
                 "Total interactions": ia["total_interactions"], "H-bonds": ia["n_hbonds"],
-                "H-bond residues": "; ".join(ia["hbond_residues"]) or "-",
                 "Hydrophobic": ia["n_hydrophobic"], "Pi-stack": ia["n_pistacking"],
                 "Salt bridges": ia["n_saltbridges"], "Halogen": ia["n_halogen"],
+                "H-bond residues": "; ".join(ia["hbond_residues"]) or "-",
                 "All interacting residues": "; ".join(ia["interacting_residues"]) or "-",
+                "SMILES": lig["smiles"],
             })
             viz[label] = {"complex": cmplx,
                           "ia": {"lines": ia["lines"], "residue_numbers": ia["residue_numbers"],
                                  "residues": ia.get("residues", []), "svg_2d": ia.get("svg_2d", "")}}
         except Exception as le:
-            rows.append({"Ligand": label, "SMILES": lig["smiles"],
-                         "Best affinity (kcal/mol)": "FAILED", "Poses": 0,
-                         "Total interactions": str(le)[:40]})
+            rows.append({"Ligand": label, "Best affinity (kcal/mol)": "FAILED",
+                         "Total interactions": str(le)[:40], "SMILES": lig["smiles"]})
     return rows, viz, {"gene": tgt["gene"], "center": center, "pocket": pocket,
                        "exhaustiveness": eff_exh, "replicas": eff_rep,
                        "validation": validation}

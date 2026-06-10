@@ -442,12 +442,38 @@ def render_results():
         st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
     else:
         rdf = r["rdf"]
-        st.markdown(f"#### Docking results — {r['meta']['gene']}")
+        meta = r.get("meta", {})
+        st.markdown(f"#### Docking results — {meta.get('gene', 'target')}")
+
+        # ── best-hit summary (clean, presentation-ready) ──
+        top = rdf.iloc[0]
+        if str(top["Best affinity (kcal/mol)"]) != "FAILED":
+            m = st.columns(4)
+            m[0].metric("Best affinity", f"{top['Best affinity (kcal/mol)']} kcal/mol")
+            m[1].metric("Confidence", str(top.get("Confidence", "—")))
+            m[2].metric("Total interactions", int(top["Total interactions"]))
+            m[3].metric("H-bonds", int(top["H-bonds"]))
+        bits = []
+        if meta.get("exhaustiveness"):
+            bits.append(f"exhaustiveness {meta['exhaustiveness']}")
+        if meta.get("replicas"):
+            bits.append(f"{meta['replicas']} replica(s)")
+        if meta.get("pocket"):
+            bits.append(meta["pocket"])
+        val = meta.get("validation")
+        if val:
+            bits.append(f"native redock RMSD {val['rmsd']} Å "
+                        f"({'validated' if val['passed'] else '>2 Å'})")
+        if bits:
+            st.caption("Method: " + " · ".join(bits))
+
         st.dataframe(rdf, use_container_width=True, height=200)
         st.download_button("Download CSV", rdf.to_csv(index_label="Rank").encode("utf-8"),
-                           file_name=f"MUMO_{r['meta']['gene']}.csv", mime="text/csv")
+                           file_name=f"MUMO_{meta.get('gene', 'target')}.csv", mime="text/csv")
         if r.get("viz"):
             st.markdown("##### Pose & Interaction Views")
+            st.caption("The 2D map and the 3D pose show the SAME interactions from one analysis — "
+                       "the residues, counts and bonds match the results table above.")
             choice = st.selectbox("Ligand", list(r["viz"].keys()), label_visibility="collapsed")
             entry = r["viz"][choice]
 
@@ -498,9 +524,10 @@ def render_results():
                                                    "whiteCarbon"], key="vl_color")
                     ligand_radius = b[2].slider("Ligand thickness", 0.1, 0.4, 0.22, 0.02, key="vl_rad")
 
-                    d = st.columns(2)
+                    d = st.columns(3)
                     surface_opacity = d[0].slider("Surface opacity", 0.0, 1.0, 0.5, 0.05, key="v_surf")
-                    zoom = d[1].slider("Zoom", 0.3, 1.5, 0.6, 0.05, key="v_zoom")
+                    zoom = d[1].slider("Zoom", 0.3, 1.5, 0.45, 0.05, key="v_zoom")
+                    background = d[2].color_picker("Background", "#ffffff", key="v_bg")
 
                     e = st.columns(4)
                     show_residues = e[0].checkbox("Residues", value=True, key="v_res")
@@ -518,7 +545,7 @@ def render_results():
                         "show_residues": show_residues, "show_interactions": show_interactions,
                         "show_labels": show_labels, "label_size": label_size, "spin": spin,
                         "pocket_only": pocket_only,
-                        "background": theme_bg()}   # bg auto-follows the app theme
+                        "background": background}   # white "figure panel" by default
                 try:
                     components.html(render_complex_html(entry["complex"], entry["ia"],
                                     options=opts, height=520), height=540)

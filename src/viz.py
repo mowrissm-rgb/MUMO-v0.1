@@ -26,8 +26,8 @@ DEFAULTS = {
     "show_interactions": True,
     "show_labels":    True,
     "label_size":     11,             # residue label font size
-    "zoom":           0.6,            # <1 = wider view, >1 = closer
-    "background":     "#0a0f1e",
+    "zoom":           0.45,           # <1 = wider view, >1 = closer (pocket-focused)
+    "background":     "#ffffff",      # clean white "figure panel" look (like a journal figure)
     "spin":           False,
     "pocket_only":    False,          # False = whole protein; True = binding-site crop (lighter)
 }
@@ -110,7 +110,8 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     # ── protein representation ──
     if pstyle in ("cartoon", "cartoon+surface"):
         cartoon = dict(pcolor)
-        cartoon.update({"thickness": 0.45, "arrows": True,
+        # thicker, smoother ribbons with strand arrows = publication-quality look
+        cartoon.update({"thickness": 0.7, "arrows": True, "tubes": False,
                         "opacity": o.get("protein_opacity", 1.0)})
         if o.get("cartoon_style", "default") != "default":
             cartoon["style"] = o["cartoon_style"]
@@ -166,13 +167,15 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
                           f'fontSize:{o.get("label_size", 11)}, fontColor:"white", '
                           f'backgroundColor:"#111827", backgroundOpacity:0.7}});')
 
-    js.append('v.zoomTo({resn:"LIG"});')
-    js.append(f'v.zoom({o.get("zoom", 0.6)});')
+    js.append('v.zoomTo({resn:"LIG"});')           # focus the binding pocket so interactions are visible
+    js.append(f'v.zoom({o.get("zoom", 0.45)});')   # slightly wide → pocket + interacting residues + bonds
     if o["spin"]:
         js.append('v.spin(true);')
     js.append('v.render();')
 
-    return f"""<div id="mumoview" style="width:100%;height:{height}px;position:relative;"></div>
+    return f"""<div id="mumoview" style="width:100%;height:{height}px;position:relative;
+         border-radius:14px;border:1px solid rgba(0,0,0,0.10);overflow:hidden;
+         box-shadow:0 4px 14px rgba(0,0,0,0.18);"></div>
 <script src="https://3dmol.org/build/3Dmol-min.js"></script>
 <script>
 (function(){{
