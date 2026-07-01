@@ -61,7 +61,29 @@ def _clean_ascii(v):
     return "".join(ch for ch in v if ord(ch) < 128).strip()
 
 
+# MUMO's own Supabase project — the anon key is a PUBLIC key by design (every
+# Supabase web app ships it client-side; Row Level Security is what actually
+# protects the data, not secrecy of this key). It's hardcoded here because
+# pasting it into a Streamlit Cloud secrets text box has repeatedly come back
+# silently corrupted — one character swapped for a lookalike somewhere in the
+# 208-char token, with no error at paste time, just a rejected "Invalid API
+# key" later. Confirmed via a direct curl against Supabase that this exact
+# value is correct. Baking it in sidesteps that fragile paste path entirely.
+# An OS-level env var (not a pasted secret) still overrides it if this app is
+# ever pointed at a different Supabase project.
+_DEFAULTS = {
+    "SUPABASE_URL": "https://kdvckgzvnkhuaplnskpg.supabase.co",
+    "SUPABASE_KEY": (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6"
+        "ImtkdmNrZ3p2bmtodWFwbG5za3BnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NDU5"
+        "NTIsImV4cCI6MjA5ODQyMTk1Mn0.TPc1TbiXtTPGWPjoeF_YUEz7aVpSxTtMGU2NWtCFP90"
+    ),
+}
+
+
 def _secret(name):
+    if name in _DEFAULTS:
+        return _clean_ascii(os.environ[name]) if os.environ.get(name) else _DEFAULTS[name]
     try:
         if name in st.secrets:
             return _clean_ascii(st.secrets[name])
