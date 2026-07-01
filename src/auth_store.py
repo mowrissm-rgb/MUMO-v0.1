@@ -49,15 +49,27 @@ def _config_file():
     return {}
 
 
+def _clean_ascii(v):
+    """SUPABASE_URL and SUPABASE_KEY are guaranteed pure ASCII by construction
+    (a URL and a JWT) — but secrets pasted into a web text box can pick up
+    invisible/typographic characters (smart quotes, zero-width spaces, BOM)
+    that later blow up strict-ASCII header encoding deep in httpx. Stripping
+    anything outside ASCII is always safe here and neutralizes that class of
+    bug regardless of exactly which character snuck in or how."""
+    if not isinstance(v, str):
+        return v
+    return "".join(ch for ch in v if ord(ch) < 128).strip()
+
+
 def _secret(name):
     try:
         if name in st.secrets:
-            return st.secrets[name]
+            return _clean_ascii(st.secrets[name])
     except Exception:
         pass
     if os.environ.get(name):
-        return os.environ[name]
-    return _config_file().get("supabase", {}).get(name)
+        return _clean_ascii(os.environ[name])
+    return _clean_ascii(_config_file().get("supabase", {}).get(name))
 
 
 def get_client():
