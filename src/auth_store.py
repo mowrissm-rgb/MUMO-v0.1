@@ -112,27 +112,6 @@ def get_client():
     return st.session_state["_sb_client"]
 
 
-def debug_info():
-    """TEMPORARY diagnostic — safe to show (reveals shape, not the secret
-    itself): confirms exactly what this deployed environment resolves
-    SUPABASE_URL/KEY to, without ever printing the real key value."""
-    url = _secret("SUPABASE_URL")
-    key = _secret("SUPABASE_KEY")
-    expected_key = _DEFAULTS["SUPABASE_KEY"]
-    return {
-        "create_client_importable": create_client is not None,
-        "url": url,
-        "url_matches_default": url == _DEFAULTS["SUPABASE_URL"],
-        "key_len": len(key) if key else None,
-        "expected_key_len": len(expected_key),
-        "key_matches_default": key == expected_key,
-        "key_prefix": key[:10] if key else None,
-        "key_suffix": key[-10:] if key else None,
-        "expected_prefix": expected_key[:10],
-        "expected_suffix": expected_key[-10:],
-    }
-
-
 def is_configured():
     return get_client() is not None
 

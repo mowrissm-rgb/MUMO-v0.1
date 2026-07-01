@@ -208,9 +208,6 @@ def render_login_gate():
                 except Exception as e:
                     st.error(f"Couldn't sign up: {e}")
 
-    with st.expander("Debug info (temporary)"):
-        st.json(authdb.debug_info())
-
 
 if authdb.is_configured() and not authdb.current_user():
     render_login_gate()
