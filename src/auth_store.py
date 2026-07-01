@@ -63,14 +63,17 @@ def _clean_ascii(v):
 
 # MUMO's own Supabase project — the anon key is a PUBLIC key by design (every
 # Supabase web app ships it client-side; Row Level Security is what actually
-# protects the data, not secrecy of this key). It's hardcoded here because
+# protects the data, not secrecy of this key). It's hardcoded here, taking
+# ABSOLUTE priority over st.secrets/env/config for these two names, because
 # pasting it into a Streamlit Cloud secrets text box has repeatedly come back
 # silently corrupted — one character swapped for a lookalike somewhere in the
 # 208-char token, with no error at paste time, just a rejected "Invalid API
 # key" later. Confirmed via a direct curl against Supabase that this exact
-# value is correct. Baking it in sidesteps that fragile paste path entirely.
-# An OS-level env var (not a pasted secret) still overrides it if this app is
-# ever pointed at a different Supabase project.
+# value is correct. Streamlit Cloud also mirrors secrets.toml into
+# os.environ, so an "env var can override" escape hatch would just let the
+# same corrupted value back in through that door — hence no override at all
+# for these two. To point this app at a different Supabase project, edit the
+# values below directly.
 _DEFAULTS = {
     "SUPABASE_URL": "https://kdvckgzvnkhuaplnskpg.supabase.co",
     "SUPABASE_KEY": (
@@ -83,7 +86,7 @@ _DEFAULTS = {
 
 def _secret(name):
     if name in _DEFAULTS:
-        return _clean_ascii(os.environ[name]) if os.environ.get(name) else _DEFAULTS[name]
+        return _DEFAULTS[name]
     try:
         if name in st.secrets:
             return _clean_ascii(st.secrets[name])
