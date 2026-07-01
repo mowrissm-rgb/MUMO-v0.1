@@ -573,14 +573,29 @@ def render_results():
         # ── best-hit summary (clean, presentation-ready) ──
         top = rdf.iloc[0]
         if str(top["Best affinity (kcal/mol)"]) != "FAILED":
-            # 2x2 grid, not 4-across — this panel is narrower than the main
-            # column, and 4 columns here truncated every label and value.
-            r1 = st.columns(2)
-            r1[0].metric("Best affinity", f"{top['Best affinity (kcal/mol)']} kcal/mol")
-            r1[1].metric("Confidence", str(top.get("Confidence", "—")))
-            r2 = st.columns(2)
-            r2[0].metric("Total interactions", int(top["Total interactions"]))
-            r2[1].metric("H-bonds", int(top["H-bonds"]))
+            # Custom compact metrics instead of st.metric — st.metric's fixed
+            # 36px value font doesn't fit this panel's width at normal window
+            # sizes (it truncated no matter how the st.columns were split).
+            # A flex-wrap row sized to the actual panel scales properly and
+            # wraps onto a second line instead of cutting text off.
+            metrics = [
+                ("Best affinity", f"{top['Best affinity (kcal/mol)']} kcal/mol"),
+                ("Confidence", str(top.get("Confidence", "—"))),
+                ("Total interactions", str(int(top["Total interactions"]))),
+                ("H-bonds", str(int(top["H-bonds"]))),
+            ]
+            cells = "".join(
+                f"<div style='min-width:110px;'>"
+                f"<div style='font:10.5px \"Work Sans\",sans-serif;color:oklch(62% 0.02 50);"
+                f"margin-bottom:4px;'>{label}</div>"
+                f"<div style='font:600 20px \"Source Serif 4\",serif;color:oklch(93% 0.012 60);'>{value}</div>"
+                f"</div>"
+                for label, value in metrics
+            )
+            st.markdown(
+                f"<div style='display:flex;flex-wrap:wrap;gap:18px;margin:12px 0 18px;'>{cells}</div>",
+                unsafe_allow_html=True,
+            )
         bits = []
         if meta.get("exhaustiveness"):
             bits.append(f"exhaustiveness {meta['exhaustiveness']}")
