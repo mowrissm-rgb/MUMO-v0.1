@@ -573,11 +573,14 @@ def render_results():
         # ── best-hit summary (clean, presentation-ready) ──
         top = rdf.iloc[0]
         if str(top["Best affinity (kcal/mol)"]) != "FAILED":
-            m = st.columns(4)
-            m[0].metric("Best affinity", f"{top['Best affinity (kcal/mol)']} kcal/mol")
-            m[1].metric("Confidence", str(top.get("Confidence", "—")))
-            m[2].metric("Total interactions", int(top["Total interactions"]))
-            m[3].metric("H-bonds", int(top["H-bonds"]))
+            # 2x2 grid, not 4-across — this panel is narrower than the main
+            # column, and 4 columns here truncated every label and value.
+            r1 = st.columns(2)
+            r1[0].metric("Best affinity", f"{top['Best affinity (kcal/mol)']} kcal/mol")
+            r1[1].metric("Confidence", str(top.get("Confidence", "—")))
+            r2 = st.columns(2)
+            r2[0].metric("Total interactions", int(top["Total interactions"]))
+            r2[1].metric("H-bonds", int(top["H-bonds"]))
         bits = []
         if meta.get("exhaustiveness"):
             bits.append(f"exhaustiveness {meta['exhaustiveness']}")
@@ -592,7 +595,10 @@ def render_results():
         if bits:
             st.caption("Method: " + " · ".join(bits))
 
-        st.dataframe(rdf, use_container_width=True, height=200)
+        # size to the real row count (35px/row + header) instead of a fixed
+        # 200px, which left blank empty rows padded in below short results
+        table_height = min(35 * (len(rdf) + 1) + 3, 200)
+        st.dataframe(rdf, use_container_width=True, height=table_height)
         st.download_button("Download CSV", rdf.to_csv(index_label="Rank").encode("utf-8"),
                            file_name=f"MUMO_{meta.get('gene', 'target')}.csv", mime="text/csv")
         if r.get("viz"):
