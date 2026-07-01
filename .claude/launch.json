@@ -4,26 +4,66 @@
     {
       "name": "ligand-scout-preview",
       "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
-      "runtimeArgs": ["run", "src/preview_ligand_scout.py", "--server.port", "8503", "--server.headless", "true"],
+      "runtimeArgs": [
+        "run",
+        "src/preview_ligand_scout.py",
+        "--server.port",
+        "8503",
+        "--server.headless",
+        "true"
+      ],
       "port": 8503
     },
     {
       "name": "pipeline-preview",
       "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
-      "runtimeArgs": ["run", "src/preview_pipeline.py", "--server.port", "8504", "--server.headless", "true"],
+      "runtimeArgs": [
+        "run",
+        "src/preview_pipeline.py",
+        "--server.port",
+        "8504",
+        "--server.headless",
+        "true"
+      ],
       "port": 8504
     },
     {
       "name": "mumo-chat",
       "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
-      "runtimeArgs": ["run", "src/mumo_chat.py", "--server.port", "8506", "--server.headless", "true"],
+      "runtimeArgs": [
+        "run",
+        "src/mumo_chat.py",
+        "--server.port",
+        "8506",
+        "--server.headless",
+        "true"
+      ],
       "port": 8506
     },
     {
       "name": "mumo-app",
       "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
-      "runtimeArgs": ["run", "src/app.py", "--server.port", "8501", "--server.headless", "true"],
+      "runtimeArgs": [
+        "run",
+        "src/app.py",
+        "--server.port",
+        "8501",
+        "--server.headless",
+        "true"
+      ],
       "port": 8501
+    },
+    {
+      "name": "molstar",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8603",
+        "--directory",
+        "data/_preview"
+      ],
+      "port": 8603
     }
   ]
 }

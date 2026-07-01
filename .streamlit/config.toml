@@ -1,13 +1,14 @@
-# MUMO ships a dark theme to match the product look (gradient logo, deep-navy
-# canvas, teal accent). Users can still switch to Light from the top-right
-# menu → Settings → Theme; the custom CSS in mumo_chat.py is dark-first.
+# MUMO ships a warm dark theme (oklch charcoal-brown canvas, cyan accent,
+# serif "mumo" wordmark) matching the Claude Design "MUMO Chat" mockup.
+# Users can still switch to Light from the top-right menu → Settings → Theme;
+# the custom CSS in mumo_chat.py is dark-first.
 
 [theme]
 base = "dark"
-primaryColor = "#2dd4bf"             # teal accent (buttons, focus, highlights)
-backgroundColor = "#0a0e1a"          # main canvas — deep navy/black
-secondaryBackgroundColor = "#111827" # sidebar + widgets
-textColor = "#e2e8f0"                # soft white
+primaryColor = "#3fc6d8"             # cyan accent (buttons, focus, highlights)
+backgroundColor = "#211c19"          # main canvas — warm charcoal (oklch 20% 0.014 45)
+secondaryBackgroundColor = "#1c1815" # sidebar + widgets (oklch 17% 0.012 45)
+textColor = "#ebe4dc"                # warm off-white (oklch 92% 0.012 60)
 font = "sans serif"
 
 [server]

@@ -28,84 +28,95 @@ from agents.admet import resolve_ligand, druglikeness
 from pipeline import dock_pipeline
 from viz import render_complex_html
 from setup_env import ensure_vina
+import auth_store as authdb
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(BASE, "data"); os.makedirs(DATA, exist_ok=True)
 VENV = os.path.join(BASE, ".venv", "Scripts" if os.name == "nt" else "bin")
 VINA = ensure_vina()
 
-st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="centered")
+st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 
-# ── MUMO product theme (dark, gradient logo, teal accent) ──
-st.markdown("""
+ACCENT = "#3fc6d8"
+
+# ── MUMO product theme — warm oklch dark, serif wordmark, single accent ──
+st.markdown(f"""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,500;1,8..60,600&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-.stApp {
-    background:
-      radial-gradient(1200px 600px at 80% -10%, rgba(45,212,191,0.08), transparent 60%),
-      radial-gradient(900px 500px at 0% 110%, rgba(99,102,241,0.10), transparent 55%),
-      #0a0e1a;
-}
-.block-container { padding-top: 2.5rem; max-width: 840px; }
-
+:root {{ --accent: {ACCENT}; }}
+.stApp {{ background: oklch(20% 0.014 45); }}
+.block-container {{ padding-top: 1.6rem; max-width: 900px; }}
+html, body, [class*="css"] {{ font-family:'Work Sans',sans-serif; color: oklch(92% 0.012 60); }}
+::-webkit-scrollbar {{ width:9px; }}
+::-webkit-scrollbar-thumb {{ background:oklch(32% 0.018 45); border-radius:6px; }}
+::-webkit-scrollbar-track {{ background:transparent; }}
 /* Sidebar */
-[data-testid="stSidebar"] {
-    background: #0c1120;
-    border-right: 1px solid rgba(148,163,184,0.08);
-}
-[data-testid="stSidebar"] .stButton button {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(148,163,184,0.12);
-    color: #cbd5e1; border-radius: 10px;
-    text-align: left; justify-content: flex-start; font-weight: 500;
-}
-[data-testid="stSidebar"] .stButton button:hover {
-    border-color: rgba(45,212,191,0.5); color: #fff;
-    background: rgba(45,212,191,0.06);
-}
-.mumo-brand { display:flex; align-items:center; gap:.55rem; margin:.2rem 0 1rem .1rem; }
-.mumo-brand .wm {
-    font-size:1.5rem; font-weight:800; letter-spacing:.5px;
-    background: linear-gradient(90deg,#818cf8,#22d3ee,#34d399);
-    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
-}
-.mumo-hero-logo { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:.2rem; }
-
-/* Chat bubbles + input */
-[data-testid="stChatMessage"] {
-    background: rgba(255,255,255,0.025);
-    border: 1px solid rgba(148,163,184,0.10);
-    border-radius: 14px; padding:.4rem .6rem;
-}
-[data-testid^="stChatMessageAvatar"] { display:none !important; }
-[data-testid="stChatMessageContent"] { margin-left:0 !important; }
-[data-testid="stChatInput"] {
-    border: 1px solid rgba(148,163,184,0.15) !important;
-    border-radius: 16px !important; background: #0f1626 !important;
-}
-
+[data-testid="stSidebar"] {{
+    background: oklch(17% 0.012 45);
+    border-right: 1px solid oklch(30% 0.015 45);
+}}
+[data-testid="stSidebar"] .stButton button {{
+    background: transparent;
+    border: 1px solid oklch(34% 0.02 45);
+    color: oklch(78% 0.015 55); border-radius: 12px;
+    text-align: left; justify-content: flex-start; font-weight: 600; font-size: 13px;
+}}
+[data-testid="stSidebar"] .stButton button:hover {{
+    border-color: var(--accent); color: oklch(93% 0.012 60);
+    background: oklch(24% 0.018 45);
+}}
+.mumo-brand {{ display:flex; align-items:center; gap:.5rem; margin:.2rem 0 1rem .1rem; }}
+.mumo-brand .wm {{
+    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
+    font-size:1.35rem; color: oklch(93% 0.012 60);
+}}
+.mumo-hero-logo {{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:.2rem; }}
+.mumo-session {{
+    padding:11px 12px; border-radius:11px; border-left:2px solid oklch(30% 0.015 45);
+    color: oklch(58% 0.02 50); font-size:11px; margin:2px 0 8px;
+}}
+/* Chat bubbles */
+.mumo-msg-user {{ display:flex; justify-content:flex-end; margin:10px 0; }}
+.mumo-msg-user .bubble {{
+    max-width:78%; background: var(--accent); color: oklch(99% 0.005 40);
+    border-radius:18px 18px 4px 18px; padding:13px 18px;
+    font:15px/1.55 'Work Sans',sans-serif; box-shadow:0 8px 20px -10px rgba(0,0,0,.55);
+}}
+.mumo-msg-assistant {{ max-width:88%; margin:14px 0; }}
+.mumo-msg-assistant .label {{
+    font:600 11px 'Work Sans',sans-serif; letter-spacing:.8px; color: var(--accent);
+    margin-bottom:6px; text-transform:uppercase;
+}}
+.mumo-msg-assistant .body {{
+    font:17px/1.65 'Source Serif 4',serif; color: oklch(92% 0.012 60);
+}}
+.mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
+[data-testid="stChatInput"] {{
+    border: 1px solid oklch(34% 0.02 45) !important;
+    border-radius: 14px !important; background: oklch(24% 0.016 45) !important;
+}}
 /* Welcome hero */
-.mumo-hero {
-    text-align:center; margin: 9vh auto 0; padding: 3rem 2rem;
+.mumo-hero {{
+    text-align:center; margin: 8vh auto 0; padding: 2rem;
     max-width: 680px;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    border-radius: 24px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008));
-    border: 1px solid rgba(148,163,184,0.10);
-}
-.mumo-hero-title {
-    font-size: 4.6rem; font-weight: 900; line-height:1; letter-spacing:1px; margin:0;
-    background: linear-gradient(90deg,#818cf8,#22d3ee,#34d399);
-    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
-}
-.mumo-hero-sub {
-    margin: 1.3rem auto 0; max-width: 580px;
-    font-size: 1.4rem; font-weight: 600; color:#e6edf6; line-height:1.45;
-}
-.mumo-pills {
-    display:flex; gap:1.7rem; justify-content:center; flex-wrap:wrap;
-    margin-top: 1.7rem; color: rgba(148,163,184,0.75); font-size:.92rem;
-}
-.mumo-pills span { white-space:nowrap; }
+    gap: 14px;
+}}
+.mumo-hero-title {{
+    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
+    font-size: 3.2rem; line-height:1; color: oklch(93% 0.012 60);
+}}
+.mumo-hero-sub {{
+    margin: 0 auto; max-width: 460px;
+    font-size: 1.05rem; font-weight:400; color: oklch(65% 0.02 50); line-height:1.6;
+}}
+/* Results panel */
+.mumo-panel-header {{
+    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
+    font-size:19px; color: oklch(93% 0.012 60);
+}}
+.mumo-panel-sub {{ font:12.5px 'Work Sans',sans-serif; color: oklch(60% 0.02 50); margin-bottom:14px; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,8 +127,9 @@ ss.setdefault("stage", "start")
 ss.setdefault("convo", {})
 ss.setdefault("results", None)    # {rdf, viz, meta}
 ss.setdefault("run_now", False)
-ss.setdefault("history", [])      # [{title, messages, results}]
+ss.setdefault("history", [])      # [{title, messages, results}] — local fallback, no login
 ss.setdefault("panel_open", False)  # is the right results drawer open?
+ss.setdefault("active_conversation_id", None)  # Supabase conversation row, once logged in
 _llm = get_llm()
 
 
@@ -129,31 +141,77 @@ def theme_bg():
         return "#0b0d12"
 
 
+def _persist(role, content):
+    """Mirror a message to Supabase (no-op if not logged in / not configured).
+    Creates the conversation row lazily on the first message of a session."""
+    user = authdb.current_user()
+    if not user:
+        return
+    try:
+        if not ss.active_conversation_id:
+            title = content if role == "user" else "New session"
+            ss.active_conversation_id = authdb.create_conversation(user["id"], title)
+        authdb.save_message(ss.active_conversation_id, user["id"], role, content)
+        authdb.touch_conversation(ss.active_conversation_id)
+    except Exception:
+        pass  # cloud storage is best-effort — never break the chat over it
+
+
 def say(text):
     ss.messages.append({"role": "assistant", "content": text})
+    _persist("assistant", text)
 
 
-def mol_logo(size=28, gid="mg"):
-    """Inline SVG of a clean hexagonal molecule — MUMO's professional brand mark."""
+def mol_logo(width=20, height=26, gid="mg"):
+    """MUMO's swirl brand mark — two interleaved strokes in the accent color."""
     return (
-        f'<svg width="{size}" height="{size}" viewBox="0 0 64 64" '
+        f'<svg width="{width}" height="{height}" viewBox="0 0 40 64" '
         'xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;">'
-        f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="64" y2="64" '
-        'gradientUnits="userSpaceOnUse">'
-        '<stop offset="0" stop-color="#818cf8"/><stop offset="0.5" stop-color="#22d3ee"/>'
-        '<stop offset="1" stop-color="#34d399"/></linearGradient></defs>'
-        f'<g stroke="url(#{gid})" stroke-width="2.6" stroke-linecap="round" '
-        'stroke-linejoin="round" fill="none">'
-        '<polygon points="32,12 48,21 48,39 32,48 16,39 16,21"/>'
-        '<line x1="48" y1="21" x2="58" y2="15"/><line x1="16" y1="39" x2="6" y2="45"/>'
-        '<line x1="32" y1="48" x2="32" y2="59"/></g>'
-        f'<g fill="url(#{gid})">'
-        '<circle cx="32" cy="12" r="3.4"/><circle cx="48" cy="21" r="3.4"/>'
-        '<circle cx="48" cy="39" r="3.4"/><circle cx="32" cy="48" r="3.4"/>'
-        '<circle cx="16" cy="39" r="3.4"/><circle cx="16" cy="21" r="3.4"/>'
-        '<circle cx="58" cy="15" r="3"/><circle cx="6" cy="45" r="3"/>'
-        '<circle cx="32" cy="59" r="3"/></g></svg>'
+        f'<path d="M8 4C8 20 32 20 32 32C32 44 8 44 8 60" fill="none" stroke="{ACCENT}" stroke-width="4"/>'
+        f'<path d="M32 4C32 20 8 20 8 32C8 44 32 44 32 60" fill="none" stroke="{ACCENT}" '
+        'stroke-width="4" opacity="0.55"/></svg>'
     )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# LOGIN GATE — only enforced if Supabase secrets are configured; otherwise the
+# app runs exactly as before, local-only (no login, no cross-device history).
+# ════════════════════════════════════════════════════════════════════════════
+authdb.restore_session()
+
+
+def render_login_gate():
+    st.markdown(
+        f"<div class='mumo-hero'><div class='mumo-hero-logo'>{mol_logo(40, 52, 'mgAuth')}"
+        "<span class='mumo-hero-title'>mumo</span></div>"
+        "<p class='mumo-hero-sub'>Sign in to pick up your conversations on any device.</p>"
+        "</div>", unsafe_allow_html=True)
+    tab_in, tab_up = st.tabs(["Log in", "Sign up"])
+    with tab_in:
+        with st.form("login_form"):
+            email = st.text_input("Email", key="li_email")
+            pw = st.text_input("Password", type="password", key="li_pw")
+            if st.form_submit_button("Log in", use_container_width=True):
+                try:
+                    authdb.sign_in(email.strip(), pw)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Couldn't log in: {e}")
+    with tab_up:
+        with st.form("signup_form"):
+            email2 = st.text_input("Email", key="su_email")
+            pw2 = st.text_input("Password", type="password", key="su_pw", help="At least 6 characters.")
+            if st.form_submit_button("Create account", use_container_width=True):
+                try:
+                    authdb.sign_up(email2.strip(), pw2)
+                    st.success("Account created — check your email to confirm, then log in.")
+                except Exception as e:
+                    st.error(f"Couldn't sign up: {e}")
+
+
+if authdb.is_configured() and not authdb.current_user():
+    render_login_gate()
+    st.stop()
 
 
 # ── LLM-driven conversation — the brain reads every reply IN CONTEXT ──
@@ -237,9 +295,29 @@ def _results_context():
             f"(more negative kcal/mol = stronger binding):\n" + "\n".join(rows))
 
 
+def _personalization_context():
+    """A short recall of what THIS logged-in user has asked before, across all
+    their past sessions — lets MUMO notice recurring interests instead of
+    treating every conversation as a blank slate."""
+    user = authdb.current_user()
+    if not user:
+        return ""
+    try:
+        topics = authdb.recent_user_topics(user["id"], limit=40)
+    except Exception:
+        return ""
+    topics = [t for t in topics if t and t not in ss.messages[-1:]][:25]
+    if not topics:
+        return ""
+    return ("This user's past questions across earlier sessions (for context only — "
+            "don't repeat them back verbatim, just notice patterns like a target or "
+            "disease they keep returning to):\n- " + "\n- ".join(topics))
+
+
 def converse(msg):
     """One conversational turn — MUMO can teach, answer, explain results, or dock."""
     ss.messages.append({"role": "user", "content": msg})
+    _persist("user", msg)
     c = ss.convo
 
     # ── no LLM key: minimal rule-based fallback (dock-only) ──
@@ -262,6 +340,7 @@ def converse(msg):
     known = {k: c.get(k) for k in ("disease", "target", "ligand", "tier")}
     prompt = (f"Known so far: {_json.dumps(known)}\n"
               f"{_results_context()}\n\n"
+              f"{_personalization_context()}\n\n"
               f"Conversation:\n{_history_text(14)}\n\n"
               f'The user just said: "{msg}"\n\nReturn the JSON.')
     try:
@@ -363,6 +442,12 @@ def run_pipeline(status_area):
     rdf = rdf.assign(_s=num).sort_values("_s").drop(columns="_s").reset_index(drop=True)
     rdf.index = range(1, len(rdf) + 1)
     ss.results = {"rdf": rdf, "viz": viz, "meta": meta, "tier": c["tier"] or "Standard"}
+    if ss.active_conversation_id:
+        try:
+            authdb.save_results(ss.active_conversation_id,
+                                 {"gene": meta.get("gene"), "rows": rdf.to_dict(orient="records")})
+        except Exception:
+            pass
 
     # narrative report on the best hit
     top = rdf.iloc[0]
@@ -398,21 +483,60 @@ def run_pipeline(status_area):
 # ════════════════════════════════════════════════════════════════════════════
 
 # ── left sidebar: history ──
+_user = authdb.current_user()
 with st.sidebar:
-    st.markdown(f"<div class='mumo-brand'>{mol_logo(26, 'mgSide')}<span class='wm'>MUMO</span></div>",
+    st.markdown(f"<div class='mumo-brand'>{mol_logo(20, 26, 'mgSide')}<span class='wm'>mumo</span></div>",
                 unsafe_allow_html=True)
-    if st.button("New chat", use_container_width=True):
-        if ss.messages:
+    if st.button("+ New session", use_container_width=True):
+        if not _user and ss.messages:
             title = next((m["content"] for m in ss.messages if m["role"] == "user"), "Chat")
             ss.history.insert(0, {"title": title[:40], "messages": ss.messages, "results": ss.results})
-        ss.messages, ss.stage, ss.convo, ss.results, ss.run_now = [], "start", {}, None, False
+        ss.messages, ss.stage, ss.convo, ss.results, ss.run_now, ss.panel_open = [], "start", {}, None, False, False
+        ss.active_conversation_id = None
         st.rerun()
 
-    st.markdown("---")
-    st.caption("History")
-    for i, h in enumerate(ss.history[:15]):
-        if st.button(f"{h['title']}", key=f"h{i}", use_container_width=True):
-            ss.messages, ss.results, ss.stage = h["messages"], h["results"], "start"
+    st.markdown(
+        "<div style='font:600 11px \"Work Sans\",sans-serif;letter-spacing:1.2px;"
+        "color:oklch(52% 0.02 50);margin:14px 0 4px;'>RECENT</div>",
+        unsafe_allow_html=True,
+    )
+
+    if _user:
+        # cloud-backed history — survives logout, refresh, new device
+        try:
+            convos = authdb.list_conversations(_user["id"])
+        except Exception:
+            convos = []
+        for h in convos:
+            if st.button(h["title"] or "Chat", key=f"h{h['id']}", use_container_width=True):
+                ss.messages = authdb.load_messages(h["id"])
+                stored = None
+                try:
+                    stored = authdb.load_results(h["id"])
+                except Exception:
+                    pass
+                if stored:
+                    rdf = pd.DataFrame(stored["rows"])
+                    ss.results = {"rdf": rdf, "viz": {}, "meta": {"gene": stored.get("gene")}, "tier": "Standard"}
+                else:
+                    ss.results = None
+                ss.stage, ss.active_conversation_id = "start", h["id"]
+                ss.panel_open = bool(ss.results)
+                st.rerun()
+    else:
+        # not logged in / Supabase not configured — local-only history for this session
+        for i, h in enumerate(ss.history[:15]):
+            if st.button(f"{h['title']}", key=f"h{i}", use_container_width=True):
+                ss.messages, ss.results, ss.stage = h["messages"], h["results"], "start"
+                ss.panel_open = bool(h["results"])
+                st.rerun()
+
+    if _user:
+        st.markdown("---")
+        st.caption(_user["email"])
+        if st.button("Log out", use_container_width=True):
+            authdb.sign_out()
+            ss.messages, ss.results, ss.active_conversation_id = [], None, None
             st.rerun()
 
 # ── read chat input (pinned at bottom) ──
@@ -443,7 +567,8 @@ def render_results():
     else:
         rdf = r["rdf"]
         meta = r.get("meta", {})
-        st.markdown(f"#### Docking results — {meta.get('gene', 'target')}")
+        st.markdown(f"<div class='mumo-panel-sub'>Target: {meta.get('gene', 'target')}</div>",
+                    unsafe_allow_html=True)
 
         # ── best-hit summary (clean, presentation-ready) ──
         top = rdf.iloc[0]
@@ -557,22 +682,44 @@ def render_chat():
     if not ss.messages:
         st.markdown(
             "<div class='mumo-hero'>"
-            f"<div class='mumo-hero-logo'>{mol_logo(58, 'mgHero')}"
-            "<span class='mumo-hero-title'>MUMO</span></div>"
+            f"<div class='mumo-hero-logo'>{mol_logo(40, 52, 'mgHero')}"
+            "<span class='mumo-hero-title'>mumo</span></div>"
             "<p class='mumo-hero-sub'>Tell me what to work on — a disease, a target, "
             "or a molecule. I'll ask what I need, then dock it.</p>"
-            "<div class='mumo-pills'><span>Disease, Target, or Molecule</span>"
-            "<span>Analysis &amp; Design</span><span>Docking Results</span></div>"
             "</div>", unsafe_allow_html=True)
     for m in ss.messages:
-        with st.chat_message(m["role"]):
-            st.markdown(m["content"])
+        if m["role"] == "user":
+            st.markdown(
+                f"<div class='mumo-msg-user'><div class='bubble'>{m['content']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                "<div class='mumo-msg-assistant'><div class='label'>MUMO</div>"
+                f"<div class='body'>{m['content']}</div></div>",
+                unsafe_allow_html=True,
+            )
 
 
-# ── chat (full width) ──
-render_chat()
+# ── middle: chat / right: collapsible docking-report panel ──
+if ss.results and ss.panel_open:
+    chat_col, panel_col = st.columns([3, 2], gap="large")
+else:
+    chat_col = st.container()
+    panel_col = None
 
-# ── results, as usual, at the bottom (full width, below the conversation) ──
-if ss.results:
-    st.divider()
-    render_results()
+with chat_col:
+    render_chat()
+
+if panel_col is not None:
+    with panel_col:
+        h = st.columns([5, 1])
+        h[0].markdown("<div class='mumo-panel-header'>Docking report</div>", unsafe_allow_html=True)
+        if h[1].button("✕", key="close_panel", help="Close docking report"):
+            ss.panel_open = False
+            st.rerun()
+        render_results()
+elif ss.results and not ss.panel_open:
+    if st.button("› Open docking report", key="open_panel"):
+        ss.panel_open = True
+        st.rerun()
