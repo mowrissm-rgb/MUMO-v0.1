@@ -38,9 +38,6 @@ VINA = ensure_vina()
 st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 
 ACCENT = "#3fc6d8"
-HERO_VIDEO_URL = ("https://d8j0ntlcm91z4.cloudfront.net/"
-                  "user_38xzZboKViGWJOttwIXH07lWA1P/"
-                  "hf_20260329_050842_be71947f-f16e-4a14-810c-06e83d23ddb5.mp4")
 
 # ── MUMO product theme — warm oklch dark, serif wordmark, single accent ──
 st.markdown(f"""
@@ -183,62 +180,115 @@ def mol_logo(width=20, height=26, gid="mg"):
 authdb.restore_session()
 
 
-def _hero_video_iframe():
-    """The looping background video, in an isolated component iframe pinned
-    fullscreen behind everything. The custom requestAnimationFrame fade runs
-    fine here (JS inside the sandboxed iframe is unrestricted for local work
-    like this — only top-level navigation is blocked). pointer-events are
-    disabled via CSS so clicks pass through to the login form on top."""
+def _hero_dna_iframe():
+    """A live, perspective-projected rotating DNA double helix — no video
+    file needed. Two beaded strands (glassy radial-gradient spheres) spiral
+    around a shared axis; a requestAnimationFrame loop advances the phase
+    each frame and re-projects every bead with simple perspective (near
+    beads bigger/brighter, far beads smaller/dimmer) for real depth, plus a
+    soft blurred-bokeh layer for atmosphere. Runs in an isolated component
+    iframe pinned fullscreen behind the login card; pointer-events are off
+    so clicks pass through."""
     html = """
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#05070b;}
-  #bg{position:absolute;top:0;left:50%;transform:translateX(-50%);
-      width:115%;height:115%;object-fit:cover;object-position:top;opacity:0;}
+  html,body{margin:0;height:100%;overflow:hidden;
+    background:radial-gradient(1200px 800px at 50% 15%, #eef4f1 0%, #cfe0d9 55%, #aec7bd 100%);}
+  #bokeh{position:absolute;inset:0;}
+  .puff{position:absolute;border-radius:50%;filter:blur(20px);
+    background:radial-gradient(circle,#ffffff,transparent 70%);opacity:.32;}
+  svg{position:absolute;inset:0;width:100%;height:100%;}
 </style>
-<video id="bg" autoplay muted playsinline preload="auto">
-  <source src="__URL__" type="video/mp4">
-</video>
+<div id="bokeh"></div>
+<svg id="dna" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice"></svg>
 <script>
-  const v = document.getElementById('bg');
-  let raf = null, fadingOut = false;
-  function fade(to, dur){
-    if (raf) cancelAnimationFrame(raf);
-    const from = parseFloat(v.style.opacity) || 0, start = performance.now();
-    (function step(now){
-      const p = Math.min((now - start) / dur, 1);
-      v.style.opacity = (from + (to - from) * p).toString();
-      if (p < 1) raf = requestAnimationFrame(step);
-    })(start);
+  const bokeh = document.getElementById('bokeh');
+  for (let i = 0; i < 16; i++){
+    const d = document.createElement('div');
+    d.className = 'puff';
+    const s = 24 + Math.random() * 90;
+    d.style.width = d.style.height = s + 'px';
+    d.style.left = (Math.random()*100) + '%';
+    d.style.top = (Math.random()*100) + '%';
+    bokeh.appendChild(d);
   }
-  function fadeIn(){ fadingOut = false; fade(1, 250); }
-  v.addEventListener('loadeddata', fadeIn);
-  v.addEventListener('play', () => {
-    if (!fadingOut && (parseFloat(v.style.opacity) || 0) < 1) fadeIn();
-  });
-  v.addEventListener('timeupdate', () => {
-    if (!fadingOut && v.duration && v.currentTime >= v.duration - 0.55){
-      fadingOut = true; fade(0, 250);
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('dna');
+  const defs = document.createElementNS(NS, 'defs');
+  defs.innerHTML = `
+    <radialGradient id="glass" cx="35%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#dcebe4"/>
+      <stop offset="100%" stop-color="#8fb8ab"/>
+    </radialGradient>
+    <radialGradient id="accent" cx="35%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="45%" stop-color="__ACCENT__"/>
+      <stop offset="100%" stop-color="#1f6f74"/>
+    </radialGradient>`;
+  svg.appendChild(defs);
+
+  const N = 46, TURNS = 3.1, RADIUS = 165, SPAN = 980;
+  const rungs = [], beadsA = [], beadsB = [];
+  for (let i = 0; i < N; i++){
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('stroke', '#ffffff');
+    line.setAttribute('stroke-width', '1.6');
+    svg.appendChild(line); rungs.push(line);
+  }
+  function makeBead(i){
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('fill', i % 9 === 0 ? 'url(#accent)' : 'url(#glass)');
+    svg.appendChild(c);
+    return c;
+  }
+  for (let i = 0; i < N; i++) beadsA.push(makeBead(i));
+  for (let i = 0; i < N; i++) beadsB.push(makeBead(i + 4));
+
+  function project(x, y, z){
+    const persp = 820 / (820 + z);
+    return { x: 500 + x * persp, y: y, s: persp };
+  }
+
+  let theta = 0;
+  function frame(){
+    theta += 0.0045;
+    for (let i = 0; i < N; i++){
+      const t = i / (N - 1);
+      const angle = theta + t * TURNS * Math.PI * 2;
+      const y = t * SPAN - SPAN / 2 + 500;
+      const xA = Math.cos(angle) * RADIUS, zA = Math.sin(angle) * RADIUS;
+      const xB = Math.cos(angle + Math.PI) * RADIUS, zB = Math.sin(angle + Math.PI) * RADIUS;
+      const pA = project(xA, y, zA), pB = project(xB, y, zB);
+      beadsA[i].setAttribute('cx', pA.x); beadsA[i].setAttribute('cy', pA.y);
+      beadsA[i].setAttribute('r', 9 * pA.s); beadsA[i].setAttribute('opacity', 0.45 + 0.55 * pA.s);
+      beadsB[i].setAttribute('cx', pB.x); beadsB[i].setAttribute('cy', pB.y);
+      beadsB[i].setAttribute('r', 9 * pB.s); beadsB[i].setAttribute('opacity', 0.45 + 0.55 * pB.s);
+      if (i % 3 === 0){
+        rungs[i].setAttribute('x1', pA.x); rungs[i].setAttribute('y1', pA.y);
+        rungs[i].setAttribute('x2', pB.x); rungs[i].setAttribute('y2', pB.y);
+        rungs[i].setAttribute('opacity', 0.3 * Math.min(pA.s, pB.s));
+      } else {
+        rungs[i].setAttribute('opacity', '0');
+      }
     }
-  });
-  v.addEventListener('ended', () => {
-    v.style.opacity = '0';
-    setTimeout(() => { v.currentTime = 0; v.play(); fadeIn(); }, 100);
-  });
-  v.play().catch(() => {});
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 </script>
-""".replace("__URL__", HERO_VIDEO_URL)
+""".replace("__ACCENT__", ACCENT)
     components.html(html, height=10)
 
 
 def render_login_gate():
-    _hero_video_iframe()
+    _hero_dna_iframe()
 
-    # ── login-page CSS: pin the video iframe fullscreen behind, glass card ──
+    # ── login-page CSS: pin the DNA scene fullscreen behind, glass card ──
     st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fustat:wght@400;500;600;700;800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-/* the ONLY iframe on this gated page is the hero video — pin it fullscreen */
+/* the ONLY iframe on this gated page is the DNA scene — pin it fullscreen */
 iframe {{
     position: fixed !important; top: 0 !important; left: 0 !important;
     width: 100vw !important; height: 100vh !important;
@@ -248,55 +298,50 @@ iframe {{
 .stApp {{ background: transparent !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
 .block-container {{ position: relative; z-index: 2; max-width: 900px; padding-top: 1.4rem; }}
-/* dark scrim over the video for text legibility */
-.mumo-scrim {{
-    position: fixed; inset: 0; z-index: 1; pointer-events: none;
-    background: linear-gradient(180deg, rgba(5,7,11,0.55) 0%, rgba(5,7,11,0.32) 42%, rgba(5,7,11,0.82) 100%);
-}}
 /* top bar */
 .mumo-nav {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; }}
 .mumo-nav .brand {{ display: flex; align-items: center; gap: 9px; }}
 .mumo-nav .brand span {{ font-family: 'Schibsted Grotesk', sans-serif; font-weight: 600;
-    font-size: 22px; letter-spacing: -1.2px; color: #fff; }}
+    font-size: 22px; letter-spacing: -1.2px; color: #1c2b26; }}
 .mumo-nav .links {{ display: flex; gap: 26px; font-family: 'Schibsted Grotesk', sans-serif;
-    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(255,255,255,0.72); }}
+    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(28,43,38,0.62); }}
 /* hero */
 .mumo-vhero {{ text-align: center; }}
 .mumo-badge {{ display: inline-flex; align-items: center; gap: 9px; margin-bottom: 26px;
-    padding: 6px 6px 6px 7px; border-radius: 999px; background: rgba(255,255,255,0.10);
-    border: 1px solid rgba(255,255,255,0.16); backdrop-filter: blur(8px);
-    font-family: 'Inter', sans-serif; font-size: 14px; color: #eef1f5; }}
+    padding: 6px 6px 6px 7px; border-radius: 999px; background: rgba(255,255,255,0.55);
+    border: 1px solid rgba(28,43,38,0.14); backdrop-filter: blur(8px);
+    font-family: 'Inter', sans-serif; font-size: 14px; color: #1c2b26; }}
 .mumo-badge .chip {{ display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
-    border-radius: 999px; background: #0e1311; color: #fff; font-weight: 600; font-size: 12px; }}
+    border-radius: 999px; background: #163b38; color: #fff; font-weight: 600; font-size: 12px; }}
 .mumo-badge .chip .star {{ color: {ACCENT}; }}
 .mumo-vtitle {{ font-family: 'Fustat', sans-serif; font-weight: 800; font-size: 76px;
-    letter-spacing: -4.2px; line-height: 0.98; color: #fff; margin: 0 0 26px;
-    text-shadow: 0 2px 30px rgba(0,0,0,0.45); }}
+    letter-spacing: -4.2px; line-height: 0.98; color: #16241f; margin: 0 0 26px;
+    text-shadow: 0 2px 24px rgba(255,255,255,0.5); }}
 .mumo-vtitle .accent {{ color: {ACCENT}; }}
 .mumo-vsub {{ font-family: 'Fustat', sans-serif; font-weight: 500; font-size: 20px;
-    letter-spacing: -0.4px; color: #dfe4ec; max-width: 620px; margin: 0 auto 6px;
-    line-height: 1.5; text-shadow: 0 1px 16px rgba(0,0,0,0.4); }}
-/* the tabs container becomes the glass login card */
+    letter-spacing: -0.4px; color: #35473f; max-width: 620px; margin: 0 auto 6px;
+    line-height: 1.5; text-shadow: 0 1px 14px rgba(255,255,255,0.4); }}
+/* the tabs container becomes the frosted-glass login card */
 [data-testid="stTabs"] {{ max-width: 440px; margin: 40px auto 0;
-    background: rgba(10,13,18,0.44); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.13); border-radius: 20px; padding: 6px 24px 24px;
-    box-shadow: 0 30px 70px -28px rgba(0,0,0,0.75); }}
+    background: rgba(255,255,255,0.5); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.6); border-radius: 20px; padding: 6px 24px 24px;
+    box-shadow: 0 30px 70px -28px rgba(20,50,42,0.35); }}
 [data-baseweb="tab-list"] {{ background: transparent !important; gap: 6px; justify-content: center; }}
-button[data-baseweb="tab"] {{ color: rgba(255,255,255,0.55) !important;
+button[data-baseweb="tab"] {{ color: rgba(28,43,38,0.5) !important;
     font-family: 'Schibsted Grotesk', sans-serif !important; font-weight: 600 !important; }}
-button[data-baseweb="tab"][aria-selected="true"] {{ color: #fff !important; }}
+button[data-baseweb="tab"][aria-selected="true"] {{ color: #16241f !important; }}
 [data-baseweb="tab-highlight"] {{ background: {ACCENT} !important; }}
-.stTextInput label {{ color: rgba(255,255,255,0.75) !important;
+.stTextInput label {{ color: rgba(28,43,38,0.75) !important;
     font-family: 'Inter', sans-serif !important; font-size: 13px !important; }}
-.stTextInput input {{ background: rgba(255,255,255,0.07) !important;
-    border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important;
+.stTextInput input {{ background: rgba(255,255,255,0.65) !important;
+    border: 1px solid rgba(28,43,38,0.16) !important; color: #16241f !important;
     border-radius: 12px !important; }}
 .stTextInput input:focus {{ border-color: {ACCENT} !important; box-shadow: 0 0 0 1px {ACCENT} !important; }}
 [data-testid="stForm"] {{ border: none !important; padding: 6px 0 0 !important; }}
-[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color: #04222a !important;
+[data-testid="stFormSubmitButton"] button {{ background: #163b38 !important; color: #eef4f1 !important;
     border: none !important; border-radius: 12px !important; font-weight: 700 !important;
-    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 24px -10px {ACCENT}; }}
-[data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.08); }}
+    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 24px -10px rgba(22,59,56,0.6); }}
+[data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.15); }}
 /* mobile */
 @media (max-width: 680px) {{
     .block-container {{ padding-left: 1rem !important; padding-right: 1rem !important; }}
@@ -308,7 +353,6 @@ button[data-baseweb="tab"][aria-selected="true"] {{ color: #fff !important; }}
     [data-testid="stTabs"] {{ margin-top: 26px; padding: 6px 16px 20px; }}
 }}
 </style>
-<div class="mumo-scrim"></div>
 <div class="mumo-nav">
   <div class="brand">{mol_logo(20, 26, 'mgNav')}<span>mumo</span></div>
   <div class="links"><span>Platform</span><span>Docking</span><span>Reports</span><span>Contact</span></div>
