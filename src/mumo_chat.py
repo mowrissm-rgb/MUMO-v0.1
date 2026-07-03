@@ -38,6 +38,9 @@ VINA = ensure_vina()
 st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 
 ACCENT = "#3fc6d8"
+HERO_VIDEO_URL = ("https://d8j0ntlcm91z4.cloudfront.net/"
+                  "user_38xzZboKViGWJOttwIXH07lWA1P/"
+                  "hf_20260329_050842_be71947f-f16e-4a14-810c-06e83d23ddb5.mp4")
 
 # ── MUMO product theme — warm oklch dark, serif wordmark, single accent ──
 st.markdown(f"""
@@ -180,12 +183,143 @@ def mol_logo(width=20, height=26, gid="mg"):
 authdb.restore_session()
 
 
+def _hero_video_iframe():
+    """The looping background video, in an isolated component iframe pinned
+    fullscreen behind everything. The custom requestAnimationFrame fade runs
+    fine here (JS inside the sandboxed iframe is unrestricted for local work
+    like this — only top-level navigation is blocked). pointer-events are
+    disabled via CSS so clicks pass through to the login form on top."""
+    html = """
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#05070b;}
+  #bg{position:absolute;top:0;left:50%;transform:translateX(-50%);
+      width:115%;height:115%;object-fit:cover;object-position:top;opacity:0;}
+</style>
+<video id="bg" autoplay muted playsinline preload="auto">
+  <source src="__URL__" type="video/mp4">
+</video>
+<script>
+  const v = document.getElementById('bg');
+  let raf = null, fadingOut = false;
+  function fade(to, dur){
+    if (raf) cancelAnimationFrame(raf);
+    const from = parseFloat(v.style.opacity) || 0, start = performance.now();
+    (function step(now){
+      const p = Math.min((now - start) / dur, 1);
+      v.style.opacity = (from + (to - from) * p).toString();
+      if (p < 1) raf = requestAnimationFrame(step);
+    })(start);
+  }
+  function fadeIn(){ fadingOut = false; fade(1, 250); }
+  v.addEventListener('loadeddata', fadeIn);
+  v.addEventListener('play', () => {
+    if (!fadingOut && (parseFloat(v.style.opacity) || 0) < 1) fadeIn();
+  });
+  v.addEventListener('timeupdate', () => {
+    if (!fadingOut && v.duration && v.currentTime >= v.duration - 0.55){
+      fadingOut = true; fade(0, 250);
+    }
+  });
+  v.addEventListener('ended', () => {
+    v.style.opacity = '0';
+    setTimeout(() => { v.currentTime = 0; v.play(); fadeIn(); }, 100);
+  });
+  v.play().catch(() => {});
+</script>
+""".replace("__URL__", HERO_VIDEO_URL)
+    components.html(html, height=10)
+
+
 def render_login_gate():
-    st.markdown(
-        f"<div class='mumo-hero'><div class='mumo-hero-logo'>{mol_logo(40, 52, 'mgAuth')}"
-        "<span class='mumo-hero-title'>mumo</span></div>"
-        "<p class='mumo-hero-sub'>Sign in to pick up your conversations on any device.</p>"
-        "</div>", unsafe_allow_html=True)
+    _hero_video_iframe()
+
+    # ── login-page CSS: pin the video iframe fullscreen behind, glass card ──
+    st.markdown(f"""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fustat:wght@400;500;600;700;800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* the ONLY iframe on this gated page is the hero video — pin it fullscreen */
+iframe {{
+    position: fixed !important; top: 0 !important; left: 0 !important;
+    width: 100vw !important; height: 100vh !important;
+    border: none !important; z-index: 0 !important; pointer-events: none !important;
+}}
+[data-testid="stCustomComponentV1"] {{ position: fixed !important; inset: 0 !important; z-index: 0 !important; }}
+.stApp {{ background: transparent !important; }}
+[data-testid="stHeader"] {{ background: transparent !important; }}
+.block-container {{ position: relative; z-index: 2; max-width: 900px; padding-top: 1.4rem; }}
+/* dark scrim over the video for text legibility */
+.mumo-scrim {{
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(180deg, rgba(5,7,11,0.55) 0%, rgba(5,7,11,0.32) 42%, rgba(5,7,11,0.82) 100%);
+}}
+/* top bar */
+.mumo-nav {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; }}
+.mumo-nav .brand {{ display: flex; align-items: center; gap: 9px; }}
+.mumo-nav .brand span {{ font-family: 'Schibsted Grotesk', sans-serif; font-weight: 600;
+    font-size: 22px; letter-spacing: -1.2px; color: #fff; }}
+.mumo-nav .links {{ display: flex; gap: 26px; font-family: 'Schibsted Grotesk', sans-serif;
+    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(255,255,255,0.72); }}
+/* hero */
+.mumo-vhero {{ text-align: center; }}
+.mumo-badge {{ display: inline-flex; align-items: center; gap: 9px; margin-bottom: 26px;
+    padding: 6px 6px 6px 7px; border-radius: 999px; background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.16); backdrop-filter: blur(8px);
+    font-family: 'Inter', sans-serif; font-size: 14px; color: #eef1f5; }}
+.mumo-badge .chip {{ display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
+    border-radius: 999px; background: #0e1311; color: #fff; font-weight: 600; font-size: 12px; }}
+.mumo-badge .chip .star {{ color: {ACCENT}; }}
+.mumo-vtitle {{ font-family: 'Fustat', sans-serif; font-weight: 800; font-size: 76px;
+    letter-spacing: -4.2px; line-height: 0.98; color: #fff; margin: 0 0 26px;
+    text-shadow: 0 2px 30px rgba(0,0,0,0.45); }}
+.mumo-vtitle .accent {{ color: {ACCENT}; }}
+.mumo-vsub {{ font-family: 'Fustat', sans-serif; font-weight: 500; font-size: 20px;
+    letter-spacing: -0.4px; color: #dfe4ec; max-width: 620px; margin: 0 auto 6px;
+    line-height: 1.5; text-shadow: 0 1px 16px rgba(0,0,0,0.4); }}
+/* the tabs container becomes the glass login card */
+[data-testid="stTabs"] {{ max-width: 440px; margin: 40px auto 0;
+    background: rgba(10,13,18,0.44); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.13); border-radius: 20px; padding: 6px 24px 24px;
+    box-shadow: 0 30px 70px -28px rgba(0,0,0,0.75); }}
+[data-baseweb="tab-list"] {{ background: transparent !important; gap: 6px; justify-content: center; }}
+button[data-baseweb="tab"] {{ color: rgba(255,255,255,0.55) !important;
+    font-family: 'Schibsted Grotesk', sans-serif !important; font-weight: 600 !important; }}
+button[data-baseweb="tab"][aria-selected="true"] {{ color: #fff !important; }}
+[data-baseweb="tab-highlight"] {{ background: {ACCENT} !important; }}
+.stTextInput label {{ color: rgba(255,255,255,0.75) !important;
+    font-family: 'Inter', sans-serif !important; font-size: 13px !important; }}
+.stTextInput input {{ background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important;
+    border-radius: 12px !important; }}
+.stTextInput input:focus {{ border-color: {ACCENT} !important; box-shadow: 0 0 0 1px {ACCENT} !important; }}
+[data-testid="stForm"] {{ border: none !important; padding: 6px 0 0 !important; }}
+[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color: #04222a !important;
+    border: none !important; border-radius: 12px !important; font-weight: 700 !important;
+    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 24px -10px {ACCENT}; }}
+[data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.08); }}
+/* mobile */
+@media (max-width: 680px) {{
+    .block-container {{ padding-left: 1rem !important; padding-right: 1rem !important; }}
+    .mumo-nav .links {{ display: none; }}
+    .mumo-nav {{ margin-bottom: 30px; }}
+    .mumo-vtitle {{ font-size: 44px; letter-spacing: -2px; margin-bottom: 20px; }}
+    .mumo-vsub {{ font-size: 16px; padding: 0 6px; }}
+    .mumo-badge {{ margin-bottom: 20px; font-size: 13px; }}
+    [data-testid="stTabs"] {{ margin-top: 26px; padding: 6px 16px 20px; }}
+}}
+</style>
+<div class="mumo-scrim"></div>
+<div class="mumo-nav">
+  <div class="brand">{mol_logo(20, 26, 'mgNav')}<span>mumo</span></div>
+  <div class="links"><span>Platform</span><span>Docking</span><span>Reports</span><span>Contact</span></div>
+</div>
+<div class="mumo-vhero">
+  <div class="mumo-badge"><span class="chip"><span class="star">✦</span> New</span> From disease to docked molecule</div>
+  <h1 class="mumo-vtitle">From disease<br>to <span class="accent">drug.</span></h1>
+  <p class="mumo-vsub">MUMO's multi-agent AI pinpoints the target, scouts the strongest ligands, and runs real molecular docking — from a single sentence to a full report.</p>
+</div>
+""", unsafe_allow_html=True)
+
     tab_in, tab_up = st.tabs(["Log in", "Sign up"])
     with tab_in:
         with st.form("login_form"):
