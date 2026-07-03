@@ -1,14 +1,14 @@
-# MUMO ships a warm dark theme (oklch charcoal-brown canvas, cyan accent,
-# serif "mumo" wordmark) matching the Claude Design "MUMO Chat" mockup.
-# Users can still switch to Light from the top-right menu → Settings → Theme;
-# the custom CSS in mumo_chat.py is dark-first.
+# MUMO ships a cinematic dark theme (#0c0c0c canvas, cyan accent, looping
+# video background + liquid-glass surfaces). The app canvas is set transparent
+# in mumo_chat.py so the background video shows through; these values drive
+# widget theming (inputs, tables, menus).
 
 [theme]
 base = "dark"
 primaryColor = "#3fc6d8"             # cyan accent (buttons, focus, highlights)
-backgroundColor = "#211c19"          # main canvas — warm charcoal (oklch 20% 0.014 45)
-secondaryBackgroundColor = "#1c1815" # sidebar + widgets (oklch 17% 0.012 45)
-textColor = "#ebe4dc"                # warm off-white (oklch 92% 0.012 60)
+backgroundColor = "#0c0c0c"          # main canvas — cinematic near-black
+secondaryBackgroundColor = "#16181d" # sidebar + widgets
+textColor = "#e9edf2"                # cool off-white
 font = "sans serif"
 
 [server]

@@ -38,63 +38,80 @@ VINA = ensure_vina()
 st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 
 ACCENT = "#3fc6d8"
+# Cinematic dark-blue looping background video (used app-wide, behind the UI).
+BG_VIDEO_URL = ("https://d8j0ntlcm91z4.cloudfront.net/"
+                "user_38xzZboKViGWJOttwIXH07lWA1P/"
+                "hf_20260508_064122_c4750c0e-7476-4b44-94a2-a85a65c63bf2.mp4")
 
-# ── MUMO product theme — warm oklch dark, serif wordmark, single accent ──
+# ── MUMO product theme — cinematic #0c0c0c dark, liquid glass, looping video ──
 st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,500;1,8..60,600&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,500;1,8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {{ --accent: {ACCENT}; }}
-.stApp {{ background: oklch(20% 0.014 45); }}
+html, body {{ background: #0c0c0c; }}
+.stApp {{ background: transparent !important; }}
 .block-container {{ padding-top: 1.6rem; max-width: 900px; }}
-html, body, [class*="css"] {{ font-family:'Work Sans',sans-serif; color: oklch(92% 0.012 60); }}
+html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: #e9edf2;
+    -webkit-font-smoothing: antialiased; }}
+::selection {{ background: rgba(63,198,216,0.3); }}
 ::-webkit-scrollbar {{ width:9px; }}
-::-webkit-scrollbar-thumb {{ background:oklch(32% 0.018 45); border-radius:6px; }}
+::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.14); border-radius:6px; }}
 ::-webkit-scrollbar-track {{ background:transparent; }}
-/* Sidebar */
+/* fullscreen looping video background + legibility scrim (app-wide) */
+.mumo-bgvid {{ position:fixed; inset:0; width:100%; height:100%; object-fit:cover;
+    z-index:-2; pointer-events:none; }}
+.mumo-bgscrim {{ position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background: linear-gradient(180deg, rgba(8,8,11,0.74) 0%, rgba(8,8,11,0.66) 45%, rgba(8,8,11,0.86) 100%); }}
+/* liquid-glass surface */
+.liquid {{ background: rgba(255,255,255,0.02); backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.10); }}
+/* Sidebar — dark glass */
 [data-testid="stSidebar"] {{
-    background: oklch(17% 0.012 45);
-    border-right: 1px solid oklch(30% 0.015 45);
+    background: rgba(12,12,15,0.62) !important; backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px); border-right: 1px solid rgba(255,255,255,0.07);
 }}
 [data-testid="stSidebar"] .stButton button {{
-    background: transparent;
-    border: 1px solid oklch(34% 0.02 45);
-    color: oklch(78% 0.015 55); border-radius: 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: #c7ced6; border-radius: 12px;
     text-align: left; justify-content: flex-start; font-weight: 600; font-size: 13px;
 }}
 [data-testid="stSidebar"] .stButton button:hover {{
-    border-color: var(--accent); color: oklch(93% 0.012 60);
-    background: oklch(24% 0.018 45);
+    border-color: var(--accent); color: #f0f3f7;
+    background: rgba(63,198,216,0.08);
 }}
 .mumo-brand {{ display:flex; align-items:center; gap:.5rem; margin:.2rem 0 1rem .1rem; }}
 .mumo-brand .wm {{
     font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size:1.35rem; color: oklch(93% 0.012 60);
+    font-size:1.35rem; color: #f0f3f7;
 }}
 .mumo-hero-logo {{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:.2rem; }}
 .mumo-session {{
-    padding:11px 12px; border-radius:11px; border-left:2px solid oklch(30% 0.015 45);
-    color: oklch(58% 0.02 50); font-size:11px; margin:2px 0 8px;
+    padding:11px 12px; border-radius:11px; border-left:2px solid rgba(255,255,255,0.10);
+    color: #8a929c; font-size:11px; margin:2px 0 8px;
 }}
 /* Chat bubbles */
 .mumo-msg-user {{ display:flex; justify-content:flex-end; margin:10px 0; }}
 .mumo-msg-user .bubble {{
-    max-width:78%; background: var(--accent); color: oklch(99% 0.005 40);
+    max-width:78%; background: var(--accent); color: #04222a;
     border-radius:18px 18px 4px 18px; padding:13px 18px;
-    font:15px/1.55 'Work Sans',sans-serif; box-shadow:0 8px 20px -10px rgba(0,0,0,.55);
+    font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(0,0,0,.6);
 }}
 .mumo-msg-assistant {{ max-width:88%; margin:14px 0; }}
 .mumo-msg-assistant .label {{
-    font:600 11px 'Work Sans',sans-serif; letter-spacing:.8px; color: var(--accent);
+    font:600 11px 'Inter',sans-serif; letter-spacing:.8px; color: var(--accent);
     margin-bottom:6px; text-transform:uppercase;
 }}
 .mumo-msg-assistant .body {{
-    font:17px/1.65 'Source Serif 4',serif; color: oklch(92% 0.012 60);
+    font:17px/1.65 'Source Serif 4',serif; color: #e9edf2;
 }}
 .mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
 [data-testid="stChatInput"] {{
-    border: 1px solid oklch(34% 0.02 45) !important;
-    border-radius: 14px !important; background: oklch(24% 0.016 45) !important;
+    border: 1px solid rgba(255,255,255,0.10) !important;
+    border-radius: 14px !important; background: rgba(18,18,22,0.72) !important;
+    backdrop-filter: blur(12px);
 }}
 /* Welcome hero */
 .mumo-hero {{
@@ -105,19 +122,23 @@ html, body, [class*="css"] {{ font-family:'Work Sans',sans-serif; color: oklch(9
 }}
 .mumo-hero-title {{
     font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size: 3.2rem; line-height:1; color: oklch(93% 0.012 60);
+    font-size: 3.2rem; line-height:1; color: #f0f3f7;
 }}
 .mumo-hero-sub {{
     margin: 0 auto; max-width: 460px;
-    font-size: 1.05rem; font-weight:400; color: oklch(65% 0.02 50); line-height:1.6;
+    font-size: 1.05rem; font-weight:400; color: #aab3bd; line-height:1.6;
 }}
 /* Results panel */
 .mumo-panel-header {{
     font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size:19px; color: oklch(93% 0.012 60);
+    font-size:19px; color: #f0f3f7;
 }}
-.mumo-panel-sub {{ font:12.5px 'Work Sans',sans-serif; color: oklch(60% 0.02 50); margin-bottom:14px; }}
+.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: #9aa2ac; margin-bottom:14px; }}
 </style>
+<video class="mumo-bgvid" autoplay loop muted playsinline>
+  <source src="{BG_VIDEO_URL}" type="video/mp4">
+</video>
+<div class="mumo-bgscrim"></div>
 """, unsafe_allow_html=True)
 
 # ── session ──
@@ -180,168 +201,59 @@ def mol_logo(width=20, height=26, gid="mg"):
 authdb.restore_session()
 
 
-def _hero_dna_iframe():
-    """A live, perspective-projected rotating DNA double helix — no video
-    file needed. Two beaded strands (glassy radial-gradient spheres) spiral
-    around a shared axis; a requestAnimationFrame loop advances the phase
-    each frame and re-projects every bead with simple perspective (near
-    beads bigger/brighter, far beads smaller/dimmer) for real depth, plus a
-    soft blurred-bokeh layer for atmosphere. Runs in an isolated component
-    iframe pinned fullscreen behind the login card; pointer-events are off
-    so clicks pass through."""
-    html = """
-<style>
-  html,body{margin:0;height:100%;overflow:hidden;
-    background:radial-gradient(1200px 800px at 50% 15%, #eef4f1 0%, #cfe0d9 55%, #aec7bd 100%);}
-  #bokeh{position:absolute;inset:0;}
-  .puff{position:absolute;border-radius:50%;filter:blur(20px);
-    background:radial-gradient(circle,#ffffff,transparent 70%);opacity:.32;}
-  svg{position:absolute;inset:0;width:100%;height:100%;}
-</style>
-<div id="bokeh"></div>
-<svg id="dna" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice"></svg>
-<script>
-  const bokeh = document.getElementById('bokeh');
-  for (let i = 0; i < 16; i++){
-    const d = document.createElement('div');
-    d.className = 'puff';
-    const s = 24 + Math.random() * 90;
-    d.style.width = d.style.height = s + 'px';
-    d.style.left = (Math.random()*100) + '%';
-    d.style.top = (Math.random()*100) + '%';
-    bokeh.appendChild(d);
-  }
-
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.getElementById('dna');
-  const defs = document.createElementNS(NS, 'defs');
-  defs.innerHTML = `
-    <radialGradient id="glass" cx="35%" cy="28%" r="72%">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="50%" stop-color="#dcebe4"/>
-      <stop offset="100%" stop-color="#8fb8ab"/>
-    </radialGradient>
-    <radialGradient id="accent" cx="35%" cy="28%" r="72%">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="45%" stop-color="__ACCENT__"/>
-      <stop offset="100%" stop-color="#1f6f74"/>
-    </radialGradient>`;
-  svg.appendChild(defs);
-
-  const N = 46, TURNS = 3.1, RADIUS = 165, SPAN = 980;
-  const rungs = [], beadsA = [], beadsB = [];
-  for (let i = 0; i < N; i++){
-    const line = document.createElementNS(NS, 'line');
-    line.setAttribute('stroke', '#ffffff');
-    line.setAttribute('stroke-width', '1.6');
-    svg.appendChild(line); rungs.push(line);
-  }
-  function makeBead(i){
-    const c = document.createElementNS(NS, 'circle');
-    c.setAttribute('fill', i % 9 === 0 ? 'url(#accent)' : 'url(#glass)');
-    svg.appendChild(c);
-    return c;
-  }
-  for (let i = 0; i < N; i++) beadsA.push(makeBead(i));
-  for (let i = 0; i < N; i++) beadsB.push(makeBead(i + 4));
-
-  function project(x, y, z){
-    const persp = 820 / (820 + z);
-    return { x: 500 + x * persp, y: y, s: persp };
-  }
-
-  let theta = 0;
-  function frame(){
-    theta += 0.0045;
-    for (let i = 0; i < N; i++){
-      const t = i / (N - 1);
-      const angle = theta + t * TURNS * Math.PI * 2;
-      const y = t * SPAN - SPAN / 2 + 500;
-      const xA = Math.cos(angle) * RADIUS, zA = Math.sin(angle) * RADIUS;
-      const xB = Math.cos(angle + Math.PI) * RADIUS, zB = Math.sin(angle + Math.PI) * RADIUS;
-      const pA = project(xA, y, zA), pB = project(xB, y, zB);
-      beadsA[i].setAttribute('cx', pA.x); beadsA[i].setAttribute('cy', pA.y);
-      beadsA[i].setAttribute('r', 9 * pA.s); beadsA[i].setAttribute('opacity', 0.45 + 0.55 * pA.s);
-      beadsB[i].setAttribute('cx', pB.x); beadsB[i].setAttribute('cy', pB.y);
-      beadsB[i].setAttribute('r', 9 * pB.s); beadsB[i].setAttribute('opacity', 0.45 + 0.55 * pB.s);
-      if (i % 3 === 0){
-        rungs[i].setAttribute('x1', pA.x); rungs[i].setAttribute('y1', pA.y);
-        rungs[i].setAttribute('x2', pB.x); rungs[i].setAttribute('y2', pB.y);
-        rungs[i].setAttribute('opacity', 0.3 * Math.min(pA.s, pB.s));
-      } else {
-        rungs[i].setAttribute('opacity', '0');
-      }
-    }
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
-</script>
-""".replace("__ACCENT__", ACCENT)
-    components.html(html, height=10)
-
-
 def render_login_gate():
-    _hero_dna_iframe()
-
-    # ── login-page CSS: pin the DNA scene fullscreen behind, glass card ──
+    # the looping video background + scrim are already injected app-wide;
+    # here we only add the hero content and the glass login card.
     st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fustat:wght@400;500;600;700;800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-/* the ONLY iframe on this gated page is the DNA scene — pin it fullscreen */
-iframe {{
-    position: fixed !important; top: 0 !important; left: 0 !important;
-    width: 100vw !important; height: 100vh !important;
-    border: none !important; z-index: 0 !important; pointer-events: none !important;
-}}
-[data-testid="stCustomComponentV1"] {{ position: fixed !important; inset: 0 !important; z-index: 0 !important; }}
-.stApp {{ background: transparent !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
 .block-container {{ position: relative; z-index: 2; max-width: 900px; padding-top: 1.4rem; }}
 /* top bar */
 .mumo-nav {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; }}
 .mumo-nav .brand {{ display: flex; align-items: center; gap: 9px; }}
 .mumo-nav .brand span {{ font-family: 'Schibsted Grotesk', sans-serif; font-weight: 600;
-    font-size: 22px; letter-spacing: -1.2px; color: #1c2b26; }}
+    font-size: 22px; letter-spacing: -1.2px; color: #f0f3f7; }}
 .mumo-nav .links {{ display: flex; gap: 26px; font-family: 'Schibsted Grotesk', sans-serif;
-    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(28,43,38,0.62); }}
+    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(233,237,242,0.62); }}
 /* hero */
 .mumo-vhero {{ text-align: center; }}
 .mumo-badge {{ display: inline-flex; align-items: center; gap: 9px; margin-bottom: 26px;
-    padding: 6px 6px 6px 7px; border-radius: 999px; background: rgba(255,255,255,0.55);
-    border: 1px solid rgba(28,43,38,0.14); backdrop-filter: blur(8px);
-    font-family: 'Inter', sans-serif; font-size: 14px; color: #1c2b26; }}
+    padding: 6px 6px 6px 7px; border-radius: 999px; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14); backdrop-filter: blur(8px);
+    font-family: 'Inter', sans-serif; font-size: 14px; color: #e9edf2; }}
 .mumo-badge .chip {{ display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
-    border-radius: 999px; background: #163b38; color: #fff; font-weight: 600; font-size: 12px; }}
+    border-radius: 999px; background: #10131a; color: #fff; font-weight: 600; font-size: 12px; }}
 .mumo-badge .chip .star {{ color: {ACCENT}; }}
 .mumo-vtitle {{ font-family: 'Fustat', sans-serif; font-weight: 800; font-size: 76px;
-    letter-spacing: -4.2px; line-height: 0.98; color: #16241f; margin: 0 0 26px;
-    text-shadow: 0 2px 24px rgba(255,255,255,0.5); }}
+    letter-spacing: -4.2px; line-height: 0.98; color: #ffffff; margin: 0 0 26px;
+    text-shadow: 0 4px 40px rgba(0,0,0,0.6); }}
 .mumo-vtitle .accent {{ color: {ACCENT}; }}
 .mumo-vsub {{ font-family: 'Fustat', sans-serif; font-weight: 500; font-size: 20px;
-    letter-spacing: -0.4px; color: #35473f; max-width: 620px; margin: 0 auto 6px;
-    line-height: 1.5; text-shadow: 0 1px 14px rgba(255,255,255,0.4); }}
-/* the tabs container becomes the frosted-glass login card */
+    letter-spacing: -0.4px; color: #c3cbd4; max-width: 620px; margin: 0 auto 6px;
+    line-height: 1.5; text-shadow: 0 2px 20px rgba(0,0,0,0.5); }}
+/* the tabs container becomes the liquid-glass login card */
 [data-testid="stTabs"] {{ max-width: 440px; margin: 40px auto 0;
-    background: rgba(255,255,255,0.5); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.6); border-radius: 20px; padding: 6px 24px 24px;
-    box-shadow: 0 30px 70px -28px rgba(20,50,42,0.35); }}
+    background: rgba(14,15,20,0.55); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 20px; padding: 6px 24px 24px;
+    box-shadow: 0 30px 80px -30px rgba(0,0,0,0.8), inset 0 1px 1px rgba(255,255,255,0.08); }}
 [data-baseweb="tab-list"] {{ background: transparent !important; gap: 6px; justify-content: center; }}
-button[data-baseweb="tab"] {{ color: rgba(28,43,38,0.5) !important;
+button[data-baseweb="tab"] {{ color: rgba(233,237,242,0.5) !important;
     font-family: 'Schibsted Grotesk', sans-serif !important; font-weight: 600 !important; }}
-button[data-baseweb="tab"][aria-selected="true"] {{ color: #16241f !important; }}
+button[data-baseweb="tab"][aria-selected="true"] {{ color: #ffffff !important; }}
 [data-baseweb="tab-highlight"] {{ background: {ACCENT} !important; }}
-.stTextInput label {{ color: rgba(28,43,38,0.75) !important;
+.stTextInput label {{ color: rgba(233,237,242,0.72) !important;
     font-family: 'Inter', sans-serif !important; font-size: 13px !important; }}
-.stTextInput input {{ background: rgba(255,255,255,0.65) !important;
-    border: 1px solid rgba(28,43,38,0.16) !important; color: #16241f !important;
+.stTextInput input {{ background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.13) !important; color: #f0f3f7 !important;
     border-radius: 12px !important; }}
 .stTextInput input:focus {{ border-color: {ACCENT} !important; box-shadow: 0 0 0 1px {ACCENT} !important; }}
 [data-testid="stForm"] {{ border: none !important; padding: 6px 0 0 !important; }}
-[data-testid="stFormSubmitButton"] button {{ background: #163b38 !important; color: #eef4f1 !important;
+[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color: #04222a !important;
     border: none !important; border-radius: 12px !important; font-weight: 700 !important;
-    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 24px -10px rgba(22,59,56,0.6); }}
-[data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.15); }}
+    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 28px -10px {ACCENT}; }}
+[data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.1); }}
 /* mobile */
 @media (max-width: 680px) {{
     .block-container {{ padding-left: 1rem !important; padding-right: 1rem !important; }}
