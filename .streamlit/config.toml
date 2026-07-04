@@ -1,14 +1,13 @@
-# MUMO ships a cinematic dark theme (#0c0c0c canvas, cyan accent, looping
-# video background + liquid-glass surfaces). The app canvas is set transparent
-# in mumo_chat.py so the background video shows through; these values drive
-# widget theming (inputs, tables, menus).
+# MUMO ships a clean true light theme (near-white canvas, deep-teal accent).
+# these values drive widget theming (inputs, tables, menus); mumo_chat.py's
+# own CSS block layers the rest of the look on top.
 
 [theme]
-base = "dark"
-primaryColor = "#3fc6d8"             # cyan accent (buttons, focus, highlights)
-backgroundColor = "#0c0c0c"          # main canvas — cinematic near-black
-secondaryBackgroundColor = "#16181d" # sidebar + widgets
-textColor = "#e9edf2"                # cool off-white
+base = "light"
+primaryColor = "#0f9aad"             # deep teal accent (buttons, focus, highlights)
+backgroundColor = "#f7f8fa"          # main canvas — near-white
+secondaryBackgroundColor = "#ffffff" # sidebar + widgets
+textColor = "#1a1f26"                # near-black
 font = "sans serif"
 
 [server]

@@ -37,67 +37,57 @@ VINA = ensure_vina()
 
 st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 
-ACCENT = "#3fc6d8"
-# Cinematic dark-blue looping background video (used app-wide, behind the UI).
-BG_VIDEO_URL = ("https://d8j0ntlcm91z4.cloudfront.net/"
-                "user_38xzZboKViGWJOttwIXH07lWA1P/"
-                "hf_20260508_064122_c4750c0e-7476-4b44-94a2-a85a65c63bf2.mp4")
+ACCENT = "#0f9aad"  # slightly deeper teal — reads better on a light canvas than the dark-theme cyan
 
-# ── MUMO product theme — cinematic #0c0c0c dark, liquid glass, looping video ──
+# ── MUMO product theme — clean true light theme, same structure/accent ──
 st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,500;1,8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {{ --accent: {ACCENT}; }}
-html, body {{ background: #0c0c0c; }}
-.stApp {{ background: transparent !important; }}
+html, body {{ background: #f7f8fa; }}
+.stApp {{ background: #f7f8fa !important; }}
 .block-container {{ padding-top: 1.6rem; max-width: 900px; }}
-html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: #e9edf2;
+html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: #1a1f26;
     -webkit-font-smoothing: antialiased; }}
-::selection {{ background: rgba(63,198,216,0.3); }}
+::selection {{ background: rgba(15,154,173,0.18); }}
 ::-webkit-scrollbar {{ width:9px; }}
-::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.14); border-radius:6px; }}
+::-webkit-scrollbar-thumb {{ background: rgba(0,0,0,0.14); border-radius:6px; }}
 ::-webkit-scrollbar-track {{ background:transparent; }}
-/* fullscreen looping video background + legibility scrim (app-wide) */
-.mumo-bgvid {{ position:fixed; inset:0; width:100%; height:100%; object-fit:cover;
-    z-index:-2; pointer-events:none; }}
-.mumo-bgscrim {{ position:fixed; inset:0; z-index:-1; pointer-events:none;
-    background: linear-gradient(180deg, rgba(8,8,11,0.74) 0%, rgba(8,8,11,0.66) 45%, rgba(8,8,11,0.86) 100%); }}
-/* liquid-glass surface */
-.liquid {{ background: rgba(255,255,255,0.02); backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.08);
-    box-shadow: inset 0 1px 1px rgba(255,255,255,0.10); }}
-/* Sidebar — dark glass */
+/* soft glass surface */
+.liquid {{ background: rgba(255,255,255,0.7); backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); border:1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 1px 2px rgba(16,24,32,0.04); }}
+/* Sidebar — light */
 [data-testid="stSidebar"] {{
-    background: rgba(12,12,15,0.62) !important; backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px); border-right: 1px solid rgba(255,255,255,0.07);
+    background: #ffffff !important; border-right: 1px solid rgba(0,0,0,0.07);
 }}
 [data-testid="stSidebar"] .stButton button {{
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.09);
-    color: #c7ced6; border-radius: 12px;
+    background: #f7f8fa;
+    border: 1px solid rgba(0,0,0,0.08);
+    color: #3a4048; border-radius: 12px;
     text-align: left; justify-content: flex-start; font-weight: 600; font-size: 13px;
 }}
 [data-testid="stSidebar"] .stButton button:hover {{
-    border-color: var(--accent); color: #f0f3f7;
-    background: rgba(63,198,216,0.08);
+    border-color: var(--accent); color: #10151b;
+    background: rgba(15,154,173,0.07);
 }}
 .mumo-brand {{ display:flex; align-items:center; gap:.5rem; margin:.2rem 0 1rem .1rem; }}
 .mumo-brand .wm {{
     font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size:1.35rem; color: #f0f3f7;
+    font-size:1.35rem; color: #10151b;
 }}
 .mumo-hero-logo {{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:.2rem; }}
 .mumo-session {{
-    padding:11px 12px; border-radius:11px; border-left:2px solid rgba(255,255,255,0.10);
-    color: #8a929c; font-size:11px; margin:2px 0 8px;
+    padding:11px 12px; border-radius:11px; border-left:2px solid rgba(0,0,0,0.08);
+    color: #6b7178; font-size:11px; margin:2px 0 8px;
 }}
 /* Chat bubbles */
 .mumo-msg-user {{ display:flex; justify-content:flex-end; margin:10px 0; }}
 .mumo-msg-user .bubble {{
-    max-width:78%; background: var(--accent); color: #04222a;
+    max-width:78%; background: var(--accent); color: #ffffff;
     border-radius:18px 18px 4px 18px; padding:13px 18px;
-    font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(0,0,0,.6);
+    font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(15,154,173,.35);
 }}
 .mumo-msg-assistant {{ max-width:88%; margin:14px 0; }}
 .mumo-msg-assistant .label {{
@@ -105,13 +95,12 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     margin-bottom:6px; text-transform:uppercase;
 }}
 .mumo-msg-assistant .body {{
-    font:17px/1.65 'Source Serif 4',serif; color: #e9edf2;
+    font:17px/1.65 'Source Serif 4',serif; color: #1a1f26;
 }}
 .mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
 [data-testid="stChatInput"] {{
-    border: 1px solid rgba(255,255,255,0.10) !important;
-    border-radius: 14px !important; background: rgba(18,18,22,0.72) !important;
-    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0,0,0,0.10) !important;
+    border-radius: 14px !important; background: #ffffff !important;
 }}
 /* Welcome hero */
 .mumo-hero {{
@@ -122,23 +111,19 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
 }}
 .mumo-hero-title {{
     font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size: 3.2rem; line-height:1; color: #f0f3f7;
+    font-size: 3.2rem; line-height:1; color: #10151b;
 }}
 .mumo-hero-sub {{
     margin: 0 auto; max-width: 460px;
-    font-size: 1.05rem; font-weight:400; color: #aab3bd; line-height:1.6;
+    font-size: 1.05rem; font-weight:400; color: #5c636b; line-height:1.6;
 }}
 /* Results panel */
 .mumo-panel-header {{
     font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size:19px; color: #f0f3f7;
+    font-size:19px; color: #10151b;
 }}
-.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: #9aa2ac; margin-bottom:14px; }}
+.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: #6b7178; margin-bottom:14px; }}
 </style>
-<video class="mumo-bgvid" autoplay loop muted playsinline>
-  <source src="{BG_VIDEO_URL}" type="video/mp4">
-</video>
-<div class="mumo-bgscrim"></div>
 """, unsafe_allow_html=True)
 
 # ── session ──
@@ -202,8 +187,6 @@ authdb.restore_session()
 
 
 def render_login_gate():
-    # the looping video background + scrim are already injected app-wide;
-    # here we only add the hero content and the glass login card.
     st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fustat:wght@400;500;600;700;800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -214,45 +197,42 @@ def render_login_gate():
 .mumo-nav {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; }}
 .mumo-nav .brand {{ display: flex; align-items: center; gap: 9px; }}
 .mumo-nav .brand span {{ font-family: 'Schibsted Grotesk', sans-serif; font-weight: 600;
-    font-size: 22px; letter-spacing: -1.2px; color: #f0f3f7; }}
+    font-size: 22px; letter-spacing: -1.2px; color: #10151b; }}
 .mumo-nav .links {{ display: flex; gap: 26px; font-family: 'Schibsted Grotesk', sans-serif;
-    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(233,237,242,0.62); }}
+    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(16,21,27,0.55); }}
 /* hero */
 .mumo-vhero {{ text-align: center; }}
 .mumo-badge {{ display: inline-flex; align-items: center; gap: 9px; margin-bottom: 26px;
-    padding: 6px 6px 6px 7px; border-radius: 999px; background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.14); backdrop-filter: blur(8px);
-    font-family: 'Inter', sans-serif; font-size: 14px; color: #e9edf2; }}
+    padding: 6px 6px 6px 7px; border-radius: 999px; background: #ffffff;
+    border: 1px solid rgba(16,21,27,0.08); box-shadow: 0 1px 2px rgba(16,21,27,0.05);
+    font-family: 'Inter', sans-serif; font-size: 14px; color: #10151b; }}
 .mumo-badge .chip {{ display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
-    border-radius: 999px; background: #10131a; color: #fff; font-weight: 600; font-size: 12px; }}
+    border-radius: 999px; background: #10151b; color: #fff; font-weight: 600; font-size: 12px; }}
 .mumo-badge .chip .star {{ color: {ACCENT}; }}
-.mumo-vtitle {{ font-family: 'Fustat', sans-serif; font-weight: 800; font-size: 76px;
-    letter-spacing: -4.2px; line-height: 0.98; color: #ffffff; margin: 0 0 26px;
-    text-shadow: 0 4px 40px rgba(0,0,0,0.6); }}
-.mumo-vtitle .accent {{ color: {ACCENT}; }}
+.mumo-vtitle {{ font-family: 'Fustat', sans-serif !important; font-weight: 800 !important; font-size: 76px !important;
+    letter-spacing: -4.2px; line-height: 0.98; color: #10151b !important; margin: 0 0 26px; }}
+.mumo-vtitle .accent {{ color: {ACCENT} !important; }}
 .mumo-vsub {{ font-family: 'Fustat', sans-serif; font-weight: 500; font-size: 20px;
-    letter-spacing: -0.4px; color: #c3cbd4; max-width: 620px; margin: 0 auto 6px;
-    line-height: 1.5; text-shadow: 0 2px 20px rgba(0,0,0,0.5); }}
-/* the tabs container becomes the liquid-glass login card */
+    letter-spacing: -0.4px; color: #565d66; max-width: 620px; margin: 0 auto 6px; line-height: 1.5; }}
+/* the tabs container becomes the login card */
 [data-testid="stTabs"] {{ max-width: 440px; margin: 40px auto 0;
-    background: rgba(14,15,20,0.55); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
-    border: 1px solid rgba(255,255,255,0.10); border-radius: 20px; padding: 6px 24px 24px;
-    box-shadow: 0 30px 80px -30px rgba(0,0,0,0.8), inset 0 1px 1px rgba(255,255,255,0.08); }}
+    background: #ffffff; border: 1px solid rgba(16,21,27,0.07); border-radius: 20px;
+    padding: 6px 24px 24px; box-shadow: 0 24px 60px -28px rgba(16,21,27,0.18); }}
 [data-baseweb="tab-list"] {{ background: transparent !important; gap: 6px; justify-content: center; }}
-button[data-baseweb="tab"] {{ color: rgba(233,237,242,0.5) !important;
+button[data-baseweb="tab"] {{ color: rgba(16,21,27,0.45) !important;
     font-family: 'Schibsted Grotesk', sans-serif !important; font-weight: 600 !important; }}
-button[data-baseweb="tab"][aria-selected="true"] {{ color: #ffffff !important; }}
+button[data-baseweb="tab"][aria-selected="true"] {{ color: #10151b !important; }}
 [data-baseweb="tab-highlight"] {{ background: {ACCENT} !important; }}
-.stTextInput label {{ color: rgba(233,237,242,0.72) !important;
+.stTextInput label {{ color: rgba(16,21,27,0.7) !important;
     font-family: 'Inter', sans-serif !important; font-size: 13px !important; }}
-.stTextInput input {{ background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.13) !important; color: #f0f3f7 !important;
+.stTextInput input {{ background: #f7f8fa !important;
+    border: 1px solid rgba(16,21,27,0.12) !important; color: #10151b !important;
     border-radius: 12px !important; }}
 .stTextInput input:focus {{ border-color: {ACCENT} !important; box-shadow: 0 0 0 1px {ACCENT} !important; }}
 [data-testid="stForm"] {{ border: none !important; padding: 6px 0 0 !important; }}
-[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color: #04222a !important;
+[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color: #ffffff !important;
     border: none !important; border-radius: 12px !important; font-weight: 700 !important;
-    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 28px -10px {ACCENT}; }}
+    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 24px -10px {ACCENT}; }}
 [data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.1); }}
 /* mobile */
 @media (max-width: 680px) {{
@@ -586,8 +566,8 @@ with st.sidebar:
         st.rerun()
 
     st.markdown(
-        "<div style='font:600 11px \"Work Sans\",sans-serif;letter-spacing:1.2px;"
-        "color:oklch(52% 0.02 50);margin:14px 0 4px;'>RECENT</div>",
+        "<div style='font:600 11px \"Inter\",sans-serif;letter-spacing:1.2px;"
+        "color:#6b7178;margin:14px 0 4px;'>RECENT</div>",
         unsafe_allow_html=True,
     )
 
@@ -676,9 +656,9 @@ def render_results():
             ]
             cells = "".join(
                 f"<div style='min-width:110px;'>"
-                f"<div style='font:10.5px \"Work Sans\",sans-serif;color:oklch(62% 0.02 50);"
+                f"<div style='font:10.5px \"Inter\",sans-serif;color:#6b7178;"
                 f"margin-bottom:4px;'>{label}</div>"
-                f"<div style='font:600 20px \"Source Serif 4\",serif;color:oklch(93% 0.012 60);'>{value}</div>"
+                f"<div style='font:600 20px \"Source Serif 4\",serif;color:#10151b;'>{value}</div>"
                 f"</div>"
                 for label, value in metrics
             )
