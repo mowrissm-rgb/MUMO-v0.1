@@ -792,18 +792,39 @@ def render_chat():
             )
 
 
-# ── middle: chat / right: collapsible docking-report panel ──
-if ss.results and ss.panel_open:
-    chat_col, panel_col = st.columns([3, 2], gap="large")
-else:
-    chat_col = st.container()
-    panel_col = None
+# ── chat: always full width, never resizes ──
+# ── docking report: a fixed-width overlay drawer on the right, so it never
+#    steals space from the chat column (previously an st.columns([3,2])
+#    split, which squeezed/congested the chat every time the panel opened) ──
+PANEL_WIDTH = 420
+panel_showing = bool(ss.results and ss.panel_open)
 
-with chat_col:
-    render_chat()
+st.markdown(f"""
+<style>
+.block-container {{ transition: padding-right .25s ease; }}
+{f'.block-container {{ padding-right: {PANEL_WIDTH + 24}px; }}' if panel_showing else ''}
+@media (max-width: 900px) {{ .block-container {{ padding-right: 1rem !important; }} }}
+</style>
+""", unsafe_allow_html=True)
 
-if panel_col is not None:
-    with panel_col:
+render_chat()
+
+if panel_showing:
+    with st.container(key="mumo_panel"):
+        st.markdown(f"""
+<style>
+.st-key-mumo_panel {{
+    position: fixed; top: 0; right: 0; width: {PANEL_WIDTH}px; height: 100vh;
+    overflow-y: auto; z-index: 999; background: #ffffff;
+    border-left: 1px solid rgba(16,21,27,0.08);
+    box-shadow: -14px 0 34px -18px rgba(16,21,27,0.28);
+    padding: 22px 24px 40px;
+}}
+@media (max-width: 900px) {{
+    .st-key-mumo_panel {{ width: 100vw; }}
+}}
+</style>
+""", unsafe_allow_html=True)
         h = st.columns([5, 1])
         h[0].markdown("<div class='mumo-panel-header'>Docking report</div>", unsafe_allow_html=True)
         if h[1].button("✕", key="close_panel", help="Close docking report"):
