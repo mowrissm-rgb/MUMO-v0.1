@@ -39,6 +39,16 @@ st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 
 ACCENT = "#0f9aad"  # slightly deeper teal — reads better on a light canvas than the dark-theme cyan
 
+# Looping background videos for the cinematic intro landing page. Single
+# constants so a MUMO-specific clip can be swapped in with one edit each.
+INTRO_HERO_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
+                    "hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4")
+INTRO_FEAT_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
+                    "hf_20260418_094631_d30ab262-45ee-4b7d-99f3-5d5848c8ef13.mp4")
+# The flower clip shown on the login page (page 2). It spins on Log in / Sign up.
+FLOWER_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
+                "hf_20260616_212935_bbf608da-62d1-4f25-9be4-c346e4d09cc8.mp4")
+
 # ── MUMO product theme — clean true light theme, same structure/accent ──
 st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -136,6 +146,8 @@ ss.setdefault("run_now", False)
 ss.setdefault("history", [])      # [{title, messages, results}] — local fallback, no login
 ss.setdefault("panel_open", False)  # is the right results drawer open?
 ss.setdefault("active_conversation_id", None)  # Supabase conversation row, once logged in
+ss.setdefault("entered", False)  # has the visitor clicked past the intro landing page?
+ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the flower page reveals
 _llm = get_llm()
 
 
@@ -187,77 +199,78 @@ authdb.restore_session()
 
 
 def render_login_gate():
+    """Page 2 — the flower login page. A circular flower video sits centre
+    stage with a quote beneath it and two buttons (Log in / Sign up). Clicking
+    either one does two things at once: the flower spins (a one-shot CSS
+    rotation that replays because Streamlit re-renders the element on rerun),
+    and the matching email/password form is revealed inline right below — no
+    page change. Submitting proceeds to chat."""
+    mode = ss.auth_mode
+    spin = "spin" if mode else ""
     st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fustat:wght@400;500;600;700;800&family=Schibsted+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,500;1,8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+.stApp {{ background: radial-gradient(1100px 700px at 50% 8%, #0d1417 0%, #050506 60%) !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
-.block-container {{ position: relative; z-index: 2; max-width: 900px; padding-top: 1.4rem; }}
-/* top bar */
-.mumo-nav {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; }}
-.mumo-nav .brand {{ display: flex; align-items: center; gap: 9px; }}
-.mumo-nav .brand span {{ font-family: 'Schibsted Grotesk', sans-serif; font-weight: 600;
-    font-size: 22px; letter-spacing: -1.2px; color: #10151b; }}
-.mumo-nav .links {{ display: flex; gap: 26px; font-family: 'Schibsted Grotesk', sans-serif;
-    font-weight: 500; font-size: 15px; letter-spacing: -0.2px; color: rgba(16,21,27,0.55); }}
-/* hero */
-.mumo-vhero {{ text-align: center; }}
-.mumo-badge {{ display: inline-flex; align-items: center; gap: 9px; margin-bottom: 26px;
-    padding: 6px 6px 6px 7px; border-radius: 999px; background: #ffffff;
-    border: 1px solid rgba(16,21,27,0.08); box-shadow: 0 1px 2px rgba(16,21,27,0.05);
-    font-family: 'Inter', sans-serif; font-size: 14px; color: #10151b; }}
-.mumo-badge .chip {{ display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
-    border-radius: 999px; background: #10151b; color: #fff; font-weight: 600; font-size: 12px; }}
-.mumo-badge .chip .star {{ color: {ACCENT}; }}
-.mumo-vtitle {{ font-family: 'Fustat', sans-serif !important; font-weight: 800 !important; font-size: 76px !important;
-    letter-spacing: -4.2px; line-height: 0.98; color: #10151b !important; margin: 0 0 26px; }}
-.mumo-vtitle .accent {{ color: {ACCENT} !important; }}
-.mumo-vsub {{ font-family: 'Fustat', sans-serif; font-weight: 500; font-size: 20px;
-    letter-spacing: -0.4px; color: #565d66; max-width: 620px; margin: 0 auto 6px; line-height: 1.5; }}
-/* the tabs container becomes the login card */
-[data-testid="stTabs"] {{ max-width: 440px; margin: 40px auto 0;
-    background: #ffffff; border: 1px solid rgba(16,21,27,0.07); border-radius: 20px;
-    padding: 6px 24px 24px; box-shadow: 0 24px 60px -28px rgba(16,21,27,0.18); }}
-[data-baseweb="tab-list"] {{ background: transparent !important; gap: 6px; justify-content: center; }}
-button[data-baseweb="tab"] {{ color: rgba(16,21,27,0.45) !important;
-    font-family: 'Schibsted Grotesk', sans-serif !important; font-weight: 600 !important; }}
-button[data-baseweb="tab"][aria-selected="true"] {{ color: #10151b !important; }}
-[data-baseweb="tab-highlight"] {{ background: {ACCENT} !important; }}
-.stTextInput label {{ color: rgba(16,21,27,0.7) !important;
-    font-family: 'Inter', sans-serif !important; font-size: 13px !important; }}
-.stTextInput input {{ background: #f7f8fa !important;
-    border: 1px solid rgba(16,21,27,0.12) !important; color: #10151b !important;
-    border-radius: 12px !important; }}
+.block-container {{ max-width: 560px !important; padding-top: 4vh !important; }}
+html, body, [class*="css"] {{ color: #fff; }}
+.flower-page {{ text-align: center; color: #fff; }}
+.fbrand {{ display:inline-flex; align-items:center; gap:8px; margin-bottom:14px;
+    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600; font-size:22px; color:#fff; }}
+.flower {{ width: 300px; height: 300px; margin: 4px auto 0; border-radius: 50%; overflow: hidden;
+    box-shadow: 0 0 70px -12px rgba(63,198,216,0.45), inset 0 0 0 1px rgba(255,255,255,0.08); }}
+.flower video {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
+.flower.spin video {{ animation: flowerSpin 1.4s cubic-bezier(.2,.75,.2,1); }}
+@keyframes flowerSpin {{ from {{ transform: rotate(0deg) scale(1.06); }} to {{ transform: rotate(360deg) scale(1); }} }}
+.fquote {{ font-family:'Source Serif 4',serif; font-style:italic; font-size:22px; color:#eef3f6;
+    margin-top: 26px; line-height:1.35; }}
+.fquote-sub {{ font-size:14px; color: rgba(255,255,255,0.55); margin-top:8px; margin-bottom: 8px; }}
+/* native buttons (mode chooser) */
+.stButton button {{ background: rgba(255,255,255,0.06) !important; color:#fff !important;
+    border: 1px solid rgba(255,255,255,0.18) !important; border-radius: 999px !important;
+    font-family:'Inter',sans-serif !important; font-weight:600 !important; padding: 12px 0 !important;
+    transition: transform .15s ease, filter .15s ease, border-color .15s ease !important; }}
+.stButton button:hover {{ border-color: {ACCENT} !important; background: rgba(15,154,173,0.14) !important; }}
+.stButton button:active {{ transform: scale(0.96); }}
+.stButton button[kind="primary"] {{ background: {ACCENT} !important; color:#03242a !important;
+    border: none !important; box-shadow: 0 12px 30px -12px {ACCENT} !important; }}
+/* form inputs (dark) */
+.stTextInput label {{ color: rgba(255,255,255,0.72) !important;
+    font-family:'Inter',sans-serif !important; font-size:13px !important; }}
+.stTextInput input {{ background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.16) !important; color:#fff !important; border-radius:12px !important; }}
 .stTextInput input:focus {{ border-color: {ACCENT} !important; box-shadow: 0 0 0 1px {ACCENT} !important; }}
-[data-testid="stForm"] {{ border: none !important; padding: 6px 0 0 !important; }}
-[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color: #ffffff !important;
+[data-testid="stForm"] {{ border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 18px !important;
+    background: rgba(255,255,255,0.02) !important; padding: 18px 20px !important; }}
+[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color:#03242a !important;
     border: none !important; border-radius: 12px !important; font-weight: 700 !important;
-    font-family: 'Schibsted Grotesk', sans-serif !important; box-shadow: 0 10px 24px -10px {ACCENT}; }}
+    font-family:'Inter',sans-serif !important; box-shadow: 0 10px 24px -10px {ACCENT}; }}
 [data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.1); }}
-/* mobile */
-@media (max-width: 680px) {{
-    .block-container {{ padding-left: 1rem !important; padding-right: 1rem !important; }}
-    .mumo-nav .links {{ display: none; }}
-    .mumo-nav {{ margin-bottom: 30px; }}
-    .mumo-vtitle {{ font-size: 44px; letter-spacing: -2px; margin-bottom: 20px; }}
-    .mumo-vsub {{ font-size: 16px; padding: 0 6px; }}
-    .mumo-badge {{ margin-bottom: 20px; font-size: 13px; }}
-    [data-testid="stTabs"] {{ margin-top: 26px; padding: 6px 16px 20px; }}
-}}
+@media (max-width: 600px) {{ .flower {{ width: 240px; height: 240px; }} .fquote {{ font-size:19px; }} }}
 </style>
-<div class="mumo-nav">
-  <div class="brand">{mol_logo(20, 26, 'mgNav')}<span>mumo</span></div>
-  <div class="links"><span>Platform</span><span>Docking</span><span>Reports</span><span>Contact</span></div>
-</div>
-<div class="mumo-vhero">
-  <div class="mumo-badge"><span class="chip"><span class="star">✦</span> New</span> From disease to docked molecule</div>
-  <h1 class="mumo-vtitle">From disease<br>to <span class="accent">drug.</span></h1>
-  <p class="mumo-vsub">MUMO's multi-agent AI pinpoints the target, scouts the strongest ligands, and runs real molecular docking — from a single sentence to a full report.</p>
+<div class="flower-page">
+  <div class="fbrand">{mol_logo(20, 26, 'mgFlower')}<span>mumo</span></div>
+  <div class="flower {spin}">
+    <video autoplay loop muted playsinline preload="auto"><source src="{FLOWER_VIDEO}" type="video/mp4"></video>
+  </div>
+  <div class="fquote">"Every cure begins with a single question."</div>
+  <div class="fquote-sub">Sign in to begin your discovery.</div>
 </div>
 """, unsafe_allow_html=True)
 
-    tab_in, tab_up = st.tabs(["Log in", "Sign up"])
-    with tab_in:
+    if mode is None:
+        cta = st.columns([1, 1])
+        with cta[0]:
+            if st.button("Log in", key="go_login", type="primary", use_container_width=True):
+                ss.auth_mode = "login"
+                st.rerun()
+        with cta[1]:
+            if st.button("Sign up", key="go_signup", use_container_width=True):
+                ss.auth_mode = "signup"
+                st.rerun()
+
+    elif mode == "login":
         with st.form("login_form"):
             email = st.text_input("Email", key="li_email")
             pw = st.text_input("Password", type="password", key="li_pw")
@@ -267,7 +280,11 @@ button[data-baseweb="tab"][aria-selected="true"] {{ color: #10151b !important; }
                     st.rerun()
                 except Exception as e:
                     st.error(f"Couldn't log in: {e}")
-    with tab_up:
+        if st.button("New here? Create an account", key="to_signup", use_container_width=True):
+            ss.auth_mode = "signup"
+            st.rerun()
+
+    else:  # signup
         with st.form("signup_form"):
             email2 = st.text_input("Email", key="su_email")
             pw2 = st.text_input("Password", type="password", key="su_pw", help="At least 6 characters.")
@@ -275,12 +292,221 @@ button[data-baseweb="tab"][aria-selected="true"] {{ color: #10151b !important; }
                 try:
                     authdb.sign_up(email2.strip(), pw2)
                     st.success("Account created — check your email to confirm, then log in.")
+                    ss.auth_mode = "login"
                 except Exception as e:
                     st.error(f"Couldn't sign up: {e}")
+        if st.button("Already have an account? Log in", key="to_login", use_container_width=True):
+            ss.auth_mode = "login"
+            st.rerun()
+
+
+def render_intro():
+    """Page 1 of 3 — a cinematic, scroll-driven landing page that introduces
+    MUMO and drug discovery, then hands off to the login page via the Start
+    button. Full-bleed looping video backgrounds (raw <video>, which survives
+    Streamlit's markdown sanitizer), a liquid-glass design system, and
+    CSS-only scroll-reveal animations (animation-timeline: view()) since JS is
+    stripped from injected markdown."""
+    st.markdown(f"""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* full-bleed dark canvas, no Streamlit chrome */
+.stApp {{ background: #000 !important; }}
+[data-testid="stHeader"] {{ background: transparent !important; }}
+.stMain {{ align-items: stretch !important; }}
+.block-container {{ max-width: 100% !important; width: 100% !important;
+    padding: 0 !important; }}
+.mumo-intro *, .mumo-intro {{ box-sizing: border-box; }}
+.mumo-intro {{ font-family: 'Barlow', sans-serif; color: #fff; }}
+/* liquid glass */
+.lg {{ position: relative; overflow: hidden; background: rgba(255,255,255,0.02);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.12); border-radius: 22px; }}
+.lg::before {{ content:""; position:absolute; inset:0; border-radius:inherit; padding:1.4px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0.12) 25%,
+        rgba(255,255,255,0) 45%, rgba(255,255,255,0) 60%, rgba(255,255,255,0.12) 80%, rgba(255,255,255,0.45));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; pointer-events:none; }}
+/* sections */
+.mumo-sec {{ position: relative; min-height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column; }}
+.mumo-sec > video {{ position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; object-position: top; z-index: 0; }}
+.mumo-sec .veil {{ position:absolute; inset:0; z-index:1; pointer-events:none;
+    background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.6)); }}
+.mumo-sec .inner {{ position: relative; z-index: 2; flex: 1;
+    display: flex; flex-direction: column; padding: 40px clamp(20px, 6vw, 90px); }}
+/* nav */
+.mumo-inav {{ display:flex; align-items:center; justify-content:space-between; }}
+.mumo-inav .brand {{ display:flex; align-items:center; gap:9px;
+    font-family:'Instrument Serif',serif; font-style:italic; font-size:26px; color:#fff; }}
+.mumo-inav .navlinks {{ display:flex; gap:6px; padding:6px; }}
+.mumo-inav .navlinks a {{ padding:8px 14px; font-size:14px; font-weight:500;
+    color:rgba(255,255,255,0.9); text-decoration:none; border-radius:999px; }}
+@media (max-width: 820px) {{ .mumo-inav .navlinks {{ display:none; }} }}
+/* hero content */
+.mumo-hero-c {{ flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; }}
+.mumo-pill {{ display:inline-flex; align-items:center; gap:9px; padding:5px 14px 5px 5px;
+    font-size:13.5px; color:rgba(255,255,255,0.92); margin-bottom:26px;
+    animation: fadeUp .8s .3s both; }}
+.mumo-pill .new {{ background:#fff; color:#000; font-weight:600; font-size:11.5px;
+    padding:3px 10px; border-radius:999px; }}
+.mumo-huge {{ font-family:'Instrument Serif',serif; font-style:italic;
+    font-size: clamp(3rem, 8vw, 5.4rem); line-height:0.86; letter-spacing:-3px;
+    color:#fff; max-width: 15ch; margin:0; }}
+.mumo-huge .w {{ display:inline-block; margin-right:0.24em; opacity:0;
+    animation: blurWord .7s both; filter: blur(10px); }}
+.mumo-subh {{ margin-top:22px; max-width: 54ch; font-weight:300;
+    font-size: clamp(0.95rem, 1.4vw, 1.05rem); line-height:1.5; color:rgba(255,255,255,0.92);
+    animation: fadeUp .8s .9s both; }}
+.mumo-cue {{ margin-top:34px; font-size:12px; letter-spacing:2px; text-transform:uppercase;
+    color:rgba(255,255,255,0.6); animation: fadeUp .8s 1.2s both; }}
+.mumo-cue .dot {{ display:block; width:22px; height:36px; border:1.5px solid rgba(255,255,255,0.4);
+    border-radius:20px; margin:12px auto 0; position:relative; }}
+.mumo-cue .dot::after {{ content:""; position:absolute; left:50%; top:7px; width:3px; height:7px;
+    border-radius:3px; background:#fff; transform:translateX(-50%); animation: cue 1.6s infinite; }}
+/* capabilities */
+.mumo-kick {{ font-size:14px; color:rgba(255,255,255,0.75); margin-bottom:20px; }}
+.mumo-h2 {{ font-family:'Instrument Serif',serif; font-style:italic;
+    font-size: clamp(2.6rem, 7vw, 5.4rem); line-height:0.9; letter-spacing:-2px; margin:0; }}
+.mumo-cards {{ display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-top:56px; }}
+@media (max-width: 900px) {{ .mumo-cards {{ grid-template-columns: 1fr; }} }}
+.mumo-card {{ padding:24px; min-height:340px; display:flex; flex-direction:column; }}
+.mumo-card .ico {{ width:44px; height:44px; border-radius:12px; display:flex;
+    align-items:center; justify-content:center; font-size:22px; }}
+.mumo-card .tags {{ display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; max-width:64%; }}
+.mumo-card .tags span {{ font-size:11px; color:rgba(255,255,255,0.9); padding:4px 10px; border-radius:999px; }}
+.mumo-card .top {{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }}
+.mumo-card h3 {{ font-family:'Instrument Serif',serif; font-style:italic; font-size:2rem;
+    letter-spacing:-1px; margin:0 0 10px; }}
+.mumo-card p {{ font-size:14px; font-weight:300; line-height:1.5; color:rgba(255,255,255,0.9);
+    max-width:34ch; margin:0; }}
+/* cta section */
+.mumo-cta-c {{ flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; }}
+.mumo-cta-c .kick {{ font-size:14px; color:rgba(255,255,255,0.75); margin-bottom:20px; }}
+.mumo-cta-c h2 {{ font-family:'Instrument Serif',serif; font-style:italic;
+    font-size: clamp(2.4rem, 6vw, 4.4rem); line-height:0.92; letter-spacing:-2px; margin:0 0 14px; max-width:16ch; }}
+.mumo-cta-c p {{ font-weight:300; max-width:46ch; color:rgba(255,255,255,0.9); line-height:1.5; margin:0 0 8px; }}
+/* scroll reveal (CSS-only; ignored gracefully where unsupported -> just visible) */
+.reveal {{ animation: revealUp linear both; animation-timeline: view();
+    animation-range: entry 6% cover 34%; }}
+@keyframes revealUp {{ from {{ opacity:0; filter:blur(10px); transform:translateY(46px); }}
+    to {{ opacity:1; filter:blur(0); transform:none; }} }}
+@keyframes fadeUp {{ from {{ opacity:0; transform:translateY(18px); }} to {{ opacity:1; transform:none; }} }}
+@keyframes blurWord {{ 0% {{ opacity:0; filter:blur(10px); transform:translateY(30px); }}
+    50% {{ opacity:.6; filter:blur(4px); transform:translateY(-4px); }}
+    100% {{ opacity:1; filter:blur(0); transform:translateY(0); }} }}
+@keyframes cue {{ 0% {{ opacity:0; transform:translate(-50%,0); }} 50% {{ opacity:1; }}
+    100% {{ opacity:0; transform:translate(-50%,10px); }} }}
+/* Start button (native st.button, restyled + press effect) */
+.st-key-enter_mumo {{ padding: 0 0 90px; background:#000; }}
+.st-key-enter_mumo button {{
+    background: {ACCENT} !important; color:#03242a !important; border:none !important;
+    font-family:'Barlow',sans-serif !important; font-weight:600 !important; font-size:17px !important;
+    padding: 16px 46px !important; border-radius:999px !important;
+    box-shadow: 0 14px 40px -12px {ACCENT} !important; transition: transform .18s ease, filter .18s ease !important; }}
+.st-key-enter_mumo button:hover {{ filter:brightness(1.1); transform: translateY(-2px); }}
+.st-key-enter_mumo button:active {{ transform: scale(0.94); filter:brightness(0.92); }}
+</style>
+
+<div class="mumo-intro">
+  <!-- SECTION 1 — HERO -->
+  <section class="mumo-sec">
+    <video autoplay muted playsinline loop preload="auto"><source src="{INTRO_HERO_VIDEO}" type="video/mp4"></video>
+    <div class="veil"></div>
+    <div class="inner">
+      <div class="mumo-inav">
+        <div class="brand">{mol_logo(20, 26, 'mgIntro')}<span>mumo</span></div>
+        <div class="navlinks lg"><a>Platform</a><a>Discovery</a><a>Docking</a><a>Reports</a><a>About</a></div>
+        <div style="width:44px"></div>
+      </div>
+      <div class="mumo-hero-c">
+        <div class="mumo-pill lg"><span class="new">New</span> AI that goes from disease to docked molecule</div>
+        <h1 class="mumo-huge">
+          <span class="w" style="animation-delay:.0s">Discover</span>
+          <span class="w" style="animation-delay:.1s">medicine,</span>
+          <span class="w" style="animation-delay:.2s">faster</span>
+          <span class="w" style="animation-delay:.3s">than</span>
+          <span class="w" style="animation-delay:.4s">ever.</span>
+        </h1>
+        <p class="mumo-subh">MUMO is a multi-agent AI drug-discovery partner. Name a disease, a target,
+        or a molecule — it finds the target, scouts the strongest ligands, runs real molecular docking,
+        and hands you a full report. From a single sentence to a validated hit.</p>
+        <div class="mumo-cue">Scroll to explore<span class="dot"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 2 — CAPABILITIES -->
+  <section class="mumo-sec">
+    <video autoplay muted playsinline loop preload="auto"><source src="{INTRO_FEAT_VIDEO}" type="video/mp4"></video>
+    <div class="veil"></div>
+    <div class="inner">
+      <div class="reveal">
+        <div class="mumo-kick">// What MUMO does</div>
+        <h2 class="mumo-h2">Drug discovery,<br>evolved.</h2>
+      </div>
+      <div class="mumo-cards">
+        <div class="mumo-card lg reveal">
+          <div class="top"><div class="ico lg">🎯</div>
+            <div class="tags"><span class="lg">Disease → gene</span><span class="lg">Open Targets</span><span class="lg">Ranked</span></div></div>
+          <div style="flex:1"></div>
+          <h3>Target Finder</h3>
+          <p>Give MUMO a disease and it pinpoints the most relevant protein target, backed by
+          curated genetics — no need to know the gene yourself.</p>
+        </div>
+        <div class="mumo-card lg reveal">
+          <div class="top"><div class="ico lg">🧪</div>
+            <div class="tags"><span class="lg">ChEMBL</span><span class="lg">SMILES</span><span class="lg">Drug-likeness</span></div></div>
+          <div style="flex:1"></div>
+          <h3>Ligand Scout</h3>
+          <p>It scouts the strongest known binders from millions of bioactive molecules, or takes the
+          exact compound you name, and screens them for drug-like properties.</p>
+        </div>
+        <div class="mumo-card lg reveal">
+          <div class="top"><div class="ico lg">⚛️</div>
+            <div class="tags"><span class="lg">AutoDock Vina</span><span class="lg">3D pose</span><span class="lg">Validated</span></div></div>
+          <div style="flex:1"></div>
+          <h3>Molecular Docking</h3>
+          <p>Real physics-based docking with reproducible scoring, interaction maps and a 3D pose —
+          the same result you'd get from a wet-lab computational pipeline.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 3 — CTA -->
+  <section class="mumo-sec" style="min-height:82vh;">
+    <video autoplay muted playsinline loop preload="auto"><source src="{INTRO_HERO_VIDEO}" type="video/mp4"></video>
+    <div class="veil" style="background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.4) 40%, #000);"></div>
+    <div class="inner">
+      <div class="mumo-cta-c reveal">
+        <div class="kick">// Begin</div>
+        <h2>Start your journey into drug discovery.</h2>
+        <p>Create an account or log in, then just start talking. MUMO takes it from there.</p>
+      </div>
+    </div>
+  </section>
+</div>
+""", unsafe_allow_html=True)
+
+    c = st.columns([1, 1, 1])
+    with c[1]:
+        if st.button("Get Started  →", key="enter_mumo", use_container_width=True):
+            ss.entered = True
+            st.rerun()
+
+
 
 
 if authdb.is_configured() and not authdb.current_user():
-    render_login_gate()
+    if not ss.entered:
+        render_intro()
+    else:
+        render_login_gate()
     st.stop()
 
 
@@ -607,6 +833,7 @@ with st.sidebar:
         if st.button("Log out", use_container_width=True):
             authdb.sign_out()
             ss.messages, ss.results, ss.active_conversation_id = [], None, None
+            ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
             st.rerun()
 
 # ── read chat input (pinned at bottom) ──
