@@ -801,9 +801,16 @@ panel_showing = bool(ss.results and ss.panel_open)
 
 st.markdown(f"""
 <style>
-.block-container {{ transition: padding-right .25s ease; }}
-{f'.block-container {{ padding-right: {PANEL_WIDTH + 24}px; }}' if panel_showing else ''}
-@media (max-width: 900px) {{ .block-container {{ padding-right: 1rem !important; }} }}
+.block-container {{ transition: width .25s ease; }}
+{f'''.stMain {{ align-items: flex-start !important; }}
+.block-container {{
+    max-width: none !important; width: calc(100% - {PANEL_WIDTH + 40}px) !important;
+    padding-right: 24px;
+}}''' if panel_showing else ''}
+@media (max-width: 1200px) {{
+    .stMain {{ align-items: center !important; }}
+    .block-container {{ max-width: none !important; width: 100% !important; padding-right: 1rem !important; }}
+}}
 </style>
 """, unsafe_allow_html=True)
 
