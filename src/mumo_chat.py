@@ -279,7 +279,18 @@ html, body, [class*="css"] {{ color: #fff; }}
                     authdb.sign_in(email.strip(), pw)
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Couldn't log in: {e}")
+                    if "confirm" in str(e).lower():
+                        st.error("Your email isn't confirmed yet — check your inbox (and spam folder) for the confirmation link.")
+                        ss.unconfirmed_email = email.strip()
+                    else:
+                        st.error(f"Couldn't log in: {e}")
+        if ss.get("unconfirmed_email"):
+            if st.button("Resend confirmation email", key="resend_conf", use_container_width=True):
+                try:
+                    authdb.resend_confirmation(ss.unconfirmed_email)
+                    st.success("Confirmation email resent — give it a minute to arrive.")
+                except Exception as e:
+                    st.error(f"Couldn't resend: {e}")
         if st.button("New here? Create an account", key="to_signup", use_container_width=True):
             ss.auth_mode = "signup"
             st.rerun()

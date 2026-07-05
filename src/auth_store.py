@@ -167,6 +167,11 @@ def sign_in(email, password):
     return res
 
 
+def resend_confirmation(email):
+    sb = get_client()
+    return sb.auth.resend({"type": "signup", "email": email})
+
+
 def sign_out():
     sb = get_client()
     try:
