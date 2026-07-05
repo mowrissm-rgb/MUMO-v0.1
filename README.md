@@ -1,3 +1,17 @@
+---
+title: MUMO
+emoji: 🧬
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: Multi-Agent Drug Discovery & Development AI Platform
+---
+
+<!-- The YAML block above configures the Hugging Face Space (Docker SDK).
+     Harmless on GitHub; required by HF — keep it as the first thing in the file. -->
+
 # 🧬 MUMO — Multi-Agent Drug Discovery & Development AI Platform
 
 **Multiple agents · Unified Mission · One interface.**
