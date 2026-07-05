@@ -96,6 +96,16 @@ def analyze_string(identifiers, species=HUMAN, limit=20):
 
     partners = interaction_partners(names, species, limit)
 
+    # attach each partner's biological annotation (what it does) — powers a richer,
+    # plain-language report instead of just names + scores
+    try:
+        ann = {a.get("preferredName"): a.get("annotation", "")
+               for a in resolve_ids([p["preferredName_B"] for p in partners[:15]], species)}
+        for p in partners:
+            p["annotation_B"] = ann.get(p["preferredName_B"], "")
+    except Exception:
+        pass
+
     # enrichment is meaningful for a SET — feed the protein(s) + their top partners
     enr_set = list(dict.fromkeys(names + [p["preferredName_B"] for p in partners[:12]]))
     enr = enrichment(enr_set, species) if len(enr_set) > 2 else []

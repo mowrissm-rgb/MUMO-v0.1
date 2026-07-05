@@ -597,6 +597,58 @@ CONV_SYSTEM = (
 )
 
 
+STRING_REPORT_SYSTEM = (
+    "You are MUMO, explaining a protein–protein interaction network to a pharmacy "
+    "student who is NEW to network pharmacology and has never used STRING before. "
+    "Make it genuinely easy to understand while staying scientifically correct.\n\n"
+    "Write the report in markdown with these sections and headings:\n"
+    "## What this network shows\n(2–3 sentences: what a protein–protein interaction "
+    "network is, and what we're looking at here — in plain words.)\n"
+    "## The main protein\n(what it is and what it does in the body, simply.)\n"
+    "## Key partners and how they connect\n(for the most important partners: what each "
+    "one does, and WHY it works with the main protein — the biological relationship. "
+    "Explain the evidence in plain words: 'experiments' = scientists physically observed "
+    "them interacting; 'databases' = expert-curated knowledge; 'co-expression' = they turn "
+    "on together; 'text-mining' = repeatedly discussed together in the literature.)\n"
+    "## The biology this network is doing\n(explain the enriched pathways/processes in "
+    "plain language: what these proteins achieve together in the cell or body.)\n"
+    "## Why this matters\n(the big-picture takeaway for drug discovery / for this target.)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm, "
+    "encouraging tutor tone. No emojis. Use ONLY the data provided — never invent facts, "
+    "gene names, or numbers."
+)
+
+
+def _string_narrative(data):
+    """Ask MUMO's LLM to explain a STRING network in plain, beginner-friendly terms."""
+    if _llm is None:
+        return ""
+    resolved = data.get("resolved", [])
+    main = ", ".join(data.get("input", []))
+    main_ann = resolved[0].get("annotation", "") if resolved else ""
+    plines = []
+    for p in data.get("partners", [])[:10]:
+        ev = []
+        if p.get("escore", 0) > 0.15: ev.append("experiments")
+        if p.get("dscore", 0) > 0.15: ev.append("databases")
+        if p.get("ascore", 0) > 0.15: ev.append("co-expression")
+        if p.get("tscore", 0) > 0.15: ev.append("text-mining")
+        plines.append(
+            f"- {p['preferredName_B']} (confidence {round(p.get('score', 0), 2)}; "
+            f"evidence: {', '.join(ev) or 'combined'}): {p.get('annotation_B', '')[:220]}")
+    enr = sorted(data.get("enrichment", []), key=lambda e: e.get("fdr", 1.0))[:10]
+    elines = [f"- [{e.get('category', '')}] {e.get('description', '')}" for e in enr]
+    prompt = (f"MAIN PROTEIN(S): {main}\nWHAT IT DOES: {main_ann[:500]}\n\n"
+              f"TOP PARTNERS (name, confidence 0-1, evidence, function):\n"
+              + "\n".join(plines) + "\n\n"
+              "ENRICHED PATHWAYS / FUNCTIONS:\n" + "\n".join(elines) +
+              "\n\nWrite the beginner-friendly network report now.")
+    try:
+        return _llm.chat(STRING_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1200)
+    except Exception:
+        return ""
+
+
 def _history_text(n=10):
     return "\n".join(f'{m["role"]}: {m["content"]}' for m in ss.messages[-n:])
 
@@ -721,7 +773,10 @@ def converse(msg):
         label = ", ".join(prot) if isinstance(prot, list) else str(prot)
         try:
             with st.spinner(f"Querying STRING for {label}…"):
-                ss.results = {"kind": "string", **analyze_string(prot)}
+                data_str = analyze_string(prot)
+            with st.spinner("Writing the network report…"):
+                data_str["narrative"] = _string_narrative(data_str)
+            ss.results = {"kind": "string", **data_str}
             ss.panel_open = True
         except Exception as e:
             say(f"STRING analysis couldn't run: {e}")
@@ -1135,6 +1190,11 @@ def _render_string_report(r):
             f'<div style="background:#fff;padding:10px;border-radius:12px;'
             f'border:1px solid rgba(111,184,236,0.28);box-shadow:0 8px 28px -10px rgba(0,0,0,0.5);'
             f'overflow:auto;">{svg}</div>', unsafe_allow_html=True)
+
+    narrative = r.get("narrative")
+    if narrative:
+        st.markdown(narrative)
+        st.markdown("---")
 
     partners = r.get("partners") or []
     if partners:
