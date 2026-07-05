@@ -37,7 +37,8 @@ VINA = ensure_vina()
 
 st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 
-ACCENT = "#0f9aad"  # slightly deeper teal — reads better on a light canvas than the dark-theme cyan
+ACCENT = "#6fb8ec"   # light blue — matches the React landing/login pages' accent
+ACCENT2 = "#2f7fc4"  # gradient end stop (used on buttons/bubbles for the same look)
 
 # Looping background videos for the cinematic intro landing page. Single
 # constants so a MUMO-specific clip can be swapped in with one edit each.
@@ -49,55 +50,55 @@ INTRO_FEAT_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttw
 FLOWER_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
                 "hf_20260616_212935_bbf608da-62d1-4f25-9be4-c346e4d09cc8.mp4")
 
-# ── MUMO product theme — clean true light theme, same structure/accent ──
+# ── MUMO product theme — dark cinematic, matching the React landing/login ──
 st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,500;1,8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root {{ --accent: {ACCENT}; }}
-html, body {{ background: #f7f8fa; }}
-.stApp {{ background: #f7f8fa !important; }}
+:root {{ --accent: {ACCENT}; --accent2: {ACCENT2}; }}
+html, body {{ background: #0a0d0f; }}
+.stApp {{ background: #0a0d0f !important; }}
 .block-container {{ padding-top: 1.6rem; max-width: 900px; }}
-html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: #1a1f26;
+html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: #eef5fa;
     -webkit-font-smoothing: antialiased; }}
-::selection {{ background: rgba(15,154,173,0.18); }}
+::selection {{ background: rgba(111,184,236,0.28); }}
 ::-webkit-scrollbar {{ width:9px; }}
-::-webkit-scrollbar-thumb {{ background: rgba(0,0,0,0.14); border-radius:6px; }}
+::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.14); border-radius:6px; }}
 ::-webkit-scrollbar-track {{ background:transparent; }}
-/* soft glass surface */
-.liquid {{ background: rgba(255,255,255,0.7); backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px); border:1px solid rgba(0,0,0,0.06);
-    box-shadow: 0 1px 2px rgba(16,24,32,0.04); }}
-/* Sidebar — light */
+/* soft glass surface — same liquid-glass treatment as the React cards */
+.liquid {{ background: rgba(255,255,255,0.03); backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3); }}
+/* Sidebar — dark glass */
 [data-testid="stSidebar"] {{
-    background: #ffffff !important; border-right: 1px solid rgba(0,0,0,0.07);
+    background: #0d1114 !important; border-right: 1px solid rgba(255,255,255,0.08);
 }}
 [data-testid="stSidebar"] .stButton button {{
-    background: #f7f8fa;
-    border: 1px solid rgba(0,0,0,0.08);
-    color: #3a4048; border-radius: 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #cdd8df; border-radius: 12px;
     text-align: left; justify-content: flex-start; font-weight: 600; font-size: 13px;
 }}
 [data-testid="stSidebar"] .stButton button:hover {{
-    border-color: var(--accent); color: #10151b;
-    background: rgba(15,154,173,0.07);
+    border-color: var(--accent); color: #ffffff;
+    background: rgba(111,184,236,0.10);
 }}
 .mumo-brand {{ display:flex; align-items:center; gap:.5rem; margin:.2rem 0 1rem .1rem; }}
 .mumo-brand .wm {{
-    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size:1.35rem; color: #10151b;
+    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600;
+    font-size:1.35rem; color: #f2f7fa;
 }}
 .mumo-hero-logo {{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:.2rem; }}
 .mumo-session {{
-    padding:11px 12px; border-radius:11px; border-left:2px solid rgba(0,0,0,0.08);
-    color: #6b7178; font-size:11px; margin:2px 0 8px;
+    padding:11px 12px; border-radius:11px; border-left:2px solid rgba(255,255,255,0.10);
+    color: #93a0aa; font-size:11px; margin:2px 0 8px;
 }}
 /* Chat bubbles */
 .mumo-msg-user {{ display:flex; justify-content:flex-end; margin:10px 0; }}
 .mumo-msg-user .bubble {{
-    max-width:78%; background: var(--accent); color: #ffffff;
+    max-width:78%; background-image: linear-gradient(90deg, {ACCENT} 0%, {ACCENT2} 100%); color: #051520;
     border-radius:18px 18px 4px 18px; padding:13px 18px;
-    font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(15,154,173,.35);
+    font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(47,127,196,.45);
 }}
 .mumo-msg-assistant {{ max-width:88%; margin:14px 0; }}
 .mumo-msg-assistant .label {{
@@ -105,13 +106,23 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     margin-bottom:6px; text-transform:uppercase;
 }}
 .mumo-msg-assistant .body {{
-    font:17px/1.65 'Source Serif 4',serif; color: #1a1f26;
+    font:17px/1.65 'Instrument Serif',serif; color: #eef5fa;
 }}
 .mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
 [data-testid="stChatInput"] {{
-    border: 1px solid rgba(0,0,0,0.10) !important;
-    border-radius: 14px !important; background: #ffffff !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
+    border-radius: 14px !important; background: rgba(255,255,255,0.04) !important;
 }}
+[data-testid="stChatInput"] [data-baseweb="textarea"],
+[data-testid="stChatInput"] [data-baseweb="base-input"],
+[data-testid="stChatInput"] div {{
+    background: transparent !important; color: #eef5fa !important;
+}}
+[data-testid="stChatInput"] textarea {{ color: #eef5fa !important; }}
+[data-testid="stChatInput"] textarea::placeholder {{ color: #93a0aa !important; }}
+[data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
+[data-testid="stBottom"] > div {{ background: transparent !important; }}
+[data-testid="stHeader"] {{ background: transparent !important; }}
 /* Welcome hero */
 .mumo-hero {{
     text-align:center; margin: 8vh auto 0; padding: 2rem;
@@ -120,19 +131,19 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     gap: 14px;
 }}
 .mumo-hero-title {{
-    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size: 3.2rem; line-height:1; color: #10151b;
+    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600;
+    font-size: 3.2rem; line-height:1; color: #f2f7fa;
 }}
 .mumo-hero-sub {{
     margin: 0 auto; max-width: 460px;
-    font-size: 1.05rem; font-weight:400; color: #5c636b; line-height:1.6;
+    font-size: 1.05rem; font-weight:400; color: #93a0aa; line-height:1.6;
 }}
 /* Results panel */
 .mumo-panel-header {{
-    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600;
-    font-size:19px; color: #10151b;
+    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600;
+    font-size:19px; color: #f2f7fa;
 }}
-.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: #6b7178; margin-bottom:14px; }}
+.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: #93a0aa; margin-bottom:14px; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -209,7 +220,7 @@ def render_login_gate():
     spin = "spin" if mode else ""
     st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;1,8..60,500;1,8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 .stApp {{ background: radial-gradient(1100px 700px at 50% 8%, #0d1417 0%, #050506 60%) !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
@@ -217,13 +228,13 @@ def render_login_gate():
 html, body, [class*="css"] {{ color: #fff; }}
 .flower-page {{ text-align: center; color: #fff; }}
 .fbrand {{ display:inline-flex; align-items:center; gap:8px; margin-bottom:14px;
-    font-family:'Source Serif 4',serif; font-style:italic; font-weight:600; font-size:22px; color:#fff; }}
+    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600; font-size:22px; color:#fff; }}
 .flower {{ width: 300px; height: 300px; margin: 4px auto 0; border-radius: 50%; overflow: hidden;
     box-shadow: 0 0 70px -12px rgba(63,198,216,0.45), inset 0 0 0 1px rgba(255,255,255,0.08); }}
 .flower video {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
 .flower.spin video {{ animation: flowerSpin 1.4s cubic-bezier(.2,.75,.2,1); }}
 @keyframes flowerSpin {{ from {{ transform: rotate(0deg) scale(1.06); }} to {{ transform: rotate(360deg) scale(1); }} }}
-.fquote {{ font-family:'Source Serif 4',serif; font-style:italic; font-size:22px; color:#eef3f6;
+.fquote {{ font-family:'Instrument Serif',serif; font-style:italic; font-size:22px; color:#eef3f6;
     margin-top: 26px; line-height:1.35; }}
 .fquote-sub {{ font-size:14px; color: rgba(255,255,255,0.55); margin-top:8px; margin-bottom: 8px; }}
 /* native buttons (mode chooser) */
@@ -804,7 +815,7 @@ with st.sidebar:
 
     st.markdown(
         "<div style='font:600 11px \"Inter\",sans-serif;letter-spacing:1.2px;"
-        "color:#6b7178;margin:14px 0 4px;'>RECENT</div>",
+        "color:#93a0aa;margin:14px 0 4px;'>RECENT</div>",
         unsafe_allow_html=True,
     )
 
@@ -894,9 +905,9 @@ def render_results():
             ]
             cells = "".join(
                 f"<div style='min-width:110px;'>"
-                f"<div style='font:10.5px \"Inter\",sans-serif;color:#6b7178;"
+                f"<div style='font:10.5px \"Inter\",sans-serif;color:#93a0aa;"
                 f"margin-bottom:4px;'>{label}</div>"
-                f"<div style='font:600 20px \"Source Serif 4\",serif;color:#10151b;'>{value}</div>"
+                f"<div style='font:600 20px \"Instrument Serif\",serif;color:#eef5fa;'>{value}</div>"
                 f"</div>"
                 for label, value in metrics
             )
@@ -937,7 +948,7 @@ def render_results():
                 svg_content = entry["ia"].get("svg_2d", "")
                 if svg_content:
                     st.markdown(
-                        f'<div style="background-color: white; padding: 16px; border-radius: 12px; border: 1px solid rgba(0,212,170,0.2); box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; justify-content: center; align-items: center; max-width: 760px; margin: 1.5rem auto 0.5rem auto;">{svg_content}</div>',
+                        f'<div style="background-color: white; padding: 16px; border-radius: 12px; border: 1px solid rgba(111,184,236,0.28); box-shadow: 0 8px 28px -10px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; max-width: 760px; margin: 1.5rem auto 0.5rem auto;">{svg_content}</div>',
                         unsafe_allow_html=True
                     )
                     def _sw(color, label):
@@ -1060,9 +1071,9 @@ if panel_showing:
 <style>
 .st-key-mumo_panel {{
     position: fixed; top: 0; right: 0; width: {PANEL_WIDTH}px; height: 100vh;
-    overflow-y: auto; z-index: 999; background: #ffffff;
-    border-left: 1px solid rgba(16,21,27,0.08);
-    box-shadow: -14px 0 34px -18px rgba(16,21,27,0.28);
+    overflow-y: auto; z-index: 999; background: #0d1114;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    box-shadow: -14px 0 34px -18px rgba(0,0,0,0.6);
     padding: 22px 24px 40px;
 }}
 @media (max-width: 900px) {{
