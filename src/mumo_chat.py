@@ -50,6 +50,14 @@ INTRO_FEAT_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttw
 FLOWER_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
                 "hf_20260616_212935_bbf608da-62d1-4f25-9be4-c346e4d09cc8.mp4")
 
+# The React landing/login (deployed on Vercel) is now the ONE front door for the
+# whole product. Streamlit is chat-only: an unauthenticated visitor is bounced to
+# the React login, which authenticates with Supabase and hands off back here via a
+# ?rt=<refresh_token> URL param (see auth_store.restore_session). Streamlit's own
+# render_intro()/render_login_gate() are kept below but no longer reached.
+LANDING_URL = "https://mumo-landing.vercel.app"
+LANDING_LOGIN_URL = f"{LANDING_URL}/login"
+
 # ── MUMO product theme — dark cinematic, matching the React landing/login ──
 st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -525,10 +533,19 @@ def render_intro():
 
 
 if authdb.is_configured() and not authdb.current_user():
-    if not ss.entered:
-        render_intro()
-    else:
-        render_login_gate()
+    # Chat-only: no valid session (and no ?rt= handoff token restored one), so
+    # send the visitor to the single front door — the React login on Vercel.
+    # restore_session() has already run above, so a logged-in user never reaches
+    # here; only genuinely-unauthenticated visitors get bounced (no redirect loop,
+    # because the React login only returns here after a successful sign-in).
+    components.html(
+        f"""
+        <div style="font-family:'Inter',system-ui,sans-serif;color:#93a0aa;
+             text-align:center;padding-top:40vh;">Taking you to sign in…</div>
+        <script>window.top.location.href = "{LANDING_LOGIN_URL}";</script>
+        """,
+        height=300,
+    )
     st.stop()
 
 
