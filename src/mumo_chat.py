@@ -581,11 +581,14 @@ CONV_SYSTEM = (
     "• NEVER use emojis. Keep a clean, professional tone in every reply.\n"
     "• Choose ACTION each turn:\n"
     "   - 'dock'    : you have a target OR disease and the user wants to run it.\n"
-    "   - 'analyze' : the user only wants a molecule's drug-likeness, no docking.\n"
+    "   - 'analyze' : the user only wants a molecule's drug-likeness / ADMET / toxicity, no docking.\n"
+    "   - 'string'  : the user wants a protein–protein INTERACTION NETWORK / STRING analysis / "
+    "functional partners / how targets connect into pathways. Put the protein(s) in 'target' — a "
+    "single gene name, or a LIST of them for a family/set.\n"
     "   - 'chat'    : everything else — answering, teaching, explaining results, or asking "
     "ONE clarifying question. When unsure, use 'chat'.\n\n"
     "Reply with ONLY a JSON object, nothing else:\n"
-    '{"action": "chat"|"dock"|"analyze", '
+    '{"action": "chat"|"dock"|"analyze"|"string", '
     '"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
     '"ligand": <drug name, SMILES, or a LIST of them|null>, '
     '"tier": <"Simple"|"Standard"|"Ambitious"|null>, '
@@ -709,6 +712,19 @@ def converse(msg):
                 res["admet_ml"] = admet_ml(smi)
             ss.results = res
             ss.panel_open = True
+        return
+
+    # protein–protein interaction network → STRING
+    if action == "string" and c.get("target"):
+        from agents.string_analyst import analyze_string
+        prot = c["target"]
+        label = ", ".join(prot) if isinstance(prot, list) else str(prot)
+        try:
+            with st.spinner(f"Querying STRING for {label}…"):
+                ss.results = {"kind": "string", **analyze_string(prot)}
+            ss.panel_open = True
+        except Exception as e:
+            say(f"STRING analysis couldn't run: {e}")
         return
 
     if action == "dock":
@@ -1089,6 +1105,60 @@ def render_results():
                                     options=opts, height=520), height=540)
                 except Exception as e:
                     st.caption(f"(3D view unavailable: {e})")
+
+
+def _render_string_report(r):
+    """STRING interaction report: network image + partners + enriched pathways."""
+    import re
+    names = ", ".join(r.get("input", [])) or "protein"
+    st.markdown(f"#### Interaction network — {names}")
+    st.caption("STRING protein–protein associations (known + predicted). "
+               "Combined score 0–1 from several evidence channels.")
+
+    svg = r.get("network_svg") or ""
+    if svg:
+        # make the root <svg> responsive: add a viewBox from its px width/height
+        # (STRING uses single-quoted attrs, no viewBox), then let it scale to width
+        m = re.search(r"<svg[^>]*?>", svg)
+        if m:
+            tag = m.group(0)
+            wm = re.search(r'width=["\']([\d.]+)', tag)
+            hm = re.search(r'height=["\']([\d.]+)', tag)
+            newtag = tag
+            if wm and hm and "viewbox" not in tag.lower():
+                newtag = re.sub(r"<svg", f'<svg viewBox="0 0 {wm.group(1)} {hm.group(1)}"',
+                                newtag, count=1)
+            newtag = re.sub(r'\swidth=["\'][^"\']*["\']', ' width="100%"', newtag, count=1)
+            newtag = re.sub(r'\sheight=["\'][^"\']*["\']', "", newtag, count=1)
+            svg = svg.replace(tag, newtag, 1)
+        st.markdown(
+            f'<div style="background:#fff;padding:10px;border-radius:12px;'
+            f'border:1px solid rgba(111,184,236,0.28);box-shadow:0 8px 28px -10px rgba(0,0,0,0.5);'
+            f'overflow:auto;">{svg}</div>', unsafe_allow_html=True)
+
+    partners = r.get("partners") or []
+    if partners:
+        rows = [{"Partner": p.get("preferredName_B", "?"),
+                 "Score": round(p.get("score", 0), 3),
+                 "Experimental": round(p.get("escore", 0), 3),
+                 "Database": round(p.get("dscore", 0), 3),
+                 "Text-mining": round(p.get("tscore", 0), 3)} for p in partners]
+        st.markdown("##### Functional partners")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     height=min(35 * (len(rows) + 1) + 3, 320))
+
+    enr = r.get("enrichment") or []
+    if enr:
+        top = sorted(enr, key=lambda e: e.get("fdr", 1.0))[:12]
+        rows = [{"Category": e.get("category", ""), "Term": e.get("description", ""),
+                 "FDR": "{:.1e}".format(e.get("fdr", 1.0))} for e in top]
+        st.markdown("##### Enriched pathways / functions")
+        st.caption("Lower FDR = stronger over-representation in this neighbourhood.")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     height=min(35 * (len(rows) + 1) + 3, 320))
+
+
+_REPORT_RENDERERS["string"] = _render_string_report
 
 
 def render_chat():
