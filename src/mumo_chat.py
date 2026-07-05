@@ -675,6 +675,13 @@ def _results_context():
     if "druglikeness" in r:
         return (f"Latest analysis — drug-likeness of {r['lig_label']} "
                 f"({r['lig_smiles']}): {_json.dumps(r['druglikeness'])}")
+    if r.get("kind") == "string" or "partners" in r:
+        names = ", ".join(r.get("input", []))
+        parts = ", ".join(p.get("preferredName_B", "") for p in r.get("partners", [])[:12])
+        return (f"Latest STRING interaction network for {names}. "
+                f"Top functional partners: {parts}. (Full network + report in the side panel.)")
+    if "rdf" not in r:
+        return "The latest result is shown in the side panel."
     rdf = r["rdf"]
     rows = []
     for _, row in rdf.head(5).iterrows():
