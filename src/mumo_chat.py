@@ -1120,12 +1120,14 @@ if panel_showing:
 </style>
 """, unsafe_allow_html=True)
         h = st.columns([5, 1])
-        h[0].markdown("<div class='mumo-panel-header'>Docking report</div>", unsafe_allow_html=True)
-        if h[1].button("✕", key="close_panel", help="Close docking report"):
+        _rep = "Report" if "druglikeness" in ss.results else "Docking report"
+        h[0].markdown(f"<div class='mumo-panel-header'>{_rep}</div>", unsafe_allow_html=True)
+        if h[1].button("✕", key="close_panel", help=f"Close {_rep.lower()}"):
             ss.panel_open = False
             st.rerun()
         render_results()
 elif ss.results and not ss.panel_open:
-    if st.button("› Open docking report", key="open_panel"):
+    _rep = "report" if "druglikeness" in ss.results else "docking report"
+    if st.button(f"› Open {_rep}", key="open_panel"):
         ss.panel_open = True
         st.rerun()
