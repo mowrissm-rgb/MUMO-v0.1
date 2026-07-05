@@ -652,7 +652,7 @@ def _personalization_context():
 def converse(msg):
     """One conversational turn — MUMO can teach, answer, explain results, or dock."""
     from brain import parse_intent  # lazy imports (heavy scientific stack)
-    from agents.admet import resolve_ligand, druglikeness
+    from agents.admet import resolve_ligand, druglikeness, admet_ml
     ss.messages.append({"role": "user", "content": msg})
     _persist("user", msg)
     c = ss.convo
@@ -698,12 +698,15 @@ def converse(msg):
 
     action = (data.get("action") or "chat").lower()
 
-    # analyze-only → drug-likeness, no docking
+    # analyze-only → drug-likeness + ADMET-AI predictions, no docking
     if action == "analyze" and c.get("ligand"):
         one = c["ligand"][0] if isinstance(c["ligand"], list) else c["ligand"]
         smi, label = resolve_ligand(str(one))
         if smi:
-            ss.results = {"druglikeness": druglikeness(smi), "lig_label": label, "lig_smiles": smi}
+            res = {"druglikeness": druglikeness(smi), "lig_label": label, "lig_smiles": smi}
+            with st.spinner("Running ADMET-AI models (hERG, CYP, Ames, DILI…)"):
+                res["admet_ml"] = admet_ml(smi)
+            ss.results = res
         return
 
     if action == "dock":
@@ -909,6 +912,15 @@ def render_results():
         st.markdown(f"#### Drug-likeness — {r['lig_label']}")
         st.caption(f"`{r['lig_smiles']}`")
         st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
+        adm = r.get("admet_ml")
+        if adm and "_error" not in adm:
+            st.markdown("#### ADMET-AI predictions")
+            st.caption("Pretrained ML models (Therapeutics Data Commons / Chemprop). "
+                       "Classifier endpoints are probabilities 0–1 (higher = more likely); "
+                       "regression endpoints are in native units.")
+            st.table(pd.DataFrame(list(adm.items()), columns=["Endpoint", "Value"]))
+        elif adm and "_error" in adm:
+            st.caption(f"ADMET-AI predictions unavailable — {adm['_error']}")
     else:
         rdf = r["rdf"]
         meta = r.get("meta", {})

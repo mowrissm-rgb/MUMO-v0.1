@@ -146,6 +146,101 @@ def druglikeness(smiles):
     return out
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ADMET-AI — pretrained ML predictions (Therapeutics Data Commons / Chemprop)
+# The RDKit panel above is transparent/rule-based; this adds real predictive
+# tox/CYP/PK from validated ML models. Loaded lazily + cached (the models are
+# heavy). Never raises — degrades to an empty panel so the rest of MUMO works.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_ADMET_MODEL = None
+
+
+def _get_admet_model():
+    """Load the admet-ai model bundle once and cache it (≈40 Chemprop models)."""
+    global _ADMET_MODEL
+    if _ADMET_MODEL is None:
+        from admet_ai import ADMETModel
+        _ADMET_MODEL = ADMETModel()
+    return _ADMET_MODEL
+
+
+# Curated endpoints we surface: (friendly label, substring to find in the raw key,
+# kind). "prob" = 0–1 risk/likelihood from a classifier; "reg" = numeric value.
+# Matched by substring so minor naming differences in admet-ai don't break us.
+_ADMET_PANEL = [
+    # Absorption
+    ("Caco-2 permeability (logPapp)", "Caco2_Wang", "reg"),
+    ("HIA — intestinal absorption",   "HIA_Hou", "prob"),
+    ("Oral bioavailability",          "Bioavailability_Ma", "prob"),
+    ("P-gp inhibitor",                "Pgp_Broccatelli", "prob"),
+    ("Aqueous solubility (logS)",     "Solubility_AqSolDB", "reg"),
+    # Distribution
+    ("BBB penetration",               "BBB_Martins", "prob"),
+    ("Plasma protein binding (%)",    "PPBR_AZ", "reg"),
+    ("Vol. of distribution (VDss)",   "VDss_Lombardo", "reg"),
+    # Metabolism — CYP450 inhibition
+    ("CYP1A2 inhibitor",              "CYP1A2_Veith", "prob"),
+    ("CYP2C19 inhibitor",             "CYP2C19_Veith", "prob"),
+    ("CYP2C9 inhibitor",              "CYP2C9_Veith", "prob"),
+    ("CYP2D6 inhibitor",              "CYP2D6_Veith", "prob"),
+    ("CYP3A4 inhibitor",              "CYP3A4_Veith", "prob"),
+    # Excretion
+    ("Hepatocyte clearance",          "Clearance_Hepatocyte", "reg"),
+    ("Half-life",                     "Half_Life_Obach", "reg"),
+    # Toxicity
+    ("hERG blocker (cardiotox)",      "hERG", "prob"),
+    ("Ames mutagenicity",             "AMES", "prob"),
+    ("DILI (liver injury)",           "DILI", "prob"),
+    ("Clinical toxicity",             "ClinTox", "prob"),
+    ("Carcinogenicity",               "Carcinogen", "prob"),
+    ("Acute toxicity (LD50)",         "LD50_Zhu", "reg"),
+    ("Skin reaction",                 "Skin_Reaction", "prob"),
+]
+
+
+def admet_ml(smiles):
+    """
+    Run admet-ai (TDC pretrained models) on one SMILES → an ordered dict of the
+    curated endpoints with friendly labels. Classification endpoints come back as
+    probabilities (0–1); regression endpoints in their native units. Returns
+    {"_error": msg} if admet-ai isn't available or the prediction fails, so the
+    caller can show the transparent RDKit panel alone.
+    """
+    try:
+        import pandas as pd
+        model = _get_admet_model()
+        preds = model.predict(smiles=smiles)
+        if isinstance(preds, pd.DataFrame):
+            raw = preds.iloc[0].to_dict()
+        elif isinstance(preds, pd.Series):
+            raw = preds.to_dict()
+        else:
+            raw = dict(preds)
+
+        lut = {str(k).lower(): v for k, v in raw.items()}
+
+        def _find(sub):
+            sub = sub.lower()
+            for lk, v in lut.items():
+                if sub in lk and "percentile" not in lk and "drugbank" not in lk:
+                    return v
+            return None
+
+        out = {}
+        for label, sub, kind in _ADMET_PANEL:
+            v = _find(sub)
+            if v is None:
+                continue
+            try:
+                out[label] = round(float(v), 3 if kind == "prob" else 2)
+            except (TypeError, ValueError):
+                out[label] = v
+        return out or {"_error": "admet-ai returned no recognised endpoints"}
+    except Exception as e:
+        return {"_error": f"ADMET-AI unavailable: {e}"}
+
+
 def resolve_ligand(text):
     """
     Turn whatever the user gave (a SMILES or a drug name) into a valid SMILES.

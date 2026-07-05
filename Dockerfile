@@ -17,6 +17,14 @@ ARG MAMBA_DOCKERFILE_ACTIVATE=1
 # skipped the environment.yml pip subsection (idempotent if already installed)
 RUN pip install --no-cache-dir streamlit meeko py3Dmol requests supabase
 
+# ADMET-AI (TDC / Chemprop ML models for tox/CYP/PK). Install CPU-only PyTorch
+# first from the CPU wheel index so we don't pull the multi-GB CUDA build, then
+# admet-ai on top. Warm the model bundle at build time (bakes weights into the
+# image → no slow download at runtime; also fails the build early if broken).
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir admet-ai && \
+    python -c "from admet_ai import ADMETModel; ADMETModel(); print('admet-ai warmup OK')"
+
 # --- app code ---
 WORKDIR /app
 COPY --chown=mambauser:mambauser . /app
