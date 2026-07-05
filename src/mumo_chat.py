@@ -60,7 +60,7 @@ LANDING_LOGIN_URL = f"{LANDING_URL}/login"
 # ── MUMO product theme — dark cinematic, matching the React landing/login ──
 st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {{ --accent: {ACCENT}; --accent2: {ACCENT2}; }}
 html, body {{ background: #0a0d0f; }}
@@ -92,7 +92,7 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
 }}
 .mumo-brand {{ display:flex; align-items:center; gap:.5rem; margin:.2rem 0 1rem .1rem; }}
 .mumo-brand .wm {{
-    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600;
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
     font-size:1.35rem; color: #f2f7fa;
 }}
 .mumo-hero-logo {{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:.2rem; }}
@@ -113,7 +113,7 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     margin-bottom:6px; text-transform:uppercase;
 }}
 .mumo-msg-assistant .body {{
-    font:17px/1.65 'Instrument Serif',serif; color: #eef5fa;
+    font:17px/1.65 'IBM Plex Serif',serif; color: #eef5fa;
 }}
 .mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
 [data-testid="stChatInput"] {{
@@ -138,7 +138,7 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     gap: 14px;
 }}
 .mumo-hero-title {{
-    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600;
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
     font-size: 3.2rem; line-height:1; color: #f2f7fa;
 }}
 .mumo-hero-sub {{
@@ -147,7 +147,7 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
 }}
 /* Results panel */
 .mumo-panel-header {{
-    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600;
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
     font-size:19px; color: #f2f7fa;
 }}
 .mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: #93a0aa; margin-bottom:14px; }}
@@ -227,7 +227,7 @@ def render_login_gate():
     spin = "spin" if mode else ""
     st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 .stApp {{ background: radial-gradient(1100px 700px at 50% 8%, #0d1417 0%, #050506 60%) !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
@@ -235,13 +235,13 @@ def render_login_gate():
 html, body, [class*="css"] {{ color: #fff; }}
 .flower-page {{ text-align: center; color: #fff; }}
 .fbrand {{ display:inline-flex; align-items:center; gap:8px; margin-bottom:14px;
-    font-family:'Instrument Serif',serif; font-style:italic; font-weight:600; font-size:22px; color:#fff; }}
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600; font-size:22px; color:#fff; }}
 .flower {{ width: 300px; height: 300px; margin: 4px auto 0; border-radius: 50%; overflow: hidden;
     box-shadow: 0 0 70px -12px rgba(63,198,216,0.45), inset 0 0 0 1px rgba(255,255,255,0.08); }}
 .flower video {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
 .flower.spin video {{ animation: flowerSpin 1.4s cubic-bezier(.2,.75,.2,1); }}
 @keyframes flowerSpin {{ from {{ transform: rotate(0deg) scale(1.06); }} to {{ transform: rotate(360deg) scale(1); }} }}
-.fquote {{ font-family:'Instrument Serif',serif; font-style:italic; font-size:22px; color:#eef3f6;
+.fquote {{ font-family:'IBM Plex Serif',serif; font-style:italic; font-size:22px; color:#eef3f6;
     margin-top: 26px; line-height:1.35; }}
 .fquote-sub {{ font-size:14px; color: rgba(255,255,255,0.55); margin-top:8px; margin-bottom: 8px; }}
 /* native buttons (mode chooser) */
@@ -338,7 +338,7 @@ def render_intro():
     stripped from injected markdown."""
     st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 /* full-bleed dark canvas, no Streamlit chrome */
 .stApp {{ background: #000 !important; }}
@@ -369,7 +369,7 @@ def render_intro():
 /* nav */
 .mumo-inav {{ display:flex; align-items:center; justify-content:space-between; }}
 .mumo-inav .brand {{ display:flex; align-items:center; gap:9px;
-    font-family:'Instrument Serif',serif; font-style:italic; font-size:26px; color:#fff; }}
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-size:26px; color:#fff; }}
 .mumo-inav .navlinks {{ display:flex; gap:6px; padding:6px; }}
 .mumo-inav .navlinks a {{ padding:8px 14px; font-size:14px; font-weight:500;
     color:rgba(255,255,255,0.9); text-decoration:none; border-radius:999px; }}
@@ -382,7 +382,7 @@ def render_intro():
     animation: fadeUp .8s .3s both; }}
 .mumo-pill .new {{ background:#fff; color:#000; font-weight:600; font-size:11.5px;
     padding:3px 10px; border-radius:999px; }}
-.mumo-huge {{ font-family:'Instrument Serif',serif; font-style:italic;
+.mumo-huge {{ font-family:'IBM Plex Serif',serif; font-style:italic;
     font-size: clamp(3rem, 8vw, 5.4rem); line-height:0.86; letter-spacing:-3px;
     color:#fff; max-width: 15ch; margin:0; }}
 .mumo-huge .w {{ display:inline-block; margin-right:0.24em; opacity:0;
@@ -398,7 +398,7 @@ def render_intro():
     border-radius:3px; background:#fff; transform:translateX(-50%); animation: cue 1.6s infinite; }}
 /* capabilities */
 .mumo-kick {{ font-size:14px; color:rgba(255,255,255,0.75); margin-bottom:20px; }}
-.mumo-h2 {{ font-family:'Instrument Serif',serif; font-style:italic;
+.mumo-h2 {{ font-family:'IBM Plex Serif',serif; font-style:italic;
     font-size: clamp(2.6rem, 7vw, 5.4rem); line-height:0.9; letter-spacing:-2px; margin:0; }}
 .mumo-cards {{ display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-top:56px; }}
 @media (max-width: 900px) {{ .mumo-cards {{ grid-template-columns: 1fr; }} }}
@@ -408,7 +408,7 @@ def render_intro():
 .mumo-card .tags {{ display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; max-width:64%; }}
 .mumo-card .tags span {{ font-size:11px; color:rgba(255,255,255,0.9); padding:4px 10px; border-radius:999px; }}
 .mumo-card .top {{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }}
-.mumo-card h3 {{ font-family:'Instrument Serif',serif; font-style:italic; font-size:2rem;
+.mumo-card h3 {{ font-family:'IBM Plex Serif',serif; font-style:italic; font-size:2rem;
     letter-spacing:-1px; margin:0 0 10px; }}
 .mumo-card p {{ font-size:14px; font-weight:300; line-height:1.5; color:rgba(255,255,255,0.9);
     max-width:34ch; margin:0; }}
@@ -416,7 +416,7 @@ def render_intro():
 .mumo-cta-c {{ flex:1; display:flex; flex-direction:column; align-items:center;
     justify-content:center; text-align:center; }}
 .mumo-cta-c .kick {{ font-size:14px; color:rgba(255,255,255,0.75); margin-bottom:20px; }}
-.mumo-cta-c h2 {{ font-family:'Instrument Serif',serif; font-style:italic;
+.mumo-cta-c h2 {{ font-family:'IBM Plex Serif',serif; font-style:italic;
     font-size: clamp(2.4rem, 6vw, 4.4rem); line-height:0.92; letter-spacing:-2px; margin:0 0 14px; max-width:16ch; }}
 .mumo-cta-c p {{ font-weight:300; max-width:46ch; color:rgba(255,255,255,0.9); line-height:1.5; margin:0 0 8px; }}
 /* scroll reveal (CSS-only; ignored gracefully where unsupported -> just visible) */
@@ -945,7 +945,7 @@ def render_results():
                 f"<div style='min-width:110px;'>"
                 f"<div style='font:10.5px \"Inter\",sans-serif;color:#93a0aa;"
                 f"margin-bottom:4px;'>{label}</div>"
-                f"<div style='font:600 20px \"Instrument Serif\",serif;color:#eef5fa;'>{value}</div>"
+                f"<div style='font:600 20px \"IBM Plex Serif\",serif;color:#eef5fa;'>{value}</div>"
                 f"</div>"
                 for label, value in metrics
             )
