@@ -585,10 +585,13 @@ CONV_SYSTEM = (
     "   - 'string'  : the user wants a protein–protein INTERACTION NETWORK / STRING analysis / "
     "functional partners / how targets connect into pathways. Put the protein(s) in 'target' — a "
     "single gene name, or a LIST of them for a family/set.\n"
+    "   - 'blast'   : the user wants a BLAST SEQUENCE-SIMILARITY search — 'blast CFTR', 'find "
+    "proteins similar to X', 'sequence search', or they pasted a protein sequence to search. Put "
+    "the gene NAME or the raw SEQUENCE they gave in 'target'.\n"
     "   - 'chat'    : everything else — answering, teaching, explaining results, or asking "
     "ONE clarifying question. When unsure, use 'chat'.\n\n"
     "Reply with ONLY a JSON object, nothing else:\n"
-    '{"action": "chat"|"dock"|"analyze"|"string", '
+    '{"action": "chat"|"dock"|"analyze"|"string"|"blast", '
     '"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
     '"ligand": <drug name, SMILES, or a LIST of them|null>, '
     '"tier": <"Simple"|"Standard"|"Ambitious"|null>, '
@@ -649,6 +652,43 @@ def _string_narrative(data):
         return ""
 
 
+BLAST_REPORT_SYSTEM = (
+    "You are MUMO, explaining a BLAST sequence-similarity result to a pharmacy student who is "
+    "NEW to bioinformatics and has never run BLAST. Make it genuinely easy while staying correct.\n\n"
+    "Markdown sections and headings:\n"
+    "## What BLAST just did\n(2–3 sentences: what BLAST is — searching databases of known "
+    "proteins for sequences similar to the query — and what we searched here.)\n"
+    "## Your protein\n(what the query protein is, briefly.)\n"
+    "## The closest matches and what they mean\n(walk through the top hits: which proteins / "
+    "organisms they are; explain '% identity' = how much of the sequence is literally the same, "
+    "and 'E-value' = the chance the match is a coincidence, where smaller is better and a value "
+    "near 0 means essentially certain. Say what a high-identity match implies biologically — same "
+    "function, conserved across species.)\n"
+    "## What this tells us\n(the takeaway: is the protein well conserved? part of a known family? "
+    "what does that imply for its function or for drug discovery?)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm tutor "
+    "tone. No emojis. Use ONLY the data provided — never invent hits, numbers, or organisms."
+)
+
+
+def _blast_narrative(data):
+    """Ask MUMO's LLM to explain a BLAST result in plain, beginner-friendly terms."""
+    if _llm is None:
+        return ""
+    hits = data.get("hits", [])[:10]
+    hlines = [f"- {h['accession']} ({h.get('sciname', '')}): identity {h['identity']}%, "
+              f"E-value {h['evalue']:.1e} — {h.get('title', '')[:80]}" for h in hits]
+    prompt = (f"QUERY PROTEIN: {data.get('query_name', '')} "
+              f"({data.get('accession', '')}, {data.get('seq_len', '?')} residues)\n"
+              f"DATABASE: {data.get('database', '')} | PROGRAM: {data.get('program', '')}\n\n"
+              "TOP HITS (accession, organism, % identity, E-value, description):\n"
+              + "\n".join(hlines) + "\n\nWrite the beginner-friendly BLAST report now.")
+    try:
+        return _llm.chat(BLAST_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1100)
+    except Exception:
+        return ""
+
+
 def _history_text(n=10):
     return "\n".join(f'{m["role"]}: {m["content"]}' for m in ss.messages[-n:])
 
@@ -680,6 +720,11 @@ def _results_context():
         parts = ", ".join(p.get("preferredName_B", "") for p in r.get("partners", [])[:12])
         return (f"Latest STRING interaction network for {names}. "
                 f"Top functional partners: {parts}. (Full network + report in the side panel.)")
+    if r.get("kind") == "blast" or "hits" in r:
+        hits = r.get("hits", [])[:8]
+        hs = ", ".join(f"{h.get('accession', '')} ({h.get('identity', '?')}%)" for h in hits)
+        return (f"Latest BLAST for {r.get('query_name', 'the query')} "
+                f"({r.get('seq_len', '?')} aa) vs {r.get('database', '')}. Top hits: {hs}.")
     if "rdf" not in r:
         return "The latest result is shown in the side panel."
     rdf = r["rdf"]
@@ -787,6 +832,25 @@ def converse(msg):
             ss.panel_open = True
         except Exception as e:
             say(f"STRING analysis couldn't run: {e}")
+        return
+
+    # BLAST sequence similarity (slow — a remote NCBI job, ~1–3 min)
+    if action == "blast" and c.get("target"):
+        from agents.blast_analyst import analyze_blast
+        q = c["target"]
+        q = q[0] if isinstance(q, list) else q
+        try:
+            with st.status("Running BLAST at NCBI (this takes 1–3 minutes)…",
+                           expanded=True) as stt:
+                data_bl = analyze_blast(
+                    str(q), status_cb=lambda w: stt.write(f"…searching ({w}s elapsed)"))
+                stt.update(label="BLAST complete", state="complete")
+            with st.spinner("Writing the BLAST report…"):
+                data_bl["narrative"] = _blast_narrative(data_bl)
+            ss.results = {"kind": "blast", **data_bl}
+            ss.panel_open = True
+        except Exception as e:
+            say(f"BLAST couldn't run: {e}")
         return
 
     if action == "dock":
@@ -1226,6 +1290,35 @@ def _render_string_report(r):
 
 
 _REPORT_RENDERERS["string"] = _render_string_report
+
+
+def _render_blast_report(r):
+    """BLAST report: query info + plain-language narrative + hits table."""
+    st.markdown(f"#### BLAST results — {r.get('query_name', 'query')}")
+    acc = r.get("accession")
+    st.caption(f"{('UniProt ' + acc + ' · ') if acc else ''}{r.get('seq_len', '?')} residues · "
+               f"{r.get('program', 'blastp')} vs {r.get('database', 'swissprot')}")
+
+    narrative = r.get("narrative")
+    if narrative:
+        st.markdown(narrative)
+        st.markdown("---")
+
+    hits = r.get("hits") or []
+    if hits:
+        rows = [{"Accession": h.get("accession", ""), "Organism": h.get("sciname", ""),
+                 "Identity %": h.get("identity"),
+                 "E-value": "{:.1e}".format(h.get("evalue", 0)),
+                 "Bit score": h.get("bit_score"),
+                 "Description": h.get("title", "")[:60]} for h in hits]
+        st.markdown("##### Top hits")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     height=min(35 * (len(rows) + 1) + 3, 380))
+    else:
+        st.info("No significant BLAST hits found.")
+
+
+_REPORT_RENDERERS["blast"] = _render_blast_report
 
 
 def render_chat():
