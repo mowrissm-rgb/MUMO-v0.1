@@ -703,10 +703,12 @@ def converse(msg):
         one = c["ligand"][0] if isinstance(c["ligand"], list) else c["ligand"]
         smi, label = resolve_ligand(str(one))
         if smi:
-            res = {"druglikeness": druglikeness(smi), "lig_label": label, "lig_smiles": smi}
+            res = {"kind": "admet", "druglikeness": druglikeness(smi),
+                   "lig_label": label, "lig_smiles": smi}
             with st.spinner("Running ADMET-AI models (hERG, CYP, Ames, DILI…)"):
                 res["admet_ml"] = admet_ml(smi)
             ss.results = res
+            ss.panel_open = True
         return
 
     if action == "dock":
@@ -787,7 +789,8 @@ def run_pipeline(status_area):
     num = pd.to_numeric(rdf["Best affinity (kcal/mol)"], errors="coerce")
     rdf = rdf.assign(_s=num).sort_values("_s").drop(columns="_s").reset_index(drop=True)
     rdf.index = range(1, len(rdf) + 1)
-    ss.results = {"rdf": rdf, "viz": viz, "meta": meta, "tier": c["tier"] or "Standard"}
+    ss.results = {"kind": "docking", "rdf": rdf, "viz": viz, "meta": meta,
+                  "tier": c["tier"] or "Standard"}
     if ss.active_conversation_id:
         try:
             authdb.save_results(ss.active_conversation_id,
@@ -905,10 +908,42 @@ if ss.run_now:
     st.rerun()
 
 
+# ── report system: EVERY pipeline's output lands in the right-side panel,
+# dispatched by its "kind". A new pipeline (STRING / BLAST / alignment / tree)
+# plugs in by adding a title here + registering a renderer in _REPORT_RENDERERS
+# — nothing else in the panel plumbing needs to change.
+REPORT_TITLES = {
+    "docking": "Docking report",
+    "admet": "ADMET report",
+    "string": "Interaction network",
+    "blast": "BLAST results",
+    "alignment": "Sequence alignment",
+    "phylogeny": "Phylogenetic tree",
+}
+_REPORT_RENDERERS = {}   # kind -> render fn(r); docking + admet handled inline below
+
+
+def _report_kind(r):
+    if not r:
+        return None
+    if r.get("kind"):
+        return r["kind"]
+    return "admet" if "druglikeness" in r else "docking"
+
+
+def _report_title(r):
+    return REPORT_TITLES.get(_report_kind(r), "Report")
+
+
 def render_results():
     from viz import render_complex_html  # lazy: 3D viewer helper
     r = ss.results
-    if "druglikeness" in r:
+    kind = _report_kind(r)
+    _extra = _REPORT_RENDERERS.get(kind)
+    if _extra:                       # new pipelines render through the registry
+        _extra(r)
+        return
+    if kind == "admet":
         st.markdown(f"#### Drug-likeness — {r['lig_label']}")
         st.caption(f"`{r['lig_smiles']}`")
         st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
@@ -1120,14 +1155,14 @@ if panel_showing:
 </style>
 """, unsafe_allow_html=True)
         h = st.columns([5, 1])
-        _rep = "Report" if "druglikeness" in ss.results else "Docking report"
+        _rep = _report_title(ss.results)
         h[0].markdown(f"<div class='mumo-panel-header'>{_rep}</div>", unsafe_allow_html=True)
         if h[1].button("✕", key="close_panel", help=f"Close {_rep.lower()}"):
             ss.panel_open = False
             st.rerun()
         render_results()
 elif ss.results and not ss.panel_open:
-    _rep = "report" if "druglikeness" in ss.results else "docking report"
+    _rep = _report_title(ss.results).lower()
     if st.button(f"› Open {_rep}", key="open_panel"):
         ss.panel_open = True
         st.rerun()
