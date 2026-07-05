@@ -20,15 +20,14 @@ import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from llm_client import get_llm
-from brain import parse_intent, write_report
-from agents.target_finder import find_targets
-from agents.ligand_scout import find_ligands
-from agents.target_analyst import auto_grid_from_pdb
-from agents.admet import resolve_ligand, druglikeness
-from pipeline import dock_pipeline
-from viz import render_complex_html
 from setup_env import ensure_vina
 import auth_store as authdb
+# NOTE: the heavy scientific stack (RDKit, AutoDock Vina, OpenBabel, PLIP,
+# Meeko, gemmi) is imported LAZILY inside the functions that need it —
+# brain, agents.*, pipeline, viz — NOT here at module top. Importing them
+# eagerly cost ~15-30s on every cold start and rendered a blank page while
+# they loaded. Deferring them lets the chat UI appear in ~1-2s; the heavy
+# libs load only when the user actually runs an analysis/docking job.
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(BASE, "data"); os.makedirs(DATA, exist_ok=True)
@@ -601,6 +600,7 @@ def _history_text(n=10):
 
 def _resolve_ligands(lig):
     """Resolve a ligand (name/SMILES) OR a list of them into [{label, smiles}]."""
+    from agents.admet import resolve_ligand  # lazy: pulls in RDKit
     if not lig:
         return []
     items = lig if isinstance(lig, list) else [lig]
@@ -651,6 +651,8 @@ def _personalization_context():
 
 def converse(msg):
     """One conversational turn — MUMO can teach, answer, explain results, or dock."""
+    from brain import parse_intent  # lazy imports (heavy scientific stack)
+    from agents.admet import resolve_ligand, druglikeness
     ss.messages.append({"role": "user", "content": msg})
     _persist("user", msg)
     c = ss.convo
@@ -714,6 +716,7 @@ def converse(msg):
 
 def build_target(c):
     """Turn the chosen target string into a dockable target dict (gene or PDB ID)."""
+    from agents.target_analyst import auto_grid_from_pdb  # lazy: pulls in gemmi
     t = c["target"]
     if re.match(r"^[1-9][A-Za-z0-9]{3}$", t):       # PDB ID — fetch from RCSB (with retries)
         content = None
@@ -736,6 +739,11 @@ def build_target(c):
 
 
 def run_pipeline(status_area):
+    # lazy imports — the heavy docking/scientific stack only loads on a real run
+    from agents.target_finder import find_targets
+    from agents.ligand_scout import find_ligands
+    from pipeline import dock_pipeline
+    from brain import write_report
     c = ss.convo
     # resolve a disease into its top target (Open Targets) if we don't have one
     if not c.get("target") and c.get("disease"):
@@ -895,6 +903,7 @@ if ss.run_now:
 
 
 def render_results():
+    from viz import render_complex_html  # lazy: 3D viewer helper
     r = ss.results
     if "druglikeness" in r:
         st.markdown(f"#### Drug-likeness — {r['lig_label']}")
