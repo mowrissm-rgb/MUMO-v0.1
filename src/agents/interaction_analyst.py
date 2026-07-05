@@ -264,11 +264,11 @@ def _run_plip(receptor_pdb, ligand_pdbqt, out_complex_pdb):
 
 def generate_2d_interaction_svg(complex_pdb_path, records):
     """
-    Build a professional 2D ligand-interaction diagram (Maestro / LigPlot style)
-    from the SAME canonical interaction list used for the CSV and the 3D view, so
-    all three always agree. The ligand is drawn in the centre and every interacting
-    residue is a labelled bubble linked by a colour-coded dashed line to the ligand
-    atom it touches. Pure RDKit — no extra deps.
+    Build a Discovery-Studio-style 2D ligand-interaction diagram from the SAME
+    canonical interaction list used for the CSV and the 3D view, so all three
+    always agree. The ligand is drawn in the centre (RDKit); each interacting
+    residue is a filled, colour-coded circle with a soft halo glow, linked to the
+    ligand atom it touches by a colour-matched line. Pure RDKit + SVG — no deps.
     """
     try:
         import math
@@ -276,14 +276,20 @@ def generate_2d_interaction_svg(complex_pdb_path, records):
         from rdkit.Chem import rdDepictor
         from rdkit.Chem.Draw import rdMolDraw2D
 
-        COLORS_RGB = {
-            "H-bond": (0.15, 0.39, 0.92), "Hydrophobic": (0.42, 0.45, 0.50),
-            "Halogen": (0.05, 0.58, 0.53), "Salt bridge": (0.92, 0.35, 0.05),
-            "Pi-stack": (0.09, 0.64, 0.29), "Pi-cation": (0.58, 0.20, 0.83),
+        # Discovery-Studio-like palette per interaction: line / circle-fill / glow
+        STYLE = {
+            "H-bond":      {"line": "#2e8b3d", "fill": "#8fd39a", "glow": "#43ad5b"},
+            "Hydrophobic": {"line": "#c665a6", "fill": "#f1b9dc", "glow": "#e07bb5"},
+            "Pi-stack":    {"line": "#7a5cc0", "fill": "#c6b4ea", "glow": "#9070cc"},
+            "Pi-cation":   {"line": "#d5811f", "fill": "#f6cf97", "glow": "#e8971f"},
+            "Salt bridge": {"line": "#cf4a2e", "fill": "#f4ab99", "glow": "#e0593a"},
+            "Halogen":     {"line": "#1f93a6", "fill": "#a3dde5", "glow": "#33b5c4"},
         }
-        COLORS_HEX = {
-            "H-bond": "#2563eb", "Hydrophobic": "#6b7280", "Halogen": "#0d9488",
-            "Salt bridge": "#ea580c", "Pi-stack": "#16a34a", "Pi-cation": "#9333ea",
+        # soft atom-highlight tints on the ligand (0-1 RGB), matched to interaction
+        HL_RGB = {
+            "H-bond": (0.72, 0.90, 0.75), "Hydrophobic": (0.95, 0.80, 0.90),
+            "Pi-stack": (0.85, 0.80, 0.95), "Pi-cation": (0.97, 0.88, 0.70),
+            "Salt bridge": (0.96, 0.78, 0.72), "Halogen": (0.72, 0.89, 0.93),
         }
 
         # ── read the ligand (chain Z / resname LIG) out of the complex ──
@@ -314,20 +320,21 @@ def generate_2d_interaction_svg(complex_pdb_path, records):
         interactions, highlight_atoms, atom_colors = [], [], {}
         for r in records:
             idx = _nearest(r.get("lig_xyz"))
-            if idx is None:
+            if idx is None or r["type"] not in STYLE:
                 continue
-            atom_colors[idx] = COLORS_RGB[r["type"]]
+            atom_colors[idx] = HL_RGB[r["type"]]
             if idx not in highlight_atoms:
                 highlight_atoms.append(idx)
             interactions.append((idx, r["restype"], int(r["resnr"]), r["reschain"], r["type"]))
 
-        # ── draw the ligand, leaving a wide margin for the residue bubbles ──
+        # ── draw the ligand, shrunk to leave room for the residue ring ──
         rdDepictor.Compute2DCoords(mol)
-        W, H = 760, 640
+        W, H = 800, 720
         drawer = rdMolDraw2D.MolDraw2DSVG(W, H)
         opts = drawer.drawOptions()
         opts.setBackgroundColour((1, 1, 1, 1))
-        opts.padding = 0.33                      # shrink molecule → room for bubbles
+        opts.padding = 0.35                      # shrink molecule → room for residues
+        opts.bondLineWidth = 2
         drawer.DrawMolecule(mol, highlightAtoms=highlight_atoms,
                             highlightAtomColors=atom_colors)
         drawer.FinishDrawing()
@@ -338,7 +345,7 @@ def generate_2d_interaction_svg(complex_pdb_path, records):
 
         coords = [drawer.GetDrawCoords(i) for i in range(mol.GetNumAtoms())]
 
-        # one bubble per residue (keep its first interaction)
+        # one marker per residue (keep its first interaction + the atom it touches)
         seen, order = {}, []
         for idx, restype, resnr, reschain, itype in interactions:
             key = (restype, resnr, reschain)
@@ -347,30 +354,60 @@ def generate_2d_interaction_svg(complex_pdb_path, records):
                 order.append(key)
 
         cx, cy, R = W / 2.0, H / 2.0, min(W, H) * 0.40
-        # order residues by their atom's angle, then space evenly (avoids overlap)
-        order.sort(key=lambda k: math.atan2(coords[seen[k][0]].y - cy,
-                                            coords[seen[k][0]].x - cx))
-        extra, n = [], max(len(order), 1)
-        for i, key in enumerate(order):
-            restype, resnr, reschain = key
+        # place each residue in the DIRECTION of the atom it touches (natural,
+        # Discovery-Studio-like), then relax any that sit too close together
+        placed = []
+        for key in order:
             idx, itype = seen[key]
-            hexc, ap = COLORS_HEX[itype], coords[idx]
-            theta = 2 * math.pi * i / n - math.pi / 2
-            nx, ny = cx + R * math.cos(theta), cy + R * math.sin(theta)
-            extra.append(
-                f'<line x1="{ap.x:.1f}" y1="{ap.y:.1f}" x2="{nx:.1f}" y2="{ny:.1f}" '
-                f'stroke="{hexc}" stroke-width="1.7" stroke-dasharray="5,4" opacity="0.85"/>')
-            extra.append(
-                f'<ellipse cx="{nx:.1f}" cy="{ny:.1f}" rx="41" ry="22" '
-                f'fill="#ffffff" stroke="{hexc}" stroke-width="2.2"/>')
-            extra.append(
-                f'<text x="{nx:.1f}" y="{ny - 3:.1f}" text-anchor="middle" '
-                f'font-family="sans-serif" font-size="13" font-weight="700" '
-                f'fill="#1f2937">{restype} {resnr}</text>')
-            extra.append(
-                f'<text x="{nx:.1f}" y="{ny + 12:.1f}" text-anchor="middle" '
-                f'font-family="sans-serif" font-size="9" fill="{hexc}">{itype} &#183; {reschain}</text>')
-        return svg.replace("</svg>", "\n".join(extra) + "\n</svg>")
+            ap = coords[idx]
+            placed.append([key, idx, itype, math.atan2(ap.y - cy, ap.x - cx)])
+        placed.sort(key=lambda z: z[3])
+        n = len(placed)
+        min_gap = (2 * math.pi / n) if n > 6 else 0.62      # radians between markers
+        for _ in range(80):                                  # nudge neighbours apart
+            for i in range(n):
+                gap = (placed[(i + 1) % n][3] - placed[i][3]) % (2 * math.pi)
+                if 0 < gap < min_gap:
+                    push = (min_gap - gap) / 2.0
+                    placed[i][3] -= push
+                    placed[(i + 1) % n][3] += push
+
+        defs, glows, circles, lines, labels, made = [], [], [], [], [], set()
+        for key, idx, itype, ang in placed:
+            restype, resnr, reschain = key
+            s = STYLE[itype]
+            ap = coords[idx]
+            rx, ry = cx + R * math.cos(ang), cy + R * math.sin(ang)
+
+            gid = "glow_" + itype.replace(" ", "_").replace("-", "_")
+            if gid not in made:
+                made.add(gid)
+                defs.append(
+                    f'<radialGradient id="{gid}" cx="50%" cy="50%" r="50%">'
+                    f'<stop offset="0%" stop-color="{s["glow"]}" stop-opacity="0.55"/>'
+                    f'<stop offset="65%" stop-color="{s["glow"]}" stop-opacity="0.14"/>'
+                    f'<stop offset="100%" stop-color="{s["glow"]}" stop-opacity="0"/>'
+                    f'</radialGradient>')
+
+            dash = '' if itype == "H-bond" else ' stroke-dasharray="6,4"'
+            lines.append(
+                f'<line x1="{ap.x:.1f}" y1="{ap.y:.1f}" x2="{rx:.1f}" y2="{ry:.1f}" '
+                f'stroke="{s["line"]}" stroke-width="1.9"{dash} opacity="0.9"/>')
+            glows.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="42" fill="url(#{gid})"/>')
+            circles.append(
+                f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="24" fill="{s["fill"]}" '
+                f'stroke="{s["line"]}" stroke-width="2"/>')
+            labels.append(
+                f'<text x="{rx:.1f}" y="{ry - 2:.1f}" text-anchor="middle" '
+                f'font-family="Arial, sans-serif" font-size="12.5" font-weight="700" '
+                f'fill="#1c2733">{restype}</text>'
+                f'<text x="{rx:.1f}" y="{ry + 11:.1f}" text-anchor="middle" '
+                f'font-family="Arial, sans-serif" font-size="10" '
+                f'fill="#1c2733">{reschain}:{resnr}</text>')
+
+        overlay = (f'<defs>{"".join(defs)}</defs>'
+                   + "".join(lines) + "".join(glows) + "".join(circles) + "".join(labels))
+        return svg.replace("</svg>", overlay + "</svg>")
     except Exception as e:
         print(f"Error generating 2D SVG: {e}")
         return ""

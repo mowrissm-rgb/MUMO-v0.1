@@ -982,11 +982,11 @@ def render_results():
                                 f"border-radius:50%;background:{color};margin:0 5px -1px 12px;'></span>{label}")
                     st.markdown(
                         "<div style='text-align:center; color:rgba(226,232,240,0.7); font-size:0.82rem; margin-top:0.3rem;'>"
-                        + _sw("#2563eb", "H-bond") + _sw("#6b7280", "Hydrophobic")
-                        + _sw("#ea580c", "Salt bridge") + _sw("#16a34a", "Pi-stack")
-                        + _sw("#9333ea", "Pi-cation") + _sw("#0d9488", "Halogen")
-                        + "<br><span style='opacity:0.7;'>Each residue bubble is linked by a dashed line "
-                          "to the ligand atom it interacts with.</span></div>",
+                        + _sw("#2e8b3d", "H-bond") + _sw("#c665a6", "Hydrophobic")
+                        + _sw("#cf4a2e", "Salt bridge") + _sw("#7a5cc0", "Pi-stack")
+                        + _sw("#d5811f", "Pi-cation") + _sw("#1f93a6", "Halogen")
+                        + "<br><span style='opacity:0.7;'>Each residue is a colour-coded circle linked "
+                          "to the ligand atom it interacts with (solid = H-bond).</span></div>",
                         unsafe_allow_html=True
                     )
                 else:
