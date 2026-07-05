@@ -44,10 +44,11 @@ def _get(method_path, params, timeout=30):
 
 
 def resolve_ids(identifiers, species=HUMAN):
-    """Map names → STRING's preferred names + annotation. [] if none recognised."""
-    r = _get("json/get_string_ids",
-             f"identifiers={_ids_param(identifiers)}&species={species}&limit=1&echo_query=1")
+    """Map names → STRING's preferred names + annotation. [] if none recognised
+    (or on any API error — e.g. empty / all-invalid input returns 400/404)."""
     try:
+        r = _get("json/get_string_ids",
+                 f"identifiers={_ids_param(identifiers)}&species={species}&limit=1&echo_query=1")
         return r.json()
     except Exception:
         return []
@@ -87,6 +88,12 @@ def analyze_string(identifiers, species=HUMAN, limit=20):
       input, resolved, partners, network_svg, enrichment, species.
     Raises ValueError only if STRING can't recognise ANY of the proteins.
     """
+    # guard empty / whitespace-only input before hitting the API
+    _has = (identifiers.strip() if isinstance(identifiers, str)
+            else any(str(i).strip() for i in (identifiers or [])))
+    if not _has:
+        raise ValueError("Please give me a protein or gene name (for example CFTR or EGFR).")
+
     resolved = resolve_ids(identifiers, species)
     if not resolved:
         raise ValueError(
