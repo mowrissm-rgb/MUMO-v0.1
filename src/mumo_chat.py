@@ -1113,7 +1113,9 @@ def render_results():
             # A flex-wrap row sized to the actual panel scales properly and
             # wraps onto a second line instead of cutting text off.
             metrics = [
-                ("Best affinity", f"{top['Best affinity (kcal/mol)']} kcal/mol"),
+                ("Best affinity (Vina)", f"{top['Best affinity (kcal/mol)']} kcal/mol"),
+                ("Vinardo rescore", f"{top.get('Vinardo (kcal/mol)', '—')} kcal/mol"),
+                ("Consensus", str(top.get("Consensus", "—"))),
                 ("Confidence", str(top.get("Confidence", "—"))),
                 ("Total interactions", str(int(top["Total interactions"]))),
                 ("H-bonds", str(int(top["H-bonds"]))),

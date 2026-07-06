@@ -4,6 +4,7 @@
 
 import os
 import sys
+import re
 import shutil
 import subprocess
 from rdkit import Chem
@@ -322,6 +323,68 @@ def parse_docking_results(log_path):
     return best_score, scores
 
 
+def _extract_top_pose(multi_pdbqt, out_pdbqt):
+    """Write the first (top-ranked) MODEL of a docked PDBQT to a single-model file
+    (Vina's --score_only rejects multi-MODEL ligands). Falls back to the whole file
+    if it isn't multi-model."""
+    lines, inside = [], False
+    for ln in open(multi_pdbqt):
+        if ln.startswith("MODEL"):
+            if inside:
+                break
+            inside = True
+            continue
+        if ln.startswith("ENDMDL"):
+            break
+        lines.append(ln)
+    if not lines:
+        lines = open(multi_pdbqt).readlines()
+    with open(out_pdbqt, "w") as f:
+        f.writelines(lines)
+    return out_pdbqt
+
+
+def score_pose(vina_path, receptor_pdbqt, pose_pdbqt, scoring="vinardo"):
+    """Rescore ONE docked pose with a chosen scoring function (Vina --score_only).
+    Used for CONSENSUS scoring — an independent second opinion on the top pose from a
+    different scoring function. Returns the affinity (kcal/mol) float, or None."""
+    if not os.path.exists(vina_path):
+        vina_path = _resolve_executable("vina") or vina_path
+    try:
+        result = subprocess.run(
+            [vina_path, "--receptor", receptor_pdbqt, "--ligand", pose_pdbqt,
+             "--scoring", scoring, "--score_only", "--autobox"],
+            capture_output=True, text=True, timeout=120)
+        for ln in result.stdout.splitlines():
+            if "Estimated Free Energy of Binding" in ln:
+                m = re.search(r":\s*(-?\d+\.\d+)", ln)
+                if m:
+                    return round(float(m.group(1)), 3)
+    except Exception:
+        pass
+    return None
+
+
+def consensus_rescore(vina_path, receptor_pdbqt, best_out_pdbqt, vina_best,
+                      second="vinardo"):
+    """Consensus second opinion on the reported best pose. Rescore the top pose with a
+    different scoring function and judge agreement. Returns
+    {"vinardo": float|None, "consensus": str}."""
+    vinardo = None
+    try:
+        top = _extract_top_pose(best_out_pdbqt,
+                                best_out_pdbqt.replace(".pdbqt", "_top.pdbqt"))
+        vinardo = score_pose(vina_path, receptor_pdbqt, top, scoring=second)
+    except Exception:
+        pass
+    if vinardo is None:
+        return {"vinardo": None, "consensus": "—"}
+    # Vinardo runs weaker in magnitude than Vina; treat both-favourable as agreement.
+    agree = (vina_best <= -5.0 and vinardo <= -3.5) or (vina_best > -5.0 and vinardo > -3.5)
+    return {"vinardo": vinardo,
+            "consensus": "Both functions agree" if agree else "Functions disagree — interpret with care"}
+
+
 def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_prefix,
                        center, size, exhaustiveness=16, n_replicas=1, base_seed=42,
                        num_modes=9):
@@ -359,9 +422,14 @@ def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_
         confidence = "Medium"
     else:
         confidence = "Lower"
+
+    # CONSENSUS scoring: independent second opinion (Vinardo) on the reported best pose
+    cons = consensus_rescore(vina_path, receptor_pdbqt, best_run[2], best_run[0])
+
     return {"best_score": best_run[0], "modes": best_run[1], "out_pdbqt": best_run[2],
             "mean": round(mean, 3), "sd": round(sd, 3), "n": len(bests),
-            "confidence": confidence, "all_best": bests}
+            "confidence": confidence, "all_best": bests,
+            "vinardo": cons["vinardo"], "consensus": cons["consensus"]}
 
 
 def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, data_dir,

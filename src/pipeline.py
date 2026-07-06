@@ -76,6 +76,8 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
             rows.append({
                 "Ligand": label,
                 "Best affinity (kcal/mol)": best,
+                "Vinardo (kcal/mol)": res.get("vinardo") if res.get("vinardo") is not None else "—",
+                "Consensus": res.get("consensus", "—"),
                 "Mean ± SD (kcal/mol)": (f"{res['mean']} ± {res['sd']}" if eff_rep > 1 else "—"),
                 "Confidence": res["confidence"],
                 "Total interactions": ia["total_interactions"], "H-bonds": ia["n_hbonds"],
