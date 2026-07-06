@@ -15,7 +15,7 @@ ARG MAMBA_DOCKERFILE_ACTIVATE=1
 
 # belt-and-suspenders: guarantee the pip deps are present even if micromamba
 # skipped the environment.yml pip subsection (idempotent if already installed)
-RUN pip install --no-cache-dir streamlit meeko py3Dmol requests supabase
+RUN pip install --no-cache-dir streamlit meeko py3Dmol requests supabase dimorphite-dl
 
 # ADMET-AI (TDC / Chemprop ML models for tox/CYP/PK). Install CPU-only PyTorch
 # first from the CPU wheel index so we don't pull the multi-GB CUDA build, then

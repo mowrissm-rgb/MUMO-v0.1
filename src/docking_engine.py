@@ -147,19 +147,20 @@ def prepare_receptor(cleaned_pdb_path, output_pdbqt_path, venv_bin_dir):
 
 def _mol_from_smiles_at_ph(smiles, ph=7.4):
     """
-    Protonate a SMILES at a physiological pH with OpenBabel, returning an RDKit mol
-    with explicit hydrogens and the correct formal charges (e.g. -COOH -> -COO-,
-    -NH2 -> -NH3+ at pH 7.4). Returns None on any failure so the caller can fall
-    back to the plain RDKit path.
+    Protonate a SMILES at physiological pH using dimorphite-dl (Apache-2.0), returning
+    an RDKit mol with explicit hydrogens and the correct formal charges (e.g. -COOH ->
+    -COO-, -NH2 -> -NH3+ at pH 7.4). Returns None on any failure so the caller can fall
+    back to the plain RDKit path. (Replaces the GPL OpenBabel path — patent-clean.)
     """
     try:
-        from openbabel import pybel
-        obmol = pybel.readstring("smi", smiles)
-        # AddHydrogens(polaronly=False, correctForPH=True, pH=ph)
-        obmol.OBMol.AddHydrogens(False, True, ph)
-        molblock = obmol.write("mol")
-        m = Chem.MolFromMolBlock(molblock, removeHs=False)
-        return m
+        from dimorphite_dl import protonate_smiles
+        variants = protonate_smiles(smiles, ph_min=ph, ph_max=ph, precision=1.0)
+        if not variants:
+            return None
+        m = Chem.MolFromSmiles(variants[0])       # dominant protonation state at this pH
+        if m is None:
+            return None
+        return Chem.AddHs(m)
     except Exception:
         return None
 
