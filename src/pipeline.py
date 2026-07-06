@@ -78,6 +78,8 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 "Best affinity (kcal/mol)": best,
                 "Vinardo (kcal/mol)": res.get("vinardo") if res.get("vinardo") is not None else "—",
                 "Consensus": res.get("consensus", "—"),
+                "Pose consistency": (f"{res.get('n_clustered', '?')}/{res.get('n_poses', '?')} poses"
+                                     if res.get("n_poses") else "—"),
                 "Mean ± SD (kcal/mol)": (f"{res['mean']} ± {res['sd']}" if eff_rep > 1 else "—"),
                 "Confidence": res["confidence"],
                 "Total interactions": ia["total_interactions"], "H-bonds": ia["n_hbonds"],

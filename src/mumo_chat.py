@@ -1116,6 +1116,7 @@ def render_results():
                 ("Best affinity (Vina)", f"{top['Best affinity (kcal/mol)']} kcal/mol"),
                 ("Vinardo rescore", f"{top.get('Vinardo (kcal/mol)', '—')} kcal/mol"),
                 ("Consensus", str(top.get("Consensus", "—"))),
+                ("Pose consistency", str(top.get("Pose consistency", "—"))),
                 ("Confidence", str(top.get("Confidence", "—"))),
                 ("Total interactions", str(int(top["Total interactions"]))),
                 ("H-bonds", str(int(top["H-bonds"]))),

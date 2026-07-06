@@ -385,6 +385,38 @@ def consensus_rescore(vina_path, receptor_pdbqt, best_out_pdbqt, vina_best,
             "consensus": "Both functions agree" if agree else "Functions disagree — interpret with care"}
 
 
+def pose_consistency(log_path, rmsd_threshold=2.0):
+    """POSE CLUSTERING signal. Vina reports each pose's RMSD from the best pose; count
+    how many of the returned poses land within `rmsd_threshold` Å of the best one. A
+    binding mode that many poses converge on is far more reproducible/trustworthy than
+    a lone best pose. Returns {n_poses, n_clustered, consistency (fraction), verdict}."""
+    n_total, n_near, reading = 0, 0, False
+    try:
+        for ln in open(log_path):
+            if "mode" in ln and "affinity" in ln:
+                reading = True
+                continue
+            if reading:
+                parts = ln.split()
+                if len(parts) >= 4:
+                    try:
+                        int(parts[0]); rmsd_lb = float(parts[2])
+                        n_total += 1
+                        if rmsd_lb <= rmsd_threshold:
+                            n_near += 1
+                    except ValueError:
+                        continue
+                elif n_total > 0:
+                    break
+    except Exception:
+        return {"n_poses": 0, "n_clustered": 0, "consistency": None, "verdict": "—"}
+    frac = (n_near / n_total) if n_total else 0
+    verdict = ("Tight — poses converge" if frac >= 0.5 else
+               "Scattered poses" if n_total else "—")
+    return {"n_poses": n_total, "n_clustered": n_near,
+            "consistency": round(frac, 2) if n_total else None, "verdict": verdict}
+
+
 def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_prefix,
                        center, size, exhaustiveness=16, n_replicas=1, base_seed=42,
                        num_modes=9):
@@ -408,7 +440,7 @@ def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_
                           center, size, exhaustiveness=exhaustiveness,
                           num_modes=num_modes, seed=base_seed + i)
         best, modes = parse_docking_results(log)
-        runs.append((best, modes, outp))
+        runs.append((best, modes, outp, log))
         bests.append(best)
 
     best_run = min(runs, key=lambda r: r[0])
@@ -425,11 +457,15 @@ def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_
 
     # CONSENSUS scoring: independent second opinion (Vinardo) on the reported best pose
     cons = consensus_rescore(vina_path, receptor_pdbqt, best_run[2], best_run[0])
+    # POSE CLUSTERING: how many of the returned poses converge on the best binding mode
+    pc = pose_consistency(best_run[3])
 
     return {"best_score": best_run[0], "modes": best_run[1], "out_pdbqt": best_run[2],
             "mean": round(mean, 3), "sd": round(sd, 3), "n": len(bests),
             "confidence": confidence, "all_best": bests,
-            "vinardo": cons["vinardo"], "consensus": cons["consensus"]}
+            "vinardo": cons["vinardo"], "consensus": cons["consensus"],
+            "pose_consistency": pc["consistency"], "pose_verdict": pc["verdict"],
+            "n_poses": pc["n_poses"], "n_clustered": pc["n_clustered"]}
 
 
 def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, data_dir,
