@@ -20,9 +20,15 @@ RUN pip install --no-cache-dir streamlit meeko py3Dmol requests supabase dimorph
 
 # Playwright needs a real Chromium binary + OS-level libs (fonts, GTK, etc.) for
 # headless screenshots — these back the .docx report's static 2D/3D/network
-# images. --with-deps apt-installs those libs, which needs root.
+# images. --with-deps apt-installs those libs, which needs root — but the app
+# itself runs as mambauser, and Playwright defaults to caching browsers under
+# the INSTALLING user's home dir. Installing as root would put Chromium in
+# /root/.cache (invisible to mambauser at runtime, silently breaking every
+# screenshot). PLAYWRIGHT_BROWSERS_PATH pins it to one shared, readable spot.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 USER root
-RUN playwright install --with-deps chromium
+RUN mkdir -p /opt/ms-playwright && chmod -R 777 /opt/ms-playwright && \
+    playwright install --with-deps chromium
 USER mambauser
 
 # ADMET-AI (TDC / Chemprop ML models for tox/CYP/PK). Install CPU-only PyTorch

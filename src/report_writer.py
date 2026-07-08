@@ -67,7 +67,8 @@ def svg_to_png(svg, browser, width=760, height=560, pad=16):
 def png_from_3d(complex_pdb_path, ia, browser, options=None, width=900, height=560):
     """Load MUMO's own 3Dmol viewer HTML in headless Chromium and screenshot the
     rendered pose — the same view shown in-app, captured as a static image.
-    Returns None (rather than raising) if the CDN 3Dmol.js load times out."""
+    Raises on failure (e.g. the CDN 3Dmol.js load times out) so the caller can
+    report the real reason instead of silently omitting the image."""
     from viz import render_complex_html
     html = render_complex_html(complex_pdb_path, ia, options=options, width=width, height=height)
     page = browser.new_page(viewport={"width": width, "height": height + 20})
@@ -76,8 +77,6 @@ def png_from_3d(complex_pdb_path, ia, browser, options=None, width=900, height=5
         page.wait_for_function("window.__mumoReady === true", timeout=20000)
         page.wait_for_timeout(200)  # let the final zoom/render settle
         return page.locator("#mumoview").screenshot()
-    except Exception:
-        return None
     finally:
         page.close()
 
@@ -173,10 +172,11 @@ def build_docking_docx(r, llm=None):
     _add_df_table(doc, summary)
 
     pw = browser = None
+    browser_error = None
     try:
         pw, browser = new_browser()
-    except Exception:
-        pass
+    except Exception as e:
+        browser_error = f"{type(e).__name__}: {e}"
 
     try:
         for rank, row in rdf.iterrows():
@@ -205,25 +205,30 @@ def build_docking_docx(r, llm=None):
             _add_markdown(doc, writeup)
 
             entry = viz.get(label)
-            if entry and browser:
+            if not entry:
+                doc.add_paragraph("(No pose/interaction data available for this ligand.)")
+            elif not browser:
+                doc.add_paragraph(f"(2D/3D images unavailable — headless browser failed to "
+                                  f"start: {browser_error})")
+            else:
                 svg = entry["ia"].get("svg_2d")
+                doc.add_heading("2D interaction diagram", level=2)
                 if svg:
-                    doc.add_heading("2D interaction diagram", level=2)
                     try:
                         png = svg_to_png(svg, browser)
                         doc.add_picture(io.BytesIO(png), width=Inches(5.5))
-                    except Exception:
-                        doc.add_paragraph("(2D diagram could not be rendered.)")
+                    except Exception as e:
+                        doc.add_paragraph(f"(2D diagram could not be rendered: "
+                                          f"{type(e).__name__}: {e})")
+                else:
+                    doc.add_paragraph("(No 2D interaction diagram available for this ligand.)")
 
                 doc.add_heading("3D pose", level=2)
                 try:
                     png3d = png_from_3d(entry["complex"], entry["ia"], browser)
-                    if png3d:
-                        doc.add_picture(io.BytesIO(png3d), width=Inches(5.5))
-                    else:
-                        doc.add_paragraph("(3D pose could not be rendered.)")
-                except Exception:
-                    doc.add_paragraph("(3D pose could not be rendered.)")
+                    doc.add_picture(io.BytesIO(png3d), width=Inches(5.5))
+                except Exception as e:
+                    doc.add_paragraph(f"(3D pose could not be rendered: {type(e).__name__}: {e})")
     finally:
         if browser:
             browser.close()
@@ -250,16 +255,18 @@ def build_string_docx(r):
     svg = r.get("network_svg")
     if svg:
         doc.add_heading("Interaction network", level=1)
+        pw = browser = None
         try:
             pw, browser = new_browser()
-            try:
-                png = svg_to_png(svg, browser, width=900, height=700)
-                doc.add_picture(io.BytesIO(png), width=Inches(6.0))
-            finally:
+            png = svg_to_png(svg, browser, width=900, height=700)
+            doc.add_picture(io.BytesIO(png), width=Inches(6.0))
+        except Exception as e:
+            doc.add_paragraph(f"(Network image could not be rendered: {type(e).__name__}: {e})")
+        finally:
+            if browser:
                 browser.close()
+            if pw:
                 pw.stop()
-        except Exception:
-            doc.add_paragraph("(Network image could not be rendered.)")
 
     narrative = r.get("narrative")
     if narrative:
