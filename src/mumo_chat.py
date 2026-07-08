@@ -689,6 +689,45 @@ def _blast_narrative(data):
         return ""
 
 
+ADMET_REPORT_SYSTEM = (
+    "You are MUMO, explaining a drug-likeness / ADMET screen to a pharmacy student who is "
+    "NEW to pharmacokinetics and toxicology prediction. Make it genuinely easy while staying "
+    "scientifically correct.\n\n"
+    "Markdown sections and headings:\n"
+    "## What this screen checks\n(2–3 sentences: what drug-likeness and ADMET — Absorption, "
+    "Distribution, Metabolism, Excretion, Toxicity — mean, and why they matter before a "
+    "molecule can become a medicine.)\n"
+    "## Drug-likeness\n(walk through the rule-based properties provided — e.g. molecular "
+    "weight, LogP, H-bond donors/acceptors — and what a pass/fail on each implies for "
+    "oral-drug potential.)\n"
+    "## ADMET-AI predictions\n(if provided: pick out the notable endpoints — e.g. hERG "
+    "cardiotoxicity, Ames mutagenicity, DILI liver injury, CYP interactions, "
+    "blood-brain-barrier penetration — explain each term the first time it appears, and say "
+    "in plain words whether the predicted values are reassuring or a red flag.)\n"
+    "## Bottom line\n(an overall plain-language verdict on this molecule's drug-likeness and "
+    "safety profile, and what a medicinal chemist would want to investigate next.)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm, "
+    "encouraging tutor tone. No emojis. Use ONLY the data provided — never invent numbers."
+)
+
+
+def _admet_narrative(data):
+    """Ask MUMO's LLM to explain a drug-likeness/ADMET screen in plain, beginner-friendly terms."""
+    if _llm is None:
+        return ""
+    dl = data.get("druglikeness", {})
+    adm = data.get("admet_ml") or {}
+    prompt = (f"LIGAND: {data.get('lig_label', '')} ({data.get('lig_smiles', '')})\n\n"
+              "DRUG-LIKENESS PROPERTIES:\n" + _json.dumps(dl, indent=2) + "\n\n")
+    if adm and "_error" not in adm:
+        prompt += "ADMET-AI PREDICTIONS (endpoint: value):\n" + _json.dumps(adm, indent=2) + "\n\n"
+    prompt += "Write the beginner-friendly ADMET report now."
+    try:
+        return _llm.chat(ADMET_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1100)
+    except Exception:
+        return ""
+
+
 def _history_text(n=10):
     return "\n".join(f'{m["role"]}: {m["content"]}' for m in ss.messages[-n:])
 
@@ -814,6 +853,8 @@ def converse(msg):
                    "lig_label": label, "lig_smiles": smi}
             with st.spinner("Running ADMET-AI models (hERG, CYP, Ames, DILI…)"):
                 res["admet_ml"] = admet_ml(smi)
+            with st.spinner("Writing the ADMET report…"):
+                res["narrative"] = _admet_narrative(res)
             ss.results = res
             ss.panel_open = True
         return
@@ -1088,6 +1129,10 @@ def render_results():
     if kind == "admet":
         st.markdown(f"#### Drug-likeness — {r['lig_label']}")
         st.caption(f"`{r['lig_smiles']}`")
+        narrative = r.get("narrative")
+        if narrative:
+            st.markdown(narrative)
+            st.markdown("---")
         st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
         adm = r.get("admet_ml")
         if adm and "_error" not in adm:
@@ -1098,6 +1143,10 @@ def render_results():
             st.table(pd.DataFrame(list(adm.items()), columns=["Endpoint", "Value"]))
         elif adm and "_error" in adm:
             st.caption(f"ADMET-AI predictions unavailable — {adm['_error']}")
+        import report_writer
+        st.download_button("Download report (.docx)", report_writer.build_admet_docx(r),
+                           file_name=f"MUMO_ADMET_{r['lig_label']}.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     else:
         rdf = r["rdf"]
         meta = r.get("meta", {})
@@ -1153,6 +1202,28 @@ def render_results():
         st.dataframe(rdf, use_container_width=True, height=table_height)
         st.download_button("Download CSV", rdf.to_csv(index_label="Rank").encode("utf-8"),
                            file_name=f"MUMO_{meta.get('gene', 'target')}.csv", mime="text/csv")
+
+        # Full .docx report (every ligand: tables + write-up + 2D + 3D). Building it
+        # renders a static screenshot per ligand via headless Chromium, which is too
+        # slow to redo on every Streamlit rerun — so it's a two-step Generate → Download,
+        # cached in session_state keyed by this results object (a fresh dock run gets a
+        # fresh dict, so the cache naturally invalidates when new results land).
+        import report_writer
+        doc_key = f"_docx_bytes_{id(r)}"
+        gcol, dcol = st.columns(2)
+        with gcol:
+            if st.button("Generate full report (.docx)", key=f"gen_{id(r)}"):
+                with st.spinner("Building report — rendering 2D/3D snapshots for every "
+                                "ligand (can take a minute for several ligands)…"):
+                    ss[doc_key] = report_writer.build_docking_docx(r, _llm)
+        with dcol:
+            if ss.get(doc_key):
+                st.download_button("Download report (.docx)", ss[doc_key],
+                                   file_name=f"MUMO_{meta.get('gene', 'target')}_docking_report.docx",
+                                   mime="application/vnd.openxmlformats-officedocument"
+                                        ".wordprocessingml.document",
+                                   key=f"dl_{id(r)}")
+
         if r.get("viz"):
             st.markdown("##### Pose & Interaction Views")
             st.caption("The 2D map and the 3D pose show the SAME interactions from one analysis — "
@@ -1290,6 +1361,24 @@ def _render_string_report(r):
         st.caption("Lower FDR = stronger over-representation in this neighbourhood.")
         st.dataframe(pd.DataFrame(rows), use_container_width=True,
                      height=min(35 * (len(rows) + 1) + 3, 320))
+
+    # Full .docx report — rasterizing the network SVG via headless Chromium is too
+    # slow to redo on every rerun, so it's a two-step Generate → Download (same
+    # pattern as the docking report), cached in session_state per results object.
+    import report_writer
+    doc_key = f"_docx_bytes_{id(r)}"
+    gcol, dcol = st.columns(2)
+    with gcol:
+        if st.button("Generate report (.docx)", key=f"gen_{id(r)}"):
+            with st.spinner("Building report — rendering the network image…"):
+                ss[doc_key] = report_writer.build_string_docx(r)
+    with dcol:
+        if ss.get(doc_key):
+            st.download_button("Download report (.docx)", ss[doc_key],
+                               file_name=f"MUMO_STRING_{names.replace(', ', '_')}.docx",
+                               mime="application/vnd.openxmlformats-officedocument"
+                                    ".wordprocessingml.document",
+                               key=f"dl_{id(r)}")
 
 
 _REPORT_RENDERERS["string"] = _render_string_report

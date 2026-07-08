@@ -23,3 +23,5 @@ dependencies:
       - py3Dmol
       - requests
       - supabase                    # login + persistent cloud chat history
+      - python-docx                 # .docx report export (MIT)
+      - playwright                  # headless Chromium: rasterizes SVG/3D views into the report (Apache-2.0)

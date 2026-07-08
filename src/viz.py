@@ -172,6 +172,7 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     if o["spin"]:
         js.append('v.spin(true);')
     js.append('v.render();')
+    js.append('window.__mumoReady = true;')  # lets a headless screenshotter (report export) know the scene is drawn
 
     return f"""<div id="mumoview" style="width:100%;height:{height}px;position:relative;
          border-radius:14px;border:1px solid rgba(0,0,0,0.10);overflow:hidden;

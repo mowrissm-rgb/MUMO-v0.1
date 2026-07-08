@@ -15,7 +15,15 @@ ARG MAMBA_DOCKERFILE_ACTIVATE=1
 
 # belt-and-suspenders: guarantee the pip deps are present even if micromamba
 # skipped the environment.yml pip subsection (idempotent if already installed)
-RUN pip install --no-cache-dir streamlit meeko py3Dmol requests supabase dimorphite-dl
+RUN pip install --no-cache-dir streamlit meeko py3Dmol requests supabase dimorphite-dl \
+    python-docx playwright
+
+# Playwright needs a real Chromium binary + OS-level libs (fonts, GTK, etc.) for
+# headless screenshots — these back the .docx report's static 2D/3D/network
+# images. --with-deps apt-installs those libs, which needs root.
+USER root
+RUN playwright install --with-deps chromium
+USER mambauser
 
 # ADMET-AI (TDC / Chemprop ML models for tox/CYP/PK). Install CPU-only PyTorch
 # first from the CPU wheel index so we don't pull the multi-GB CUDA build, then
