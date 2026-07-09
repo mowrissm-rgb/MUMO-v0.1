@@ -565,9 +565,9 @@ def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, dat
     co-crystal ligand or the check can't be completed (always non-fatal).
     """
     try:
-        from openbabel import pybel
         from rdkit import Chem
         from rdkit.Chem import AllChem, rdMolAlign
+        from meeko import PDBQTMolecule, RDKitMolCreate
 
         NOT_LIG = {"HOH", "WAT", "SOL", "DOD", "TIP", "CL", "NA", "K", "MG", "CA", "ZN",
                    "MN", "SO4", "PO4", "ACT", "GOL", "EDO", "PEG", "DMS", "IOD", "BR",
@@ -587,13 +587,12 @@ def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, dat
             return None
 
         native_block = "".join(lines)
-        native_pdb = os.path.join(data_dir, "_native_lig.pdb")
-        with open(native_pdb, "w") as f:
-            f.write(native_block + "END\n")
 
-        # Perceive the native ligand's bonds → SMILES (the molecule we will re-dock)
-        obmol = next(pybel.readfile("pdb", native_pdb))
-        smiles = obmol.write("smi").split()[0]
+        # The native ligand's bonds → SMILES: look it up in the RCSB chemical
+        # component dictionary by its 3-letter code (no OpenBabel bond perception).
+        smiles = _rcsb_ligand_smiles(resn)
+        if not smiles:
+            return None
         template = Chem.MolFromSmiles(smiles)
         if template is None:
             return None
@@ -611,14 +610,31 @@ def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, dat
                                  center, size, exhaustiveness=exhaustiveness,
                                  n_replicas=1, base_seed=seed)
 
-        pose = next(pybel.readfile("pdbqt", res["out_pdbqt"]))   # best pose
-        docked_noH = Chem.RemoveHs(Chem.MolFromPDBBlock(pose.write("pdb"), sanitize=False))
+        # Read the best docked pose via meeko (no OpenBabel)
+        pmol = PDBQTMolecule.from_file(res["out_pdbqt"], skip_typing=True)
+        docked_raw = RDKitMolCreate.from_pdbqt_mol(pmol)[0]
+        docked_noH = Chem.RemoveHs(docked_raw)
         docked_fixed = AllChem.AssignBondOrdersFromTemplate(template, docked_noH)
 
         rmsd = rdMolAlign.CalcRMS(docked_fixed, native_fixed)    # no alignment: same box frame
         return {"rmsd": round(float(rmsd), 2), "resname": resn, "passed": bool(rmsd < 2.0)}
     except Exception as e:
         print(f"[Validate] native redock skipped: {e}")
+        return None
+
+
+def _rcsb_ligand_smiles(resname):
+    """Fetch a ligand's canonical SMILES from the RCSB chemical component
+    dictionary by its 3-letter PDB code — the permissive replacement for
+    OpenBabel's bond perception. Returns a SMILES string or None."""
+    try:
+        import requests
+        r = requests.get(f"https://data.rcsb.org/rest/v1/core/chemcomp/{resname}", timeout=20)
+        if r.status_code != 200:
+            return None
+        desc = r.json().get("rcsb_chem_comp_descriptor", {})
+        return desc.get("SMILES_stereo") or desc.get("SMILES")
+    except Exception:
         return None
 
 

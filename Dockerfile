@@ -1,8 +1,9 @@
 # MUMO on Hugging Face Spaces (Docker SDK).
-# micromamba base so the scientific stack (RDKit, OpenBabel, AutoDock Vina,
-# PLIP, gemmi) installs from conda-forge/bioconda as prebuilt binaries —
-# nothing compiles at build time. HF free CPU gives 16 GB RAM, so the whole
-# stack loads comfortably (vs Streamlit Cloud's ~1 GB, which OOM-restarted).
+# micromamba base so the scientific stack (RDKit, AutoDock Vina, gemmi) installs
+# from conda-forge as prebuilt binaries — nothing compiles at build time. HF free
+# CPU gives 16 GB RAM, so the whole stack loads comfortably (vs Streamlit Cloud's
+# ~1 GB, which OOM-restarted). Interaction profiling is ProLIF (Apache-2.0), not
+# the GPL PLIP+OpenBabel it replaced — keeps MUMO patent-safe for commercial use.
 FROM mambaorg/micromamba:latest
 
 # --- conda deps first, so this layer caches across code-only changes ---
@@ -16,7 +17,7 @@ ARG MAMBA_DOCKERFILE_ACTIVATE=1
 # belt-and-suspenders: guarantee the pip deps are present even if micromamba
 # skipped the environment.yml pip subsection (idempotent if already installed)
 RUN pip install --no-cache-dir streamlit meeko py3Dmol requests supabase dimorphite-dl \
-    python-docx playwright
+    python-docx playwright prolif
 
 # Playwright needs a real Chromium binary + OS-level libs (fonts, GTK, etc.) for
 # headless screenshots — these back the .docx report's static 2D/3D/network

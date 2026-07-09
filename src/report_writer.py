@@ -388,12 +388,74 @@ def _ligand_sdf(lig_pdb, smiles=None):
         return None
 
 
-def _ligand_mol2(lig_pdb):
-    """Ligand PDB block → MOL2 text via OpenBabel (best-effort). Returns None if
-    OpenBabel isn't available or conversion fails."""
+def _sybyl_type(atom):
+    """Minimal SYBYL atom type for a MOL2 file (enough for viewers to read)."""
+    from rdkit import Chem
+    sym = atom.GetSymbol()
+    hyb = atom.GetHybridization()
+    if atom.GetIsAromatic() and sym in ("C", "N"):
+        return f"{sym}.ar"
+    if sym == "C":
+        return {Chem.HybridizationType.SP: "C.1", Chem.HybridizationType.SP2: "C.2"}.get(hyb, "C.3")
+    if sym == "N":
+        return {Chem.HybridizationType.SP: "N.1", Chem.HybridizationType.SP2: "N.2"}.get(hyb, "N.3")
+    if sym == "O":
+        return "O.2" if hyb == Chem.HybridizationType.SP2 else "O.3"
+    if sym == "S":
+        return "S.3"
+    if sym == "P":
+        return "P.3"
+    return sym
+
+
+def _ligand_mol2(lig_pdb, smiles=None):
+    """Ligand PDB block → MOL2 (TRIPOS) text via a small RDKit writer — no
+    OpenBabel. Bond orders come from `smiles` when given. Returns None on failure."""
     try:
-        from openbabel import pybel
-        return pybel.readstring("pdb", lig_pdb).write("mol2")
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+    except Exception:
+        return None
+    mol = Chem.MolFromPDBBlock(lig_pdb, sanitize=True, removeHs=False)
+    if mol is None:
+        mol = Chem.MolFromPDBBlock(lig_pdb, sanitize=False, removeHs=False)
+    if mol is None:
+        return None
+    if smiles:
+        try:
+            tmpl = Chem.MolFromSmiles(smiles)
+            if tmpl is not None:
+                mol = AllChem.AssignBondOrdersFromTemplate(tmpl, mol)
+        except Exception:
+            pass
+    try:
+        AllChem.ComputeGasteigerCharges(mol)
+    except Exception:
+        pass
+    try:
+        conf = mol.GetConformer()
+        atom_lines = []
+        for i, atom in enumerate(mol.GetAtoms()):
+            p = conf.GetAtomPosition(i)
+            try:
+                q = float(atom.GetProp("_GasteigerCharge"))
+                if q != q:      # NaN guard
+                    q = 0.0
+            except Exception:
+                q = 0.0
+            atom_lines.append(
+                f"{i+1:>7} {atom.GetSymbol()+str(i+1):<8}{p.x:10.4f}{p.y:10.4f}{p.z:10.4f} "
+                f"{_sybyl_type(atom):<6}{1:>4} LIG {q:>10.4f}")
+        BOND = {Chem.BondType.SINGLE: "1", Chem.BondType.DOUBLE: "2",
+                Chem.BondType.TRIPLE: "3", Chem.BondType.AROMATIC: "ar"}
+        bond_lines = [f"{j+1:>6} {b.GetBeginAtomIdx()+1:>5} {b.GetEndAtomIdx()+1:>5} "
+                      f"{BOND.get(b.GetBondType(), '1'):>2}"
+                      for j, b in enumerate(mol.GetBonds())]
+        return "\n".join([
+            "@<TRIPOS>MOLECULE", "LIG",
+            f" {mol.GetNumAtoms()} {mol.GetNumBonds()} 0 0 0", "SMALL", "GASTEIGER", "",
+            "@<TRIPOS>ATOM", *atom_lines,
+            "@<TRIPOS>BOND", *bond_lines, ""])
     except Exception:
         return None
 
@@ -447,7 +509,7 @@ def build_structure_zip(r):
                 sdf = _ligand_sdf(lig_pdb, smiles_by.get(label))
                 if sdf:
                     z.writestr(f"{safe}_ligand.sdf", sdf)
-                mol2 = _ligand_mol2(lig_pdb)
+                mol2 = _ligand_mol2(lig_pdb, smiles_by.get(label))
                 if mol2:
                     z.writestr(f"{safe}_ligand.mol2", mol2)
             if not receptor_written and rec_pdb:

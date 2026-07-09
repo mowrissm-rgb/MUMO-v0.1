@@ -73,7 +73,7 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 os.path.join(data_dir, f"c_out_{k}"), os.path.join(data_dir, f"c_cfg_{k}"),
                 center, size, exhaustiveness=eff_exh, n_replicas=eff_rep, base_seed=seed)
             best, modes, outp = res["best_score"], res["modes"], res["out_pdbqt"]
-            ia = analyze_interactions(cleaned, outp, cmplx)
+            ia = analyze_interactions(cleaned, outp, cmplx, ligand_smiles=lig["smiles"])
 
             # ── validation / statistics layer (#5): interpretable + aggregate metrics ──
             n_heavy = None

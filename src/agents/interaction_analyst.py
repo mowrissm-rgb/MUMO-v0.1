@@ -12,52 +12,72 @@ It does NOT tell us WHY. This agent answers the "why":
     - WHICH protein residues form those H-bonds?
     - How many hydrophobic contacts, pi-stacking, salt bridges, halogen bonds?
 
-It does this with PLIP (Protein-Ligand Interaction Profiler) — the tool used in
-published papers — by analysing the docked 3D pose against the protein.
+It does this with ProLIF (Protein-Ligand Interaction Fingerprints) + RDKit,
+all permissive/Apache-2.0 (this replaced the GPL PLIP + OpenBabel path so MUMO
+stays patent-safe for commercial use).
 
 HOW IT WORKS
-    1. Take the best docked pose (from Vina's output) + the protein structure
-    2. Glue them into one "complex" PDB file (protein + ligand together)
-    3. Run PLIP on that complex
-    4. Summarise every interaction into a clean dictionary
+    1. Read the best docked pose (Vina's PDBQT) into an RDKit molecule via meeko
+       — correct bond orders, no OpenBabel.
+    2. Prepare the receptor: physiological formal charges on ionizable residues
+       (so ProLIF's charged-interaction detectors fire) + explicit hydrogens.
+    3. Run a ProLIF fingerprint of the ligand against the protein.
+    4. Flatten every interaction into one canonical record list (type, residue,
+       ligand/protein 3D points, distance) that drives the CSV, 2D diagram and
+       3D lines — so all three always agree.
 """
 
 import os
 
 # ── Resilient imports ────────────────────────────────────────────────────────
-# Interaction profiling needs OpenBabel + PLIP. If either is missing (e.g. a
-# cloud build hiccup), MUMO must NOT crash — docking still works, we just skip
-# the interaction details. INTERACTIONS_AVAILABLE tells the rest of the app.
+# Interaction profiling needs RDKit + ProLIF. If either is missing (e.g. a cloud
+# build hiccup), MUMO must NOT crash — docking still works, we just skip the
+# interaction details. INTERACTIONS_AVAILABLE tells the rest of the app.
 INTERACTIONS_AVAILABLE = True
 _IMPORT_ERROR = ""
 try:
-    import openbabel.pybel as pybel
-
-    # Compatibility shim: some OpenBabel builds lack InChI, but PLIP asks for an
-    # 'inchikey' (just a label). RDKit has InChI, so we redirect those calls.
-    _orig_write = pybel.Molecule.write
-    def _write_with_rdkit_inchi(self, format="smi", filename=None, *args, **kwargs):
-        if format in ("inchikey", "inchi") and filename is None:
-            try:
-                from rdkit import Chem
-                molblock = _orig_write(self, "mol")
-                m = Chem.MolFromMolBlock(molblock, sanitize=False)
-                if m is not None:
-                    return Chem.MolToInchiKey(m) if format == "inchikey" else Chem.MolToInchi(m)
-            except Exception:
-                pass
-            return "NOINCHIKEY"
-        return _orig_write(self, format, filename, *args, **kwargs)
-    pybel.Molecule.write = _write_with_rdkit_inchi
-
-    from plip.structure.preparation import PDBComplex
+    from rdkit import Chem
+    from rdkit.Chem import AllChem  # noqa: F401  (used in the ligand fallback)
+    import prolif as plf
 except Exception as _e:                      # pragma: no cover
     INTERACTIONS_AVAILABLE = False
     _IMPORT_ERROR = f"{type(_e).__name__}: {_e}"
 
 
+# One colour per interaction type — used by the 3D lines AND the 2D diagram so
+# they always agree.
+_COLORS = {
+    "H-bond": "blue", "Hydrophobic": "grey", "Pi-stack": "green",
+    "Salt bridge": "orange", "Halogen": "cyan", "Pi-cation": "purple",
+}
+
+# ProLIF interaction name → MUMO's interaction type.
+_PROLIF_MAP = {
+    "HBDonor": "H-bond", "HBAcceptor": "H-bond",
+    "Hydrophobic": "Hydrophobic",
+    "PiStacking": "Pi-stack", "FaceToFace": "Pi-stack", "EdgeToFace": "Pi-stack",
+    "Anionic": "Salt bridge", "Cationic": "Salt bridge",
+    "CationPi": "Pi-cation", "PiCation": "Pi-cation",
+    "XBAcceptor": "Halogen", "XBDonor": "Halogen",
+}
+_PROLIF_INTERACTIONS = ["Hydrophobic", "HBDonor", "HBAcceptor", "PiStacking",
+                        "Anionic", "Cationic", "CationPi", "PiCation",
+                        "XBAcceptor", "XBDonor"]
+
+# Physiological formal charges (pH ~7.4) for ionizable protein atoms. RDKit reads
+# a raw PDB with NO charges, so without this ProLIF's Anionic/Cationic detectors
+# never fire (no salt bridges). Lightweight residue-template approach — no heavy
+# PDBFixer/OpenMM needed. One oxygen per carboxylate carries the −1 (the other is
+# the C=O); one nitrogen per basic group carries the +1.
+_RES_CHARGES = {
+    ("ASP", "OD2"): -1, ("GLU", "OE2"): -1,     # carboxylate side chains
+    ("LYS", "NZ"): 1, ("ARG", "NH2"): 1,        # ammonium / guanidinium
+    ("HIP", "NE2"): 1,                          # protonated histidine (if present)
+}
+
+
 def _empty_result(note):
-    """A zeroed interaction result so the app keeps working when PLIP is absent."""
+    """A zeroed interaction result so the app keeps working when ProLIF is absent."""
     return {
         "total_interactions": 0, "n_hbonds": 0, "hbond_residues": [],
         "n_hydrophobic": 0, "hydrophobic_residues": [],
@@ -71,17 +91,48 @@ def _empty_result(note):
     }
 
 
-def _ligand_pose_to_pdb_block(ligand_pdbqt):
-    """
-    Take the FIRST (best) pose from Vina's output .pdbqt and turn it into PDB
-    lines, marked as HETATM residue 'LIG' on chain Z so PLIP treats it as the
-    ligand (not part of the protein).
-    """
-    mol = next(pybel.readfile("pdbqt", ligand_pdbqt))   # first pose = best pose
-    pdb_text = mol.write("pdb")
+def _ligand_mol_from_pose(ligand_pdbqt, smiles=None):
+    """Read the best docked pose (Vina PDBQT) into an RDKit mol with correct bond
+    orders — via meeko (permissive), which reconstructs the molecule meeko itself
+    wrote during ligand prep. Falls back to reading the raw coordinates and
+    assigning bond orders from `smiles`. Returns an RDKit mol (no explicit Hs)."""
+    try:
+        from meeko import PDBQTMolecule, RDKitMolCreate
+        pmol = PDBQTMolecule.from_file(ligand_pdbqt, skip_typing=True)
+        mols = RDKitMolCreate.from_pdbqt_mol(pmol)
+        if mols and mols[0] is not None:
+            return mols[0]
+    except Exception:
+        pass
+    # fallback: raw atoms from the PDBQT text + bond orders from the known SMILES
+    try:
+        lines = []
+        for ln in open(ligand_pdbqt):
+            if ln.startswith("MODEL") and lines:
+                break
+            if ln.startswith(("ATOM", "HETATM")):
+                lines.append(ln[:66] + "\n")   # PDB portion only (drop PDBQT columns)
+        mol = Chem.MolFromPDBBlock("".join(lines), sanitize=False, removeHs=False)
+        if mol is None:
+            return None
+        if smiles:
+            tmpl = Chem.MolFromSmiles(smiles)
+            if tmpl is not None:
+                mol = AllChem.AssignBondOrdersFromTemplate(tmpl, mol)
+        return mol
+    except Exception:
+        return None
 
+
+def _ligand_pdb_block(lig_mol):
+    """Heavy-atom PDB lines for the ligand, forced to HETATM residue 'LIG' on
+    chain Z so the 2D diagram + 3D viewer treat it as the ligand."""
+    try:
+        heavy = Chem.RemoveHs(lig_mol)
+    except Exception:
+        heavy = lig_mol
     fixed = []
-    for line in pdb_text.splitlines():
+    for line in Chem.MolToPDBBlock(heavy).splitlines():
         if line.startswith(("ATOM", "HETATM")):
             line = "HETATM" + line[6:]            # force HETATM
             line = line[:17] + "LIG" + line[20:]  # residue name -> LIG
@@ -90,12 +141,13 @@ def _ligand_pose_to_pdb_block(ligand_pdbqt):
     return "\n".join(fixed)
 
 
-def build_complex(receptor_pdb, ligand_pdbqt, out_complex_pdb):
-    """Glue protein + best ligand pose into one complex PDB file for PLIP."""
+def build_complex(receptor_pdb, lig_mol, out_complex_pdb):
+    """Glue protein + best ligand pose into one complex PDB (protein + ligand),
+    used by the 2D diagram and the 3D viewer."""
     with open(receptor_pdb) as f:
         protein_lines = [ln.rstrip("\n") for ln in f
                          if ln.startswith(("ATOM", "TER"))]
-    ligand_block = _ligand_pose_to_pdb_block(ligand_pdbqt)
+    ligand_block = _ligand_pdb_block(lig_mol)
 
     with open(out_complex_pdb, "w") as f:
         f.write("\n".join(protein_lines) + "\n")
@@ -105,122 +157,116 @@ def build_complex(receptor_pdb, ligand_pdbqt, out_complex_pdb):
     return out_complex_pdb
 
 
-def _residue_tag(i):
-    """Make a readable residue label like 'ASP110(A)' from a PLIP interaction."""
-    return f"{i.restype}{i.resnr}({i.reschain})"
-
-
-# One colour per interaction type — used by the 3D lines AND the 2D diagram so
-# they always agree.
-_COLORS = {
-    "H-bond": "blue", "Hydrophobic": "grey", "Pi-stack": "green",
-    "Salt bridge": "orange", "Halogen": "cyan", "Pi-cation": "purple",
-}
-
-
-def _pt(obj):
-    """Best-effort (x,y,z) for a pybel atom (.coords), a ring/charge centre
-    (.center), or a halogen sub-atom (.x/.o). Returns None if nothing usable."""
-    if obj is None:
+def _protonate_protein(receptor_pdb):
+    """Load the receptor and give ionizable residues their physiological formal
+    charges, then add explicit hydrogens — the preparation ProLIF needs to detect
+    salt bridges and hydrogen bonds. Returns an RDKit mol (with Hs) or None."""
+    mol = Chem.MolFromPDBFile(receptor_pdb, sanitize=True, removeHs=False)
+    if mol is None:
+        mol = Chem.MolFromPDBFile(receptor_pdb, sanitize=False, removeHs=False)
+    if mol is None:
         return None
-    if hasattr(obj, "coords"):
-        try:
-            return tuple(obj.coords)
-        except Exception:
-            pass
-    if hasattr(obj, "center"):
-        try:
-            return tuple(obj.center)
-        except Exception:
-            pass
-    for sub in ("x", "o"):
-        s = getattr(obj, sub, None)
-        if s is not None and hasattr(s, "coords"):
-            try:
-                return tuple(s.coords)
-            except Exception:
-                pass
-    return None
+    for atom in mol.GetAtoms():
+        info = atom.GetPDBResidueInfo()
+        if not info:
+            continue
+        resn, name = info.GetResidueName().strip(), info.GetName().strip()
+        chg = -1 if name == "OXT" else _RES_CHARGES.get((resn, name))   # OXT = C-terminus
+        if chg is not None:
+            atom.SetFormalCharge(chg)
+            atom.SetNoImplicit(True)
+            atom.SetNumExplicitHs(0)
+    try:
+        Chem.SanitizeMol(mol)
+    except Exception:
+        pass
+    try:
+        mol = Chem.AddHs(mol, addCoords=True)
+    except Exception:
+        pass
+    return mol
 
 
-def _collect_interactions(site):
+def _centroid(conf, idxs):
+    """Average (x,y,z) of the given atom indices in a conformer, or None."""
+    idxs = [int(i) for i in (idxs or []) if i is not None]
+    if not idxs:
+        return None
+    ps = [conf.GetAtomPosition(i) for i in idxs]
+    n = len(ps)
+    return (sum(p.x for p in ps) / n, sum(p.y for p in ps) / n, sum(p.z for p in ps) / n)
+
+
+def _collect_interactions(ifp, lig_conf, prot_conf):
     """
-    THE single source of truth. Walk every interaction PLIP found for this binding
-    site and return one flat list of records — each with its type, residue, the
-    ligand-side and protein-side 3D points, the measured distance, and a colour.
-    The CSV counts, the 2D diagram and the 3D lines are ALL derived from this list,
-    so they can never disagree. Interactions whose 3D points can't be resolved are
-    dropped (so a counted interaction is always a drawable one).
+    THE single source of truth. Walk every interaction ProLIF found and return one
+    flat list of records — each with its type, residue, the ligand-side and
+    protein-side 3D points, the measured distance, and a colour. The CSV counts,
+    the 2D diagram and the 3D lines are ALL derived from this list, so they can
+    never disagree. Interactions whose 3D points can't be resolved are dropped.
     """
     recs = []
-
-    def add(itype, obj, lig, prot, dist):
-        lp, pp = _pt(lig), _pt(prot)
-        if lp is None or pp is None:
-            return
-        recs.append({
-            "type": itype, "restype": obj.restype, "resnr": int(obj.resnr),
-            "reschain": obj.reschain, "tag": f"{obj.restype}{obj.resnr}({obj.reschain})",
-            "lig_xyz": lp, "prot_xyz": pp,
-            "distance": float(dist) if dist else 0.0, "color": _COLORS[itype],
-        })
-
-    for b in list(site.hbonds_ldon) + list(site.hbonds_pdon):
-        lig, prot = (b.a, b.d) if b.protisdon else (b.d, b.a)   # ligand = acceptor if protein donates
-        add("H-bond", b, lig, prot, getattr(b, "distance_ad", getattr(b, "distance", 0)))
-    for c in site.hydrophobic_contacts:
-        add("Hydrophobic", c, c.ligatom, c.bsatom, getattr(c, "distance", 0))
-    for p in site.pistacking:
-        add("Pi-stack", p, p.ligandring, p.proteinring, getattr(p, "distance", 0))
-    for s in list(site.saltbridge_lneg) + list(site.saltbridge_pneg):
-        lig, prot = (s.negative, s.positive) if s.protispos else (s.positive, s.negative)
-        add("Salt bridge", s, lig, prot, getattr(s, "distance", 0))
-    for x in site.halogen_bonds:
-        add("Halogen", x, getattr(x, "don", None), getattr(x, "acc", None), getattr(x, "distance", 0))
-    for p in site.pication_laro:                                # ligand provides the ring
-        add("Pi-cation", p, getattr(p, "ring", None), getattr(p, "charge", None), getattr(p, "distance", 0))
-    for p in site.pication_paro:                                # ligand provides the charge
-        add("Pi-cation", p, getattr(p, "charge", None), getattr(p, "ring", None), getattr(p, "distance", 0))
+    for pair, inters in ifp.items():
+        prot_res = pair[1]
+        chain = prot_res.chain or "A"
+        for iname, metas in inters.items():
+            itype = _PROLIF_MAP.get(iname)
+            if not itype:
+                continue
+            for m in metas:
+                pidx = m.get("parent_indices") or m.get("indices") or {}
+                lig_xyz = _centroid(lig_conf, pidx.get("ligand"))
+                prot_xyz = _centroid(prot_conf, pidx.get("protein"))
+                if lig_xyz is None or prot_xyz is None:
+                    continue
+                recs.append({
+                    "type": itype, "restype": prot_res.name, "resnr": int(prot_res.number),
+                    "reschain": chain, "tag": f"{prot_res.name}{prot_res.number}({chain})",
+                    "lig_xyz": lig_xyz, "prot_xyz": prot_xyz,
+                    "distance": float(m.get("distance", 0) or 0), "color": _COLORS[itype],
+                })
     return recs
 
 
-def analyze_interactions(receptor_pdb, ligand_pdbqt, out_complex_pdb):
+def analyze_interactions(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None):
     """
     Full analysis. Returns a dictionary of interaction details for the docked pose.
-    Never raises — if PLIP is unavailable or analysis fails, returns zeros so the
+    Never raises — if ProLIF is unavailable or analysis fails, returns zeros so the
     rest of MUMO (docking, scores, 3D view) keeps working.
     """
     if not INTERACTIONS_AVAILABLE:
         return _empty_result(f"Interaction profiling unavailable ({_IMPORT_ERROR}).")
 
     try:
-        return _run_plip(receptor_pdb, ligand_pdbqt, out_complex_pdb)
+        return _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles)
     except Exception as e:
         return _empty_result(f"Interaction analysis skipped: {e}")
 
 
-def _run_plip(receptor_pdb, ligand_pdbqt, out_complex_pdb):
-    build_complex(receptor_pdb, ligand_pdbqt, out_complex_pdb)
+def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None):
+    lig_mol = _ligand_mol_from_pose(ligand_pdbqt, ligand_smiles)
+    if lig_mol is None:
+        raise RuntimeError("Could not read the docked ligand pose.")
 
-    complex_mol = PDBComplex()
-    complex_mol.load_pdb(out_complex_pdb)
-    complex_mol.analyze()
+    # write the complex (heavy-atom ligand) that the 2D diagram + 3D viewer read
+    build_complex(receptor_pdb, lig_mol, out_complex_pdb)
 
-    if not complex_mol.interaction_sets:
-        raise RuntimeError("PLIP found no ligand binding site in the complex.")
+    # ProLIF needs explicit Hs on the ligand and a physiologically-charged,
+    # protonated protein. Heavy-atom coords are unchanged by AddHs, so the
+    # coordinates in `recs` stay consistent with the complex PDB above.
+    lig_h = Chem.AddHs(lig_mol, addCoords=True)
+    prot_h = _protonate_protein(receptor_pdb)
+    if prot_h is None:
+        raise RuntimeError("Could not prepare the receptor for interaction analysis.")
 
-    # Pick the binding site with the most interactions (our docked ligand).
-    def total(site):
-        return (len(site.hbonds_ldon) + len(site.hbonds_pdon) +
-                len(site.hydrophobic_contacts) + len(site.pistacking) +
-                len(site.saltbridge_lneg) + len(site.saltbridge_pneg) +
-                len(site.halogen_bonds) + len(site.pication_laro) +
-                len(site.pication_paro))
+    lig_plf = plf.Molecule.from_rdkit(lig_h)
+    prot_plf = plf.Molecule.from_rdkit(prot_h)
 
-    site = max(complex_mol.interaction_sets.values(), key=total)
+    fp = plf.Fingerprint(_PROLIF_INTERACTIONS)
+    ifp = fp.generate(lig_plf, prot_plf, metadata=True)
 
     # ── everything below derives from ONE canonical list, so CSV == 2D == 3D ──
-    recs = _collect_interactions(site)
+    recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_h.GetConformer())
 
     def _by(t):
         return [r for r in recs if r["type"] == t]

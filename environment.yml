@@ -8,9 +8,7 @@ channels:
 dependencies:
   - python=3.11
   - rdkit
-  - openbabel          # includes InChI on conda-forge (no shim needed)
   - autodock-vina      # provides the 'vina' command on PATH
-  - plip               # bioconda — installs cleanly with its openbabel dep (no pip build)
   - numpy
   - scipy              # required by meeko (meeko declares no deps, so we add them)
   - gemmi              # required by meeko's receptor preparation
@@ -20,6 +18,7 @@ dependencies:
   - pip:
       - streamlit
       - meeko
+      - prolif                      # protein-ligand interaction fingerprints (Apache-2.0) — replaced GPL PLIP+OpenBabel; pulls in MDAnalysis
       - py3Dmol
       - requests
       - supabase                    # login + persistent cloud chat history
