@@ -1242,6 +1242,24 @@ def render_results():
                                         ".wordprocessingml.document",
                                    key=f"dl_{id(r)}")
 
+        # Raw structure export — the docked pose as PDB/SDF/MOL2 so the user can
+        # open it in Discovery Studio / Maestro / BIOVIA / PyMOL. Derived from the
+        # (persisted) complex PDB, so it works for fresh AND reloaded results. Cheap
+        # file I/O → built once and cached, no separate "Generate" step needed.
+        if r.get("viz"):
+            zip_key = f"_struct_zip_{id(r)}"
+            if zip_key not in ss:
+                try:
+                    ss[zip_key] = report_writer.build_structure_zip(r)
+                except Exception:
+                    ss[zip_key] = None
+            if ss.get(zip_key):
+                st.download_button("Download structures (.zip)", ss[zip_key],
+                                   file_name=f"MUMO_{meta.get('gene', 'target')}_structures.zip",
+                                   mime="application/zip", key=f"struct_{id(r)}")
+                st.caption("Docked complex, ligand & receptor as PDB/SDF/MOL2 — open in "
+                           "Discovery Studio, Maestro, BIOVIA, PyMOL, etc.")
+
         if r.get("viz"):
             st.markdown("##### Pose & Interaction Views")
             st.caption("The 2D map and the 3D pose show the SAME interactions from one analysis — "

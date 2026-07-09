@@ -328,3 +328,126 @@ def build_admet_docx(r):
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# structure export: the raw docked geometry in standard formats, so a user can
+# open the pose in Discovery Studio / Maestro / BIOVIA / PyMOL / ChimeraX etc.
+# Everything is derived from the (persisted) complex PDB, so this works for both
+# fresh and reloaded results without needing the original run's temp files.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _split_complex_pdb(pdb_text):
+    """Split a docked complex PDB into (receptor_pdb, ligand_pdb). The docked
+    ligand is the HETATM group named LIG; everything else is the receptor."""
+    receptor, ligand = [], []
+    for ln in pdb_text.splitlines():
+        rec = ln[:6].strip()
+        if rec == "ATOM":
+            receptor.append(ln)
+        elif rec == "HETATM":
+            (ligand if ln[17:20].strip() == "LIG" else receptor).append(ln)
+        elif rec in ("TER", "HEADER", "CRYST1", "SEQRES"):
+            receptor.append(ln)
+    rec_txt = ("\n".join(receptor) + "\nEND\n") if receptor else ""
+    lig_txt = ("\n".join(ligand) + "\nEND\n") if ligand else ""
+    return rec_txt, lig_txt
+
+
+def _ligand_sdf(lig_pdb, smiles=None):
+    """Ligand PDB block → MDL molblock (.sdf/.mol) text. Uses the known SMILES
+    to restore correct bond orders (PDB has none). Returns None on failure."""
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+    except Exception:
+        return None
+    mol = Chem.MolFromPDBBlock(lig_pdb, sanitize=True, removeHs=False)
+    if mol is None:
+        mol = Chem.MolFromPDBBlock(lig_pdb, sanitize=False, removeHs=False)
+    if mol is None:
+        return None
+    if smiles:
+        try:
+            tmpl = Chem.MolFromSmiles(smiles)
+            if tmpl is not None:
+                mol = AllChem.AssignBondOrdersFromTemplate(tmpl, mol)
+        except Exception:
+            pass  # keep the perceived-connectivity mol if template matching fails
+    try:
+        # MolToMolBlock ends at "M  END" (a .mol block); append the SDF record
+        # terminator so the .sdf file is valid for strict parsers.
+        return Chem.MolToMolBlock(mol).rstrip() + "\n$$$$\n"
+    except Exception:
+        return None
+
+
+def _ligand_mol2(lig_pdb):
+    """Ligand PDB block → MOL2 text via OpenBabel (best-effort). Returns None if
+    OpenBabel isn't available or conversion fails."""
+    try:
+        from openbabel import pybel
+        return pybel.readstring("pdb", lig_pdb).write("mol2")
+    except Exception:
+        return None
+
+
+def build_structure_zip(r):
+    """Bundle the docked structures for external viewers. Per ligand: the docked
+    complex, ligand, and receptor as PDB, plus ligand SDF (correct bonds) and
+    MOL2 (best-effort). Returns zip bytes, or None if there's nothing to export."""
+    import os
+    import zipfile
+
+    viz = r.get("viz") or {}
+    rdf = r.get("rdf")
+    meta = r.get("meta") or {}
+    gene = re.sub(r"[^A-Za-z0-9_.-]", "_", str(meta.get("gene", "target"))) or "target"
+
+    smiles_by = {}
+    if rdf is not None:
+        for _, row in rdf.iterrows():
+            smiles_by[row.get("Ligand")] = row.get("SMILES")
+
+    buf = io.BytesIO()
+    receptor_written = False
+    wrote_any = False
+    readme = ["MUMO — docked structures", "=" * 25, "",
+              f"Target: {meta.get('gene', '?')}",
+              f"Pocket: {meta.get('pocket', 'n/a')}", "",
+              "Files per ligand:",
+              "  *_complex.pdb  — receptor + docked ligand pose (open this to see the pose)",
+              "  *_ligand.pdb   — docked ligand only",
+              "  *_ligand.sdf   — docked ligand with correct bond orders",
+              "  *_ligand.mol2  — docked ligand (if available)",
+              f"  {gene}_receptor.pdb — target protein only", "",
+              "Open in Discovery Studio, Maestro/BIOLuminate, BIOVIA, PyMOL, ChimeraX, etc.",
+              "Note: structures reflect the exact docked pose from this run.", "",
+              "Ligands:"]
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for label, entry in viz.items():
+            safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(label))[:40] or "ligand"
+            try:
+                with open(entry["complex"]) as f:
+                    complex_pdb = f.read()
+            except Exception:
+                continue
+            rec_pdb, lig_pdb = _split_complex_pdb(complex_pdb)
+            z.writestr(f"{gene}_{safe}_complex.pdb", complex_pdb)
+            wrote_any = True
+            if lig_pdb:
+                z.writestr(f"{safe}_ligand.pdb", lig_pdb)
+                sdf = _ligand_sdf(lig_pdb, smiles_by.get(label))
+                if sdf:
+                    z.writestr(f"{safe}_ligand.sdf", sdf)
+                mol2 = _ligand_mol2(lig_pdb)
+                if mol2:
+                    z.writestr(f"{safe}_ligand.mol2", mol2)
+            if not receptor_written and rec_pdb:
+                z.writestr(f"{gene}_receptor.pdb", rec_pdb)
+                receptor_written = True
+            readme.append(f"  - {label}")
+        z.writestr("README.txt", "\n".join(readme) + "\n")
+
+    return buf.getvalue() if wrote_any else None
