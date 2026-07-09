@@ -976,8 +976,18 @@ def run_pipeline(status_area):
                   "tier": c["tier"] or "Standard"}
     if ss.active_conversation_id:
         try:
+            from viz import serialize_viz
+            # persist the image data too (2D SVG + interaction data + pocket-cropped
+            # complex) so a RELOADED conversation can rebuild the full report incl.
+            # 2D/3D — not just the summary rows. Only the report-relevant meta fields
+            # are kept (center/size arrays aren't JSON-safe and aren't shown anyway).
+            meta_store = {k: meta.get(k) for k in
+                          ("gene", "pocket", "exhaustiveness", "replicas", "validation")}
             authdb.save_results(ss.active_conversation_id,
-                                 {"gene": meta.get("gene"), "rows": rdf.to_dict(orient="records")})
+                                 {"gene": meta.get("gene"),
+                                  "rows": rdf.to_dict(orient="records"),
+                                  "meta": meta_store,
+                                  "viz": serialize_viz(viz)})
         except Exception:
             pass
 
@@ -1048,8 +1058,16 @@ with st.sidebar:
                 except Exception:
                     pass
                 if stored:
+                    from viz import rehydrate_viz
                     rdf = pd.DataFrame(stored["rows"])
-                    ss.results = {"rdf": rdf, "viz": {}, "meta": {"gene": stored.get("gene")}, "tier": "Standard"}
+                    rdf.index = range(1, len(rdf) + 1)   # match fresh docking (Rank starts at 1)
+                    meta = stored.get("meta") or {}
+                    meta.setdefault("gene", stored.get("gene"))
+                    # rebuild the 2D/3D image data from what we persisted, so the
+                    # reloaded report is as complete as a fresh one
+                    viz = rehydrate_viz(stored.get("viz") or {}, DATA)
+                    ss.results = {"kind": "docking", "rdf": rdf, "viz": viz,
+                                  "meta": meta, "tier": "Standard"}
                 else:
                     ss.results = None
                 ss.stage, ss.active_conversation_id = "start", h["id"]

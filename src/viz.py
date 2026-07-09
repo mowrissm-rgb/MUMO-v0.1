@@ -85,6 +85,52 @@ def _crop_to_pocket(pdb_text, cutoff=14.0):
     return "\n".join(kept + ["TER"] + hetatm) + "\n"
 
 
+# ── persistence: the in-memory `viz` dict points at complex PDB files on disk,
+#    which don't survive a page reload / container restart. serialize_viz turns
+#    it into a self-contained, JSON-storable form (2D SVG + interaction data +
+#    the pocket-cropped complex text) so a reloaded conversation can rebuild the
+#    full docking report — 2D diagram AND 3D pose — from the database alone. ──
+def serialize_viz(viz, crop=True):
+    """viz (label -> {"complex": path, "ia": {...}}) → JSON-safe dict for storage.
+    Reads each complex PDB from disk and (by default) crops it to the binding
+    pocket, keeping the stored payload small (cloud/free-tier friendly)."""
+    out = {}
+    for label, entry in (viz or {}).items():
+        pdb_text = None
+        try:
+            with open(entry["complex"]) as f:
+                pdb_text = f.read()
+            if crop:
+                pdb_text = _crop_to_pocket(pdb_text)
+        except Exception:
+            pdb_text = None
+        out[label] = {"pdb": pdb_text, "ia": entry.get("ia", {})}
+    return out
+
+
+def rehydrate_viz(stored_viz, data_dir):
+    """Inverse of serialize_viz: write each stored PDB back to a file under
+    data_dir and rebuild the viz dict the report builder / 3D viewer expect.
+    Ligands whose PDB failed to store are skipped (their section will show the
+    'no pose data' note rather than a broken image)."""
+    import os
+    import re as _re
+    out = {}
+    for i, (label, v) in enumerate((stored_viz or {}).items()):
+        pdb_text = v.get("pdb")
+        if not pdb_text:
+            continue
+        safe = _re.sub(r"[^A-Za-z0-9_.-]", "_", str(label))[:40] or f"lig{i}"
+        path = os.path.join(data_dir, f"reload_{i}_{safe}.pdb")
+        try:
+            with open(path, "w") as f:
+                f.write(pdb_text)
+            out[label] = {"complex": path, "ia": v.get("ia", {})}
+        except Exception:
+            continue
+    return out
+
+
 def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=560):
     """
     Build a LIGHTWEIGHT interactive 3D viewer.
