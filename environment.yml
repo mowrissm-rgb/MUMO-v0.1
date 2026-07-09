@@ -9,6 +9,7 @@ dependencies:
   - python=3.11
   - rdkit
   - autodock-vina      # provides the 'vina' command on PATH
+  - blast              # bioconda — self-hosted BLAST+ (blastp/makeblastdb), public domain
   - numpy
   - scipy              # required by meeko (meeko declares no deps, so we add them)
   - gemmi              # required by meeko's receptor preparation

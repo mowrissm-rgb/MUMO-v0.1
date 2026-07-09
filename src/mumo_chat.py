@@ -885,16 +885,15 @@ def converse(msg):
             say(f"STRING analysis couldn't run: {e}")
         return
 
-    # BLAST sequence similarity (slow — a remote NCBI job, ~1–3 min)
+    # BLAST sequence similarity (self-hosted BLAST+ — runs in seconds)
     if action == "blast" and c.get("target"):
         from agents.blast_analyst import analyze_blast
         q = c["target"]
         q = q[0] if isinstance(q, list) else q
         try:
-            with st.status("Running BLAST at NCBI (this takes 1–3 minutes)…",
-                           expanded=True) as stt:
+            with st.status("Searching similar proteins with BLAST…", expanded=True) as stt:
                 data_bl = analyze_blast(
-                    str(q), status_cb=lambda w: stt.write(f"…searching ({w}s elapsed)"))
+                    str(q), status_cb=lambda w: stt.write("…fetching the sequence and searching"))
                 stt.update(label="BLAST complete", state="complete")
             with st.spinner("Writing the BLAST report…"):
                 data_bl["narrative"] = _blast_narrative(data_bl)
@@ -1105,6 +1104,25 @@ with st.sidebar:
             ss.messages, ss.results, ss.active_conversation_id = [], None, None
             ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
             st.rerun()
+
+    # Data-source attributions (CC-BY / CC-BY-SA terms require credit) + tool credits.
+    st.markdown("---")
+    with st.expander("Data sources & credits"):
+        st.markdown(
+            "MUMO builds on open data and tools, with thanks:\n\n"
+            "**Data**\n"
+            "- UniProt — protein sequences (CC-BY 4.0)\n"
+            "- STRING — interaction networks (CC-BY 4.0)\n"
+            "- Open Targets — disease–target associations (CC-BY 4.0)\n"
+            "- ChEMBL — bioactive compounds (CC-BY-SA 3.0)\n"
+            "- AlphaFold DB — predicted structures (CC-BY 4.0)\n"
+            "- RCSB PDB — experimental structures (public domain)\n"
+            "- Therapeutics Data Commons — ADMET training data\n\n"
+            "**Tools**\n"
+            "- AutoDock Vina, RDKit, ProLIF, meeko, dimorphite-dl, "
+            "ADMET-AI / Chemprop, self-hosted BLAST+\n"
+            "- Built with Llama (Llama-3.3, via Groq)\n"
+        )
 
 # ── read chat input (pinned at bottom) ──
 user_input = st.chat_input("Message MUMO…  e.g. “find a drug for cystic fibrosis”")

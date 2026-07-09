@@ -40,6 +40,19 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
     pip install --no-cache-dir admet-ai && \
     python -c "from admet_ai import ADMETModel; ADMETModel(); print('admet-ai warmup OK')"
 
+# Self-hosted BLAST database: download UniProt SwissProt (~90 MB gz) and format
+# it into a local BLAST+ DB at /opt/blastdb/swissprot. blastp then runs in-
+# container (seconds), so MUMO no longer depends on NCBI's web BLAST service
+# (which is not licensed for production use). Placed after the torch layer so
+# adding it doesn't invalidate that cache; the .fasta is deleted after formatting
+# to keep the image lean (final DB ~250 MB). MUMO_BLAST_DB points blast_analyst here.
+ENV MUMO_BLAST_DB=/opt/blastdb/swissprot
+RUN mkdir -p /opt/blastdb && cd /opt/blastdb && \
+    wget -q https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz && \
+    gunzip uniprot_sprot.fasta.gz && \
+    makeblastdb -in uniprot_sprot.fasta -dbtype prot -parse_seqids -out swissprot -title swissprot && \
+    rm -f uniprot_sprot.fasta
+
 # --- app code ---
 WORKDIR /app
 COPY --chown=mambauser:mambauser . /app

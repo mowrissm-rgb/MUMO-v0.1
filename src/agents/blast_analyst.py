@@ -15,18 +15,26 @@ It returns, for each hit: the accession, the protein/organism, the % identity
 better). Great for Project 2 (relating a mucolytic enzyme to known enzymes) and
 for building the family that later feeds alignment + a phylogenetic tree.
 
-Free — UniProt (gene → sequence) + NCBI BLAST web API. No key, pure requests.
-NOTE: BLAST is inherently slow — a search is a JOB that takes ~1–3 minutes.
+Gene → sequence via UniProt's REST API (a data service, fine for production).
+The similarity search runs on a SELF-HOSTED BLAST+ (public-domain NCBI software)
+against a local UniProt SwissProt database baked into the image — no dependency on
+NCBI's web BLAST service (which isn't licensed for production/commercial use) and
+much faster (seconds, not minutes).
 """
 
+import os
 import re
-import time
+import subprocess
+import tempfile
 import requests
 
 UNIPROT = "https://rest.uniprot.org/uniprotkb/search"
-NCBI_BLAST = "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
 HUMAN = 9606
 _AA = set("ACDEFGHIKLMNPQRSTVWYBXZU*")
+
+# Self-hosted BLAST+ database (built into the container at /opt/blastdb/swissprot).
+# Overridable for other environments.
+_BLAST_DB = os.environ.get("MUMO_BLAST_DB", "/opt/blastdb/swissprot")
 
 
 def looks_like_sequence(text):
@@ -65,53 +73,58 @@ def fetch_sequence(gene, species=HUMAN):
     return it["primaryAccession"], name, it["sequence"]["value"]
 
 
-def submit_blast(seq, program="blastp", database="swissprot"):
-    """Submit a BLAST job → returns the NCBI request id (RID)."""
-    r = requests.post(NCBI_BLAST, data={
-        "CMD": "Put", "PROGRAM": program, "DATABASE": database, "QUERY": seq}, timeout=30)
-    r.raise_for_status()
-    m = re.search(r"RID = (\S+)", r.text)
-    if not m:
-        raise RuntimeError("NCBI BLAST didn't return a job id — try again shortly.")
-    return m.group(1)
-
-
-def poll_blast(rid, max_wait=240, interval=20, status_cb=None):
-    """Poll a BLAST job until READY. Raises on failure/timeout."""
-    waited = 0
-    while waited < max_wait:
-        txt = requests.get(NCBI_BLAST, params={
-            "CMD": "Get", "RID": rid, "FORMAT_OBJECT": "SearchInfo"}, timeout=30).text
-        if "Status=READY" in txt:
-            return True
-        if "Status=UNKNOWN" in txt or "Status=FAILED" in txt:
-            raise RuntimeError("The BLAST job failed or expired — please try again.")
-        if status_cb:
-            status_cb(waited)
-        time.sleep(interval)
-        waited += interval
-    raise TimeoutError("BLAST is taking longer than usual — try again in a moment.")
-
-
-def get_results(rid, max_hits=25):
-    """Fetch + parse BLAST hits → list of {accession, title, sciname, identity, evalue, ...}."""
-    d = requests.get(NCBI_BLAST, params={
-        "CMD": "Get", "RID": rid, "FORMAT_TYPE": "JSON2_S"}, timeout=60).json()
-    hits = d["BlastOutput2"][0]["report"]["results"]["search"].get("hits", [])
-    out = []
-    for h in hits[:max_hits]:
-        desc = h["description"][0]
-        hsp = h["hsps"][0]
-        out.append({
-            "accession": desc.get("accession", ""),
-            "title": desc.get("title", ""),
-            "sciname": desc.get("sciname", ""),
-            "identity": round(100 * hsp["identity"] / hsp["align_len"], 1),
-            "evalue": hsp["evalue"],
-            "bit_score": round(hsp.get("bit_score", 0), 1),
-            "align_len": hsp["align_len"],
-        })
+def _parse_blast_tab(text, max_hits=25):
+    """Parse blastp tabular output (outfmt 6 sseqid pident length evalue bitscore
+    stitle) from a UniProt SwissProt DB into hit dicts, keeping ONE (best) HSP per
+    subject. UniProt headers carry the organism as 'OS=...' and the accession in
+    the 'sp|ACC|NAME' id, so no taxonomy DB is needed."""
+    out, seen = [], set()
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 6:
+            continue
+        sseqid, pident, length, evalue, bitscore, stitle = parts[:6]
+        acc = sseqid.split("|")[1] if sseqid.count("|") >= 2 else sseqid
+        if acc in seen:                          # first line per subject = best HSP
+            continue
+        seen.add(acc)
+        m = re.search(r"OS=(.+?)(?:\s+(?:OX|GN|PE|SV)=|$)", stitle)
+        sciname = m.group(1).strip() if m else ""
+        title = re.split(r"\s+OS=", stitle)[0].strip()
+        try:
+            out.append({
+                "accession": acc, "title": title, "sciname": sciname,
+                "identity": round(float(pident), 1),
+                "evalue": float(evalue), "bit_score": round(float(bitscore), 1),
+                "align_len": int(length),
+            })
+        except ValueError:
+            continue
+        if len(out) >= max_hits:
+            break
     return out
+
+
+def run_blastp(seq, max_hits=25, timeout=300):
+    """Run the self-hosted blastp against the local SwissProt DB → hit dicts."""
+    with tempfile.NamedTemporaryFile("w", suffix=".fasta", delete=False) as f:
+        f.write(f">query\n{seq}\n")
+        qpath = f.name
+    try:
+        proc = subprocess.run(
+            ["blastp", "-query", qpath, "-db", _BLAST_DB,
+             "-outfmt", "6 sseqid pident length evalue bitscore stitle",
+             "-max_target_seqs", str(max_hits), "-evalue", "10",
+             "-num_threads", str(os.cpu_count() or 2)],
+            capture_output=True, text=True, timeout=timeout)
+        if proc.returncode != 0:
+            raise RuntimeError(f"blastp failed: {(proc.stderr or '').strip()[:200]}")
+        return _parse_blast_tab(proc.stdout, max_hits)
+    finally:
+        try:
+            os.unlink(qpath)
+        except Exception:
+            pass
 
 
 def analyze_blast(query, species=HUMAN, program="blastp", database="swissprot", status_cb=None):
@@ -119,7 +132,7 @@ def analyze_blast(query, species=HUMAN, program="blastp", database="swissprot", 
     Full BLAST. `query` = a gene/protein NAME (sequence auto-fetched from UniProt)
     OR a raw sequence / FASTA. Returns:
       query_name, accession, seq_len, hits, database, program, rid.
-    Slow (~1–3 min) because BLAST is a remote job.
+    Fast — the search runs on the self-hosted BLAST+ (seconds, not minutes).
     """
     if looks_like_sequence(query):
         seq, acc, qname = clean_sequence(query), "", "your sequence"
@@ -127,10 +140,11 @@ def analyze_blast(query, species=HUMAN, program="blastp", database="swissprot", 
         acc, qname, seq = fetch_sequence(query, species)
     if len(seq) < 10:
         raise ValueError("The sequence is too short to BLAST (need ≥10 residues).")
-    rid = submit_blast(seq, program, database)
-    poll_blast(rid, status_cb=status_cb)
+    if status_cb:
+        status_cb(0)
+    hits = run_blastp(seq)
     return {"query_name": qname, "accession": acc, "seq_len": len(seq),
-            "hits": get_results(rid), "database": database, "program": program, "rid": rid}
+            "hits": hits, "database": database, "program": program, "rid": "local"}
 
 
 if __name__ == "__main__":
