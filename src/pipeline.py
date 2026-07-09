@@ -12,7 +12,8 @@ import os
 from agents.target_analyst import analyze_target
 from agents.interaction_analyst import analyze_interactions
 from docking_engine import (clean_protein_pdb, prepare_receptor,
-                            prepare_ligand, dock_with_replicas, validate_native_redock)
+                            prepare_ligand, dock_with_replicas, validate_native_redock,
+                            estimate_ki, ligand_efficiency, reliability_assessment)
 
 
 def resolve_receptor(tgt, data_dir):
@@ -59,7 +60,7 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
         validation = validate_native_redock(pdb_path, receptor, vina, center, size,
                                             data_dir, exhaustiveness=eff_exh, seed=seed)
 
-    rows, viz = [], {}
+    rows, viz, reliability_by = [], {}, {}
     for k, lig in enumerate(ligands):
         label = lig["label"]
         status(f"Docking {label} ({k+1}/{len(ligands)})…")
@@ -73,15 +74,31 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 center, size, exhaustiveness=eff_exh, n_replicas=eff_rep, base_seed=seed)
             best, modes, outp = res["best_score"], res["modes"], res["out_pdbqt"]
             ia = analyze_interactions(cleaned, outp, cmplx)
+
+            # ── validation / statistics layer (#5): interpretable + aggregate metrics ──
+            n_heavy = None
+            try:
+                from rdkit import Chem
+                _m = Chem.MolFromSmiles(lig["smiles"])
+                n_heavy = _m.GetNumHeavyAtoms() if _m else None
+            except Exception:
+                pass
+            le = ligand_efficiency(best, n_heavy)
+            rel = reliability_assessment(res, validation)
+            reliability_by[label] = rel
+
             rows.append({
                 "Ligand": label,
                 "Best affinity (kcal/mol)": best,
+                "Est. Ki": estimate_ki(best),
+                "Ligand efficiency": le if le is not None else "—",
                 "Vinardo (kcal/mol)": res.get("vinardo") if res.get("vinardo") is not None else "—",
                 "Consensus": res.get("consensus", "—"),
                 "Pose consistency": (f"{res.get('n_clustered', '?')}/{res.get('n_poses', '?')} poses"
                                      if res.get("n_poses") else "—"),
                 "Mean ± SD (kcal/mol)": (f"{res['mean']} ± {res['sd']}" if eff_rep > 1 else "—"),
                 "Confidence": res["confidence"],
+                "Reliability": rel["reliability"],
                 "Total interactions": ia["total_interactions"], "H-bonds": ia["n_hbonds"],
                 "Hydrophobic": ia["n_hydrophobic"], "Pi-stack": ia["n_pistacking"],
                 "Salt bridges": ia["n_saltbridges"], "Halogen": ia["n_halogen"],
@@ -97,4 +114,4 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                          "Total interactions": str(le)[:40], "SMILES": lig["smiles"]})
     return rows, viz, {"gene": tgt["gene"], "center": center, "pocket": pocket,
                        "exhaustiveness": eff_exh, "replicas": eff_rep,
-                       "validation": validation}
+                       "validation": validation, "reliability_by": reliability_by}

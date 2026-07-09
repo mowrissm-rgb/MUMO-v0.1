@@ -165,8 +165,9 @@ def build_docking_docx(r, llm=None):
         doc.add_paragraph("Method: " + " · ".join(bits))
 
     doc.add_heading("Summary — all docked ligands", level=1)
-    summary_cols = ["Ligand", "Best affinity (kcal/mol)", "Vinardo (kcal/mol)", "Consensus",
-                     "Pose consistency", "Confidence", "Total interactions", "H-bonds"]
+    summary_cols = ["Ligand", "Best affinity (kcal/mol)", "Est. Ki", "Ligand efficiency",
+                     "Vinardo (kcal/mol)", "Consensus", "Pose consistency", "Confidence",
+                     "Reliability", "Total interactions", "H-bonds"]
     cols = [c for c in summary_cols if c in rdf.columns]
     summary = rdf[cols].reset_index().rename(columns={"index": "Rank"})
     _add_df_table(doc, summary)
@@ -195,9 +196,14 @@ def build_docking_docx(r, llm=None):
             def _sp(v):
                 return [x for x in str(v).split("; ") if x and x != "-"]
 
+            _rel = (meta.get("reliability_by") or {}).get(label, {})
             writeup = write_report({
                 "target": meta.get("gene"), "ligand": label,
                 "affinity": float(row["Best affinity (kcal/mol)"]),
+                "estimated_ki": row.get("Est. Ki"),
+                "ligand_efficiency": row.get("Ligand efficiency"),
+                "reliability": row.get("Reliability"),
+                "reliability_reason": _rel.get("reason"),
                 "total_interactions": row.get("Total interactions"),
                 "n_hbonds": int(row.get("H-bonds", 0) or 0),
                 "hbond_residues": _sp(row.get("H-bond residues", "")),

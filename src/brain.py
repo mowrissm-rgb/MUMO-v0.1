@@ -140,11 +140,17 @@ def parse_intent(text, llm=None):
 # ─────────────────────────────────────────────────────────────────────────────
 _REPORT_SYSTEM = {
     "Simple": "Write a short, friendly explanation for a non-scientist. No jargon. "
-              "Explain what the result means in everyday language.",
-    "Standard": "Write a concise technical summary for a researcher. Mention the "
-                "binding affinity, key interacting residues, and a brief interpretation.",
+              "Explain what the result means in everyday language. If an estimated Ki, "
+              "ligand efficiency, or reliability is given, explain each in plain words "
+              "(e.g. a smaller Ki means tighter binding).",
+    "Standard": "Write a concise technical summary for a researcher. Mention the binding "
+                "affinity, the estimated Ki and ligand efficiency (define ligand efficiency "
+                "as binding energy per heavy atom), the key interacting residues, the overall "
+                "reliability of the result and why, and a brief interpretation.",
     "Ambitious": "Write a detailed, publication-style results paragraph (Vancouver tone): "
-                 "binding affinity, interaction profile, key residues, and significance.",
+                 "binding affinity, estimated inhibition constant (Ki), ligand efficiency, "
+                 "interaction profile, key residues, the reliability/validation of the run, "
+                 "and significance.",
 }
 
 
@@ -170,11 +176,24 @@ def write_report(results, llm=None, tier="Standard"):
                "good" if res.get("affinity", 0) <= -6 else
                "moderate" if res.get("affinity", 0) <= -4 else "weak")
     hb = ", ".join(res.get("hbond_residues", [])) or "none"
+    stat_line = ""
+    if res.get("estimated_ki") or res.get("ligand_efficiency") is not None:
+        stat_line = (f"Estimated Ki: {res.get('estimated_ki','?')} "
+                     f"(binding constant; smaller = tighter). "
+                     f"Ligand efficiency: {res.get('ligand_efficiency','?')} kcal/mol per heavy atom.\n")
+    rel_line = ""
+    if res.get("reliability"):
+        rel_line = f"Overall reliability: {res['reliability']}"
+        if res.get("reliability_reason"):
+            rel_line += f" ({res['reliability_reason']})"
+        rel_line += ".\n"
     return (
         f"**{res.get('ligand','Ligand')} vs {res.get('target','target')}**\n\n"
         f"Best binding affinity: **{res.get('affinity','?')} kcal/mol** ({verdict} binding).\n"
+        f"{stat_line}"
         f"Total interactions: {res.get('total_interactions','?')} "
         f"({res.get('n_hbonds',0)} hydrogen bonds, {res.get('n_hydrophobic',0)} hydrophobic).\n"
         f"Hydrogen-bond residues: {hb}.\n"
-        f"Interacting residues: {', '.join(res.get('interacting_residues', [])) or 'n/a'}."
+        f"Interacting residues: {', '.join(res.get('interacting_residues', [])) or 'n/a'}.\n"
+        f"{rel_line}"
     )

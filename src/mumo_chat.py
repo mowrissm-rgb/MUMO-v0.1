@@ -769,11 +769,21 @@ def _results_context():
     rdf = r["rdf"]
     rows = []
     for _, row in rdf.head(5).iterrows():
-        rows.append(f"- {row['Ligand']}: {row['Best affinity (kcal/mol)']} kcal/mol, "
+        ki = row.get("Est. Ki")
+        le = row.get("Ligand efficiency")
+        rel = row.get("Reliability")
+        extra = ""
+        if ki not in (None, "—"):
+            extra += f", est. Ki {ki}"
+        if le not in (None, "—"):
+            extra += f", ligand efficiency {le}"
+        if rel not in (None, "—"):
+            extra += f", reliability {rel}"
+        rows.append(f"- {row['Ligand']}: {row['Best affinity (kcal/mol)']} kcal/mol{extra}, "
                     f"{row['H-bonds']} H-bonds, {row['Total interactions']} total interactions; "
                     f"residues: {row['All interacting residues']}")
     return (f"Latest docking results — target {r['meta']['gene']} "
-            f"(more negative kcal/mol = stronger binding):\n" + "\n".join(rows))
+            f"(more negative kcal/mol = stronger binding; smaller Ki = tighter):\n" + "\n".join(rows))
 
 
 def _personalization_context():
@@ -982,7 +992,8 @@ def run_pipeline(status_area):
             # 2D/3D — not just the summary rows. Only the report-relevant meta fields
             # are kept (center/size arrays aren't JSON-safe and aren't shown anyway).
             meta_store = {k: meta.get(k) for k in
-                          ("gene", "pocket", "exhaustiveness", "replicas", "validation")}
+                          ("gene", "pocket", "exhaustiveness", "replicas", "validation",
+                           "reliability_by")}
             authdb.save_results(ss.active_conversation_id,
                                  {"gene": meta.get("gene"),
                                   "rows": rdf.to_dict(orient="records"),
@@ -995,8 +1006,13 @@ def run_pipeline(status_area):
     top = rdf.iloc[0]
     if str(top["Best affinity (kcal/mol)"]) != "FAILED":
         def _sp(v): return [x for x in str(v).split("; ") if x and x != "-"]
+        _rel = (meta.get("reliability_by") or {}).get(top["Ligand"], {})
         rep = write_report({"target": meta["gene"], "ligand": top["Ligand"],
                             "affinity": float(top["Best affinity (kcal/mol)"]),
+                            "estimated_ki": top.get("Est. Ki"),
+                            "ligand_efficiency": top.get("Ligand efficiency"),
+                            "reliability": top.get("Reliability"),
+                            "reliability_reason": _rel.get("reason"),
                             "total_interactions": top["Total interactions"],
                             "n_hbonds": int(top["H-bonds"]), "hbond_residues": _sp(top["H-bond residues"]),
                             "n_hydrophobic": int(top["Hydrophobic"]),
@@ -1181,10 +1197,13 @@ def render_results():
             # wraps onto a second line instead of cutting text off.
             metrics = [
                 ("Best affinity (Vina)", f"{top['Best affinity (kcal/mol)']} kcal/mol"),
+                ("Estimated Ki", str(top.get("Est. Ki", "—"))),
+                ("Ligand efficiency", str(top.get("Ligand efficiency", "—"))),
                 ("Vinardo rescore", f"{top.get('Vinardo (kcal/mol)', '—')} kcal/mol"),
                 ("Consensus", str(top.get("Consensus", "—"))),
                 ("Pose consistency", str(top.get("Pose consistency", "—"))),
                 ("Confidence", str(top.get("Confidence", "—"))),
+                ("Reliability", str(top.get("Reliability", "—"))),
                 ("Total interactions", str(int(top["Total interactions"]))),
                 ("H-bonds", str(int(top["H-bonds"]))),
             ]

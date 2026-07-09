@@ -469,6 +469,89 @@ def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_
             "n_poses": pc["n_poses"], "n_clustered": pc["n_clustered"]}
 
 
+def estimate_ki(delta_g, temperature=298.15):
+    """Convert a docking binding free energy ΔG (kcal/mol) into an estimated
+    binding constant Ki via ΔG = R·T·ln(Ki). Returns a friendly string with an
+    auto-chosen unit (pM … M), or '—'. This is an ESTIMATE — Vina scores are
+    approximate free energies, so treat Ki as an order-of-magnitude guide."""
+    try:
+        import math
+        R = 1.98720425e-3            # gas constant, kcal/(mol·K)
+        ki_molar = math.exp(float(delta_g) / (R * temperature))   # ΔG<0 → Ki<1 M
+    except Exception:
+        return "—"
+    for factor, unit in ((1e12, "pM"), (1e9, "nM"), (1e6, "µM"), (1e3, "mM"), (1.0, "M")):
+        val = ki_molar * factor
+        if val < 1000:
+            return f"{val:.2f} {unit}"
+    return f"{ki_molar:.2e} M"
+
+
+def ligand_efficiency(delta_g, n_heavy_atoms):
+    """Ligand efficiency = −ΔG / (number of heavy atoms), in kcal/mol per heavy
+    atom. It rewards potency achieved with a SMALL molecule; ~0.3 or higher is
+    usually considered efficient. Returns a float, or None if unknown."""
+    try:
+        if n_heavy_atoms and int(n_heavy_atoms) > 0:
+            return round(-float(delta_g) / int(n_heavy_atoms), 3)
+    except Exception:
+        pass
+    return None
+
+
+def reliability_assessment(res, validation=None):
+    """Roll the independent quality signals — replica precision, Vina/Vinardo
+    consensus, pose clustering, and (if available) native-redock RMSD — into ONE
+    overall reliability verdict with a plain-language reason. Purely aggregates
+    numbers already computed; adds no new docking work.
+    Returns {"reliability": "High"|"Medium"|"Low", "reason": str}."""
+    strong, avail, factors = 0, 0, []
+
+    sd, n = res.get("sd"), res.get("n", 1)
+    if n and n > 1:
+        avail += 1
+        if sd is not None and sd <= 0.5:
+            strong += 1; factors.append("reproducible across replicas")
+        elif sd is not None and sd <= 1.0:
+            factors.append("moderate replica spread")
+        else:
+            factors.append("high replica spread")
+
+    cons = (res.get("consensus") or "").lower()
+    if cons and cons != "—":
+        avail += 1
+        if "disagree" in cons:            # check 'disagree' first — it contains 'agree'
+            factors.append("scoring functions disagree")
+        elif "agree" in cons:
+            strong += 1; factors.append("two scoring functions agree")
+
+    pc = res.get("pose_consistency")
+    if pc is not None:
+        avail += 1
+        if pc >= 0.5:
+            strong += 1; factors.append("poses converge on one binding mode")
+        else:
+            factors.append("poses are scattered")
+
+    if validation:
+        avail += 1
+        if validation.get("passed"):
+            strong += 1; factors.append(f"setup validated (native redock {validation.get('rmsd','?')} Å)")
+        else:
+            factors.append(f"native redock high ({validation.get('rmsd','?')} Å)")
+
+    # verdict scaled to how many signals we actually had: mostly-strong = High
+    if avail == 0:
+        score = "Single run"
+    elif strong >= max(3, avail):          # essentially all signals strong
+        score = "High"
+    elif strong >= 2 or (avail <= 2 and strong >= 1):
+        score = "Medium"
+    else:
+        score = "Low"
+    return {"reliability": score, "reason": "; ".join(factors) or "single run — limited signals"}
+
+
 def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, data_dir,
                            exhaustiveness=16, seed=42):
     """
