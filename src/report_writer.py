@@ -179,9 +179,12 @@ def build_docking_docx(r, llm=None):
         browser_error = f"{type(e).__name__}: {e}"
 
     try:
-        for rank, row in rdf.iterrows():
+        for pos, (rank, row) in enumerate(rdf.iterrows()):
             label = row["Ligand"]
-            doc.add_page_break()
+            # continuous flow — no page break per ligand; a thin spacer between
+            # sections keeps them visually separated without forcing new pages
+            if pos > 0:
+                doc.add_paragraph()
             doc.add_heading(f"#{rank} — {label}", level=1)
             if str(row["Best affinity (kcal/mol)"]) == "FAILED":
                 doc.add_paragraph(f"Docking failed for this ligand: {row.get('Total interactions', '')}")
