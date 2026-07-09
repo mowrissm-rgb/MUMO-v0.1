@@ -116,6 +116,56 @@ def is_configured():
     return get_client() is not None
 
 
+# ── resilient calls: Supabase (via httpx) keeps a persistent HTTP/2 connection,
+#    and its server closes IDLE connections with a GOAWAY. The next query on the
+#    stale cached client then raises a transport error (e.g. RemoteProtocolError:
+#    ConnectionTerminated) — which, uncaught, used to crash the whole page when a
+#    user clicked a past conversation after a quiet spell. `_run` retries once on
+#    exactly those transport errors, dropping the cached client so it reconnects
+#    fresh; reads pass swallow=True to return a safe default instead of crashing
+#    if it still fails. ──
+_RETRYABLE_NAMES = {
+    "RemoteProtocolError", "RemoteDisconnected", "ConnectError", "ConnectTimeout",
+    "ReadError", "ReadTimeout", "WriteError", "PoolTimeout", "ConnectionResetError",
+    "ConnectionError", "ProtocolError",
+}
+_RETRYABLE_TEXT = ("ConnectionTerminated", "Server disconnected", "Connection reset",
+                   "connection was closed", "RemoteProtocolError", "GOAWAY", "EOF occurred")
+
+
+def _is_retryable(exc):
+    if type(exc).__name__ in _RETRYABLE_NAMES:
+        return True
+    s = str(exc)
+    return any(t in s for t in _RETRYABLE_TEXT)
+
+
+def _run(fn, default=None, swallow=False, retries=1):
+    """Run fn(sb) against the Supabase client with one transparent reconnect on a
+    dropped-connection error. If it ultimately fails: return `default` when
+    swallow=True (reads — never crash the app), else re-raise (auth/writes —
+    surface the real error to the caller/UI)."""
+    sb = get_client()
+    if sb is None:
+        return default
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            return fn(sb)
+        except Exception as e:
+            last = e
+            if attempt < retries and _is_retryable(e):
+                st.session_state.pop("_sb_client", None)   # force a fresh connection
+                sb = get_client()
+                if sb is None:
+                    break
+                continue
+            break
+    if swallow:
+        return default
+    raise last
+
+
 # ─────────────────────────── session lifecycle ────────────────────────────
 
 def restore_session():
@@ -143,7 +193,9 @@ def restore_session():
         return
 
     try:
-        res = sb.auth.refresh_session(token)
+        # reconnect-retry on a dropped connection so a transient network blip
+        # doesn't look like an invalid token and log the user out
+        res = _run(lambda c: c.auth.refresh_session(token))
         st.session_state["user"] = {"id": res.user.id, "email": res.user.email}
         # Supabase rotates refresh tokens on use — the URL must be updated to
         # the new one or the *next* refresh will fail with a reused token.
@@ -154,22 +206,21 @@ def restore_session():
 
 
 def sign_up(email, password):
-    sb = get_client()
-    return sb.auth.sign_up({"email": email, "password": password})
+    return _run(lambda sb: sb.auth.sign_up({"email": email, "password": password}))
 
 
 def sign_in(email, password):
-    sb = get_client()
-    res = sb.auth.sign_in_with_password({"email": email, "password": password})
-    st.session_state["user"] = {"id": res.user.id, "email": res.user.email}
-    if res.session and res.session.refresh_token:
-        st.query_params[QUERY_PARAM] = res.session.refresh_token
-    return res
+    def _q(sb):
+        res = sb.auth.sign_in_with_password({"email": email, "password": password})
+        st.session_state["user"] = {"id": res.user.id, "email": res.user.email}
+        if res.session and res.session.refresh_token:
+            st.query_params[QUERY_PARAM] = res.session.refresh_token
+        return res
+    return _run(_q)
 
 
 def resend_confirmation(email):
-    sb = get_client()
-    return sb.auth.resend({"type": "signup", "email": email})
+    return _run(lambda sb: sb.auth.resend({"type": "signup", "email": email}))
 
 
 def sign_out():
@@ -189,56 +240,65 @@ def current_user():
 # ─────────────────────── conversation + message storage ───────────────────
 
 def create_conversation(user_id, title):
-    sb = get_client()
-    r = sb.table("conversations").insert({"user_id": user_id, "title": title[:80]}).execute()
-    return r.data[0]["id"]
+    def _q(sb):
+        r = sb.table("conversations").insert({"user_id": user_id, "title": title[:80]}).execute()
+        return r.data[0]["id"]
+    return _run(_q)
 
 
 def touch_conversation(conversation_id, title=None):
-    sb = get_client()
-    payload = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    if title:
-        payload["title"] = title[:80]
-    sb.table("conversations").update(payload).eq("id", conversation_id).execute()
+    def _q(sb):
+        payload = {"updated_at": datetime.now(timezone.utc).isoformat()}
+        if title:
+            payload["title"] = title[:80]
+        sb.table("conversations").update(payload).eq("id", conversation_id).execute()
+    # non-critical bookkeeping — never let it crash the app
+    return _run(_q, swallow=True)
 
 
 def list_conversations(user_id, limit=20):
-    sb = get_client()
-    r = (sb.table("conversations").select("id,title,updated_at")
-         .eq("user_id", user_id).order("updated_at", desc=True).limit(limit).execute())
-    return r.data or []
+    def _q(sb):
+        r = (sb.table("conversations").select("id,title,updated_at")
+             .eq("user_id", user_id).order("updated_at", desc=True).limit(limit).execute())
+        return r.data or []
+    return _run(_q, default=[], swallow=True)
 
 
 def save_message(conversation_id, user_id, role, content):
-    sb = get_client()
-    sb.table("messages").insert({
-        "conversation_id": conversation_id, "user_id": user_id,
-        "role": role, "content": content,
-    }).execute()
+    def _q(sb):
+        sb.table("messages").insert({
+            "conversation_id": conversation_id, "user_id": user_id,
+            "role": role, "content": content,
+        }).execute()
+    return _run(_q)
 
 
 def load_messages(conversation_id):
-    sb = get_client()
-    r = (sb.table("messages").select("role,content")
-         .eq("conversation_id", conversation_id).order("created_at").execute())
-    return [{"role": m["role"], "content": m["content"]} for m in (r.data or [])]
+    def _q(sb):
+        r = (sb.table("messages").select("role,content")
+             .eq("conversation_id", conversation_id).order("created_at").execute())
+        return [{"role": m["role"], "content": m["content"]} for m in (r.data or [])]
+    return _run(_q, default=[], swallow=True)
 
 
 def save_results(conversation_id, results_summary):
     """Store a small JSON summary of docking results (not the raw viz blobs)."""
-    sb = get_client()
-    sb.table("conversations").update({"results": results_summary}).eq("id", conversation_id).execute()
+    def _q(sb):
+        sb.table("conversations").update({"results": results_summary}).eq("id", conversation_id).execute()
+    return _run(_q)
 
 
 def load_results(conversation_id):
-    sb = get_client()
-    r = sb.table("conversations").select("results").eq("id", conversation_id).single().execute()
-    return (r.data or {}).get("results")
+    def _q(sb):
+        r = sb.table("conversations").select("results").eq("id", conversation_id).single().execute()
+        return (r.data or {}).get("results")
+    return _run(_q, default=None, swallow=True)
 
 
 def delete_conversation(conversation_id):
-    sb = get_client()
-    sb.table("conversations").delete().eq("id", conversation_id).execute()
+    def _q(sb):
+        sb.table("conversations").delete().eq("id", conversation_id).execute()
+    return _run(_q, swallow=True)
 
 
 # ──────────── personalization: what has this user asked about before? ─────
@@ -248,8 +308,9 @@ def recent_user_topics(user_id, limit=40):
     MUMO's brain can recall what they've already explored — diseases,
     targets, ligands they keep returning to — instead of starting cold
     every session."""
-    sb = get_client()
-    r = (sb.table("messages").select("content")
-         .eq("user_id", user_id).eq("role", "user")
-         .order("created_at", desc=True).limit(limit).execute())
-    return [m["content"] for m in (r.data or [])]
+    def _q(sb):
+        r = (sb.table("messages").select("content")
+             .eq("user_id", user_id).eq("role", "user")
+             .order("created_at", desc=True).limit(limit).execute())
+        return [m["content"] for m in (r.data or [])]
+    return _run(_q, default=[], swallow=True)
