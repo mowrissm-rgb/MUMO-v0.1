@@ -46,12 +46,18 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # (which is not licensed for production use). Placed after the torch layer so
 # adding it doesn't invalidate that cache; the .fasta is deleted after formatting
 # to keep the image lean (final DB ~250 MB). MUMO_BLAST_DB points blast_analyst here.
+# Runs as root (/opt isn't writable by mambauser) and downloads via Python's
+# urllib + gzip — the micromamba base image has no wget/gunzip.
 ENV MUMO_BLAST_DB=/opt/blastdb/swissprot
+USER root
 RUN mkdir -p /opt/blastdb && cd /opt/blastdb && \
-    wget -q https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz && \
-    gunzip uniprot_sprot.fasta.gz && \
+    python -c "import urllib.request, gzip, shutil; \
+url='https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz'; \
+urllib.request.urlretrieve(url, 'sprot.gz'); \
+shutil.copyfileobj(gzip.open('sprot.gz','rb'), open('uniprot_sprot.fasta','wb'))" && \
     makeblastdb -in uniprot_sprot.fasta -dbtype prot -parse_seqids -out swissprot -title swissprot && \
-    rm -f uniprot_sprot.fasta
+    rm -f uniprot_sprot.fasta sprot.gz && chmod -R 755 /opt/blastdb
+USER mambauser
 
 # --- app code ---
 WORKDIR /app
