@@ -163,6 +163,7 @@ ss.setdefault("results", None)    # {rdf, viz, meta}
 ss.setdefault("run_now", False)
 ss.setdefault("history", [])      # [{title, messages, results}] — local fallback, no login
 ss.setdefault("panel_open", False)  # is the right results drawer open?
+ss.setdefault("panel_expanded", False)  # is the right drawer widened?
 ss.setdefault("active_conversation_id", None)  # Supabase conversation row, once logged in
 ss.setdefault("entered", False)  # has the visitor clicked past the intro landing page?
 ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the flower page reveals
@@ -1513,7 +1514,10 @@ def render_chat():
 # ── docking report: a fixed-width overlay drawer on the right, so it never
 #    steals space from the chat column (previously an st.columns([3,2])
 #    split, which squeezed/congested the chat every time the panel opened) ──
-PANEL_WIDTH = 420
+# The drawer has two widths: a compact default and an expanded view (for wide
+# tables, the 3D pose and reports). The chat column's width is derived from this,
+# so it reflows automatically when the panel is expanded/collapsed.
+PANEL_WIDTH = 760 if ss.panel_expanded else 420
 panel_showing = bool(ss.results and ss.panel_open)
 
 st.markdown(f"""
@@ -1543,16 +1547,22 @@ if panel_showing:
     border-left: 1px solid rgba(255,255,255,0.08);
     box-shadow: -14px 0 34px -18px rgba(0,0,0,0.6);
     padding: 22px 24px 40px;
+    transition: width .25s ease;
 }}
 @media (max-width: 900px) {{
     .st-key-mumo_panel {{ width: 100vw; }}
 }}
 </style>
 """, unsafe_allow_html=True)
-        h = st.columns([5, 1])
+        h = st.columns([5, 1, 1])
         _rep = _report_title(ss.results)
         h[0].markdown(f"<div class='mumo-panel-header'>{_rep}</div>", unsafe_allow_html=True)
-        if h[1].button("✕", key="close_panel", help=f"Close {_rep.lower()}"):
+        _exp_icon = "⤡" if ss.panel_expanded else "⤢"
+        _exp_help = "Collapse panel" if ss.panel_expanded else "Expand panel"
+        if h[1].button(_exp_icon, key="expand_panel", help=_exp_help):
+            ss.panel_expanded = not ss.panel_expanded
+            st.rerun()
+        if h[2].button("✕", key="close_panel", help=f"Close {_rep.lower()}"):
             ss.panel_open = False
             st.rerun()
         render_results()
