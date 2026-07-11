@@ -328,17 +328,22 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
         "lines": lines,                       # 3D dashed lines (with distances)
         "residue_numbers": sorted({r["resnr"] for r in recs}),
         "residues": residues,                 # chain-aware (fixes wrong-residue highlight)
-        "svg_2d": generate_2d_interaction_svg(out_complex_pdb, recs),
+        "svg_2d": generate_2d_interaction_svg(out_complex_pdb, recs, lig_mol=lig_mol),
     }
 
 
-def generate_2d_interaction_svg(complex_pdb_path, records):
+def generate_2d_interaction_svg(complex_pdb_path, records, lig_mol=None):
     """
     Build a Discovery-Studio-style 2D ligand-interaction diagram from the SAME
     canonical interaction list used for the CSV and the 3D view, so all three
     always agree. The ligand is drawn in the centre (RDKit); each interacting
     residue is a filled, colour-coded circle with a soft halo glow, linked to the
     ligand atom it touches by a colour-matched line. Pure RDKit + SVG — no deps.
+
+    `lig_mol` (preferred): the RDKit ligand with CORRECT bonds + the pose conformer.
+    Using it avoids re-perceiving bonds from the folded 3D pose, which invents
+    spurious cross-bonds for big flexible molecules and turns the drawing into an
+    unreadable tangle. Falls back to reading the ligand from the complex PDB.
     """
     try:
         import math
@@ -362,12 +367,19 @@ def generate_2d_interaction_svg(complex_pdb_path, records):
             "Salt bridge": (0.96, 0.78, 0.72), "Halogen": (0.72, 0.89, 0.93),
         }
 
-        # ── read the ligand (chain Z / resname LIG) out of the complex ──
-        lig_lines = [ln for ln in open(complex_pdb_path)
-                     if "LIG" in ln and ln.startswith(("HETATM", "ATOM"))]
-        if not lig_lines:
-            return ""
-        mol = Chem.MolFromPDBBlock("".join(lig_lines), sanitize=False)
+        # ── get the ligand: prefer the correct-bond mol; else read from the complex ──
+        mol = None
+        if lig_mol is not None:
+            try:
+                mol = Chem.RemoveHs(lig_mol)          # heavy atoms, correct connectivity
+            except Exception:
+                mol = lig_mol
+        if mol is None:
+            lig_lines = [ln for ln in open(complex_pdb_path)
+                         if "LIG" in ln and ln.startswith(("HETATM", "ATOM"))]
+            if not lig_lines:
+                return ""
+            mol = Chem.MolFromPDBBlock("".join(lig_lines), sanitize=False)
         if mol is None or mol.GetNumConformers() == 0:
             return ""
 
@@ -399,7 +411,11 @@ def generate_2d_interaction_svg(complex_pdb_path, records):
 
         # ── draw the ligand, shrunk to leave room for the residue ring ──
         rdDepictor.Compute2DCoords(mol)
-        W, H = 800, 720
+        # scale the canvas up for large ligands so a big molecule stays legible
+        # instead of being crushed into the centre (1x for typical drugs, up to ~1.8x)
+        _n = mol.GetNumAtoms()
+        _s = min(1.8, max(1.0, (_n / 28.0) ** 0.5))
+        W, H = int(800 * _s), int(720 * _s)
         drawer = rdMolDraw2D.MolDraw2DSVG(W, H)
         opts = drawer.drawOptions()
         opts.setBackgroundColour((1, 1, 1, 1))
