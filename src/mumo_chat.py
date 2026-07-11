@@ -590,7 +590,14 @@ CONV_SYSTEM = (
     "proteins similar to X', 'sequence search', or they pasted a protein sequence to search. Put "
     "the gene NAME or the raw SEQUENCE they gave in 'target'.\n"
     "   - 'chat'    : everything else — answering, teaching, explaining results, or asking "
-    "ONE clarifying question. When unsure, use 'chat'.\n\n"
+    "ONE clarifying question. When unsure, use 'chat'.\n"
+    "• CRITICAL: your 'reply' and your 'action' MUST match. If your reply says you are "
+    "running, docking, analyzing, blasting, or starting a simulation, you MUST set the "
+    "matching action (dock/analyze/string/blast) — NEVER say you are running something "
+    "while choosing action 'chat'. If you still need something (e.g. a target), do NOT "
+    "promise to run it; ASK for the missing piece in the reply and use action 'chat'. "
+    "The moment you have a target (or disease) and the user wants it docked, set action "
+    "'dock' — don't just acknowledge.\n\n"
     "Reply with ONLY a JSON object, nothing else:\n"
     '{"action": "chat"|"dock"|"analyze"|"string"|"blast", '
     '"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
@@ -854,6 +861,28 @@ def converse(msg):
     say(data.get("reply") or "Okay.")
 
     action = (data.get("action") or "chat").lower()
+
+    # Safety net: the model sometimes writes a "running it now" reply but leaves the
+    # action as "chat", so nothing actually runs — the user just sees an empty promise
+    # and repeating the request keeps stalling. When the reply clearly says it's
+    # running AND the inputs it would need are present, fire the matching action.
+    if action == "chat":
+        _rl = (data.get("reply") or "").lower()
+        _running = any(p in _rl for p in (
+            "running", "run the", "i will run", "i'll run", "let me run", "run it now",
+            "docking now", "starting", "simulation for", "kicking off", "on it now"))
+        if _running:
+            if any(w in _rl for w in ("admet", "drug-likeness", "druglikeness", "toxicity",
+                                       "pharmacokinet")) and c.get("ligand"):
+                action = "analyze"
+            elif any(w in _rl for w in ("blast", "sequence similar", "homolog",
+                                         "similar protein")) and c.get("target"):
+                action = "blast"
+            elif any(w in _rl for w in ("interaction network", "string", "functional partner",
+                                         "protein-protein", "protein–protein")) and c.get("target"):
+                action = "string"
+            elif c.get("target") or c.get("disease"):     # a running-intent reply defaults to docking
+                action = "dock"
 
     # analyze-only → drug-likeness + ADMET-AI predictions, no docking
     if action == "analyze" and c.get("ligand"):

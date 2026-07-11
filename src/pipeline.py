@@ -10,7 +10,7 @@ reported through a `status(message)` callback the caller provides.
 
 import os
 from agents.target_analyst import analyze_target
-from agents.interaction_analyst import analyze_interactions
+from agents.interaction_analyst import analyze_interactions, prepare_receptor_context
 from docking_engine import (clean_protein_pdb, prepare_receptor,
                             prepare_ligand, dock_with_replicas, validate_native_redock,
                             estimate_ki, ligand_efficiency, reliability_assessment)
@@ -47,10 +47,27 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     prepare_receptor(cleaned, receptor, venv_dir)
 
     single = len(ligands) == 1
+    n_lig = len(ligands)
     eff_rep = max(1, n_replicas) if single else 1
-    eff_exh = exhaustiveness if single else min(exhaustiveness, 8)
-    status(f"Receptor ready ({pocket}). Docking {len(ligands)} ligand(s) "
+    # A focused single-ligand dock runs deep; a batch screen scales exhaustiveness
+    # DOWN as the shortlist grows, so 10-15 ligands finish in minutes instead of
+    # 10-15 min (promote a hit, then re-dock it alone at full depth).
+    if single:
+        eff_exh = exhaustiveness
+    elif n_lig <= 5:
+        eff_exh = min(exhaustiveness, 8)
+    elif n_lig <= 10:
+        eff_exh = 6
+    else:
+        eff_exh = 4
+    status(f"Receptor ready ({pocket}). Docking {n_lig} ligand(s) "
            f"— exhaustiveness {eff_exh}, {eff_rep} replica(s)…")
+
+    # Prepare the receptor for interaction profiling ONCE (protonation + ProLIF
+    # fingerprint), reused across every ligand — instead of re-protonating the
+    # whole protein per ligand, which dominated multi-ligand runtime and, when it
+    # failed under batch load, left ligands with no 2D/3D/zip data.
+    receptor_ctx = prepare_receptor_context(cleaned)
 
     # Gold-standard validation: if the structure has a co-crystal ligand, redock it
     # and report RMSD to the real pose (only experimental complexes — not AlphaFold).
@@ -73,7 +90,8 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 os.path.join(data_dir, f"c_out_{k}"), os.path.join(data_dir, f"c_cfg_{k}"),
                 center, size, exhaustiveness=eff_exh, n_replicas=eff_rep, base_seed=seed)
             best, modes, outp = res["best_score"], res["modes"], res["out_pdbqt"]
-            ia = analyze_interactions(cleaned, outp, cmplx, ligand_smiles=lig["smiles"])
+            ia = analyze_interactions(cleaned, outp, cmplx, ligand_smiles=lig["smiles"],
+                                      receptor_ctx=receptor_ctx)
 
             # ── validation / statistics layer (#5): interpretable + aggregate metrics ──
             n_heavy = None

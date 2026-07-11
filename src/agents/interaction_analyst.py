@@ -228,22 +228,46 @@ def _collect_interactions(ifp, lig_conf, prot_conf):
     return recs
 
 
-def analyze_interactions(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None):
+def prepare_receptor_context(receptor_pdb):
+    """Protonate + charge the receptor and build the ProLIF fingerprint ONCE, so a
+    batch of ligands can reuse it instead of re-preparing the whole protein for
+    every ligand. This is the main multi-ligand speed + memory win (re-protonating
+    a full protein per ligand was the bottleneck, and its failures under batch load
+    left ligands with no interaction data → missing 2D/3D and an incomplete zip).
+    Returns a context dict, or None if unavailable (callers fall back per-ligand)."""
+    if not INTERACTIONS_AVAILABLE:
+        return None
+    try:
+        prot_h = _protonate_protein(receptor_pdb)
+        if prot_h is None:
+            return None
+        return {"prot_plf": plf.Molecule.from_rdkit(prot_h),
+                "prot_conf": prot_h.GetConformer(),
+                "fp": plf.Fingerprint(_PROLIF_INTERACTIONS)}
+    except Exception:
+        return None
+
+
+def analyze_interactions(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
+                         receptor_ctx=None):
     """
     Full analysis. Returns a dictionary of interaction details for the docked pose.
     Never raises — if ProLIF is unavailable or analysis fails, returns zeros so the
     rest of MUMO (docking, scores, 3D view) keeps working.
+
+    `receptor_ctx` (from prepare_receptor_context) lets a multi-ligand run reuse one
+    prepared receptor instead of re-protonating the protein for every ligand.
     """
     if not INTERACTIONS_AVAILABLE:
         return _empty_result(f"Interaction profiling unavailable ({_IMPORT_ERROR}).")
 
     try:
-        return _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles)
+        return _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles, receptor_ctx)
     except Exception as e:
         return _empty_result(f"Interaction analysis skipped: {e}")
 
 
-def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None):
+def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None, receptor_ctx=None):
     lig_mol = _ligand_mol_from_pose(ligand_pdbqt, ligand_smiles)
     if lig_mol is None:
         raise RuntimeError("Could not read the docked ligand pose.")
@@ -251,22 +275,22 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None)
     # write the complex (heavy-atom ligand) that the 2D diagram + 3D viewer read
     build_complex(receptor_pdb, lig_mol, out_complex_pdb)
 
-    # ProLIF needs explicit Hs on the ligand and a physiologically-charged,
-    # protonated protein. Heavy-atom coords are unchanged by AddHs, so the
-    # coordinates in `recs` stay consistent with the complex PDB above.
+    # ProLIF needs explicit Hs on the ligand. Heavy-atom coords are unchanged by
+    # AddHs, so the coordinates in `recs` stay consistent with the complex PDB above.
     lig_h = Chem.AddHs(lig_mol, addCoords=True)
-    prot_h = _protonate_protein(receptor_pdb)
-    if prot_h is None:
+
+    # Reuse the prepared receptor (protonated protein + fingerprint) if given —
+    # otherwise prepare it just for this ligand (single-ligand path).
+    ctx = receptor_ctx or prepare_receptor_context(receptor_pdb)
+    if ctx is None:
         raise RuntimeError("Could not prepare the receptor for interaction analysis.")
+    prot_plf, prot_conf, fp = ctx["prot_plf"], ctx["prot_conf"], ctx["fp"]
 
     lig_plf = plf.Molecule.from_rdkit(lig_h)
-    prot_plf = plf.Molecule.from_rdkit(prot_h)
-
-    fp = plf.Fingerprint(_PROLIF_INTERACTIONS)
     ifp = fp.generate(lig_plf, prot_plf, metadata=True)
 
     # ── everything below derives from ONE canonical list, so CSV == 2D == 3D ──
-    recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_h.GetConformer())
+    recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_conf)
 
     def _by(t):
         return [r for r in recs if r["type"] == t]

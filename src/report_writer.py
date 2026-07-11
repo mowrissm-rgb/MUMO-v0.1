@@ -172,12 +172,39 @@ def build_docking_docx(r, llm=None):
     summary = rdf[cols].reset_index().rename(columns={"index": "Rank"})
     _add_df_table(doc, summary)
 
-    pw = browser = None
-    browser_error = None
+    # One shared headless browser for all the screenshots. Rendering many WebGL
+    # (3D) scenes in one browser can exhaust memory on a small host and crash it
+    # mid-batch — which would fail every remaining ligand. `bh` holds the current
+    # browser so `_shot` can restart it once on failure and keep going.
+    bh = {"pw": None, "browser": None, "err": None}
     try:
-        pw, browser = new_browser()
+        bh["pw"], bh["browser"] = new_browser()
     except Exception as e:
-        browser_error = f"{type(e).__name__}: {e}"
+        bh["err"] = f"{type(e).__name__}: {e}"
+
+    def _shot(kind, *args):
+        """Take a 2D/3D screenshot; if the browser died, restart it once and retry.
+        Returns (png_bytes, None) or (None, error_string)."""
+        for attempt in (0, 1):
+            if bh["browser"] is None:
+                return None, bh["err"] or "headless browser unavailable"
+            try:
+                if kind == "2d":
+                    return svg_to_png(args[0], bh["browser"]), None
+                return png_from_3d(args[0], args[1], bh["browser"]), None
+            except Exception as e:
+                bh["err"] = f"{type(e).__name__}: {e}"
+                if attempt == 0:                       # browser may have crashed — restart once
+                    try:
+                        bh["browser"].close(); bh["pw"].stop()
+                    except Exception:
+                        pass
+                    try:
+                        bh["pw"], bh["browser"] = new_browser()
+                    except Exception as e2:
+                        bh["browser"] = None
+                        return None, f"{type(e2).__name__}: {e2}"
+        return None, bh["err"]
 
     try:
         for pos, (rank, row) in enumerate(rdf.iterrows()):
@@ -216,29 +243,30 @@ def build_docking_docx(r, llm=None):
             entry = viz.get(label)
             if not entry:
                 doc.add_paragraph("(No pose/interaction data available for this ligand.)")
-            elif not browser:
+            elif bh["browser"] is None:
                 doc.add_paragraph(f"(2D/3D images unavailable — headless browser failed to "
-                                  f"start: {browser_error})")
+                                  f"start: {bh['err']})")
             else:
                 svg = entry["ia"].get("svg_2d")
                 doc.add_heading("2D interaction diagram", level=2)
                 if svg:
-                    try:
-                        png = svg_to_png(svg, browser)
+                    png, err = _shot("2d", svg)
+                    if png:
                         doc.add_picture(io.BytesIO(png), width=Inches(5.5))
-                    except Exception as e:
-                        doc.add_paragraph(f"(2D diagram could not be rendered: "
-                                          f"{type(e).__name__}: {e})")
+                    else:
+                        doc.add_paragraph(f"(2D diagram could not be rendered: {err})")
                 else:
                     doc.add_paragraph("(No 2D interaction diagram available for this ligand.)")
 
                 doc.add_heading("3D pose", level=2)
-                try:
-                    png3d = png_from_3d(entry["complex"], entry["ia"], browser)
+                png3d, err = _shot("3d", entry["complex"], entry["ia"])
+                if png3d:
                     doc.add_picture(io.BytesIO(png3d), width=Inches(5.5))
-                except Exception as e:
-                    doc.add_paragraph(f"(3D pose could not be rendered: {type(e).__name__}: {e})")
+                else:
+                    doc.add_paragraph(f"(3D pose could not be rendered: {err})")
     finally:
+        browser = bh["browser"]
+        pw = bh["pw"]
         if browser:
             browser.close()
         if pw:
