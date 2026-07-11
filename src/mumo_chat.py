@@ -772,6 +772,12 @@ def _results_context():
         hs = ", ".join(f"{h.get('accession', '')} ({h.get('identity', '?')}%)" for h in hits)
         return (f"Latest BLAST for {r.get('query_name', 'the query')} "
                 f"({r.get('seq_len', '?')} aa) vs {r.get('database', '')}. Top hits: {hs}.")
+    if r.get("kind") == "md":
+        return (f"Latest stability simulation for {r.get('ligand', 'the ligand')}: "
+                f"ligand moved {r.get('lig_rmsd_min')} Å on minimisation, "
+                f"{r.get('lig_rmsd_relax')} Å on relaxation; energy relieved "
+                f"{r.get('energy_drop')} kcal/mol. Verdict: {r.get('verdict')}. "
+                f"(This is a fast OpenMM refinement, not full MD.)")
     if "rdf" not in r:
         return "The latest result is shown in the side panel."
     rdf = r["rdf"]
@@ -1182,6 +1188,7 @@ REPORT_TITLES = {
     "admet": "ADMET report",
     "string": "Interaction network",
     "blast": "BLAST results",
+    "md": "Stability simulation",
     "alignment": "Sequence alignment",
     "phylogeny": "Phylogenetic tree",
 }
@@ -1198,6 +1205,59 @@ def _report_kind(r):
 
 def _report_title(r):
     return REPORT_TITLES.get(_report_kind(r), "Report")
+
+
+def _run_stability_md(r, status_cb=lambda m: None):
+    """Run the OpenMM pose-refinement + short relaxation on the best-scoring docked
+    ligand of a docking result. Self-contained: derives the receptor + ligand from
+    the (persisted) complex PDB, so it works for fresh AND reloaded results.
+    Returns an md result dict, or {"_error": ...}."""
+    from agents.md_analyst import run_stability_md
+    from report_writer import _split_complex_pdb
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    rdf, viz, meta = r.get("rdf"), r.get("viz") or {}, r.get("meta") or {}
+    label, smiles = None, None
+    if rdf is not None:
+        for _, row in rdf.iterrows():
+            lab = row.get("Ligand")
+            if str(row.get("Best affinity (kcal/mol)")) != "FAILED" and lab in viz:
+                label, smiles = lab, row.get("SMILES")
+                break
+    if label is None:
+        return {"_error": "No docked pose is available to simulate."}
+
+    try:
+        with open(viz[label]["complex"]) as f:
+            complex_pdb = f.read()
+    except Exception as e:
+        return {"_error": f"Couldn't read the docked complex: {e}"}
+
+    rec_pdb, lig_pdb = _split_complex_pdb(complex_pdb)
+    if not rec_pdb or not lig_pdb:
+        return {"_error": "Couldn't separate the protein and ligand."}
+
+    lig = (Chem.MolFromPDBBlock(lig_pdb, sanitize=True, removeHs=False)
+           or Chem.MolFromPDBBlock(lig_pdb, sanitize=False, removeHs=False))
+    if lig is None:
+        return {"_error": "Couldn't read the ligand structure."}
+    if smiles:
+        try:
+            tmpl = Chem.MolFromSmiles(smiles)
+            if tmpl is not None:
+                lig = AllChem.AssignBondOrdersFromTemplate(tmpl, lig)
+        except Exception:
+            pass
+
+    rec_path = os.path.join(DATA, "md_receptor.pdb")
+    with open(rec_path, "w") as f:
+        f.write(rec_pdb)
+
+    res = run_stability_md(rec_path, lig, DATA, status=status_cb)
+    if res and "_error" not in res:
+        res["kind"], res["ligand"], res["meta"] = "md", label, meta
+    return res
 
 
 def render_results():
@@ -1326,6 +1386,28 @@ def render_results():
                                    mime="application/zip", key=f"struct_{id(r)}")
                 st.caption("Docked complex, ligand & receptor as PDB/SDF/MOL2 — open in "
                            "Discovery Studio, Maestro, BIOVIA, PyMOL, etc.")
+
+        # Molecular stability simulation (OpenMM) — minimise + short relaxation of the
+        # best docked complex. Takes a few minutes on CPU, so it's an on-demand button.
+        if r.get("viz"):
+            if st.button("Run stability simulation (OpenMM)", key=f"md_{id(r)}",
+                         help="Energy-minimise + briefly relax the docked complex with real "
+                              "physics — a fast precursor to full molecular dynamics."):
+                with st.status("Molecular simulation — this takes a few minutes…",
+                               expanded=True) as _mds:
+                    res = _run_stability_md(r, status_cb=lambda m: _mds.write(m))
+                    if res and "_error" not in res:
+                        with st.spinner("Writing the simulation report…"):
+                            res["narrative"] = _md_narrative(res)
+                        _mds.update(label="Simulation complete", state="complete")
+                        ss.results = res
+                        ss.panel_open = True
+                        st.rerun()
+                    else:
+                        _mds.update(label="Simulation could not run", state="error")
+                        st.error((res or {}).get("_error", "Unknown error."))
+            st.caption("Refines the pose with real physics and checks the ligand stays in the "
+                       "pocket (implicit solvent, protein restrained).")
 
         if r.get("viz"):
             st.markdown("##### Pose & Interaction Views")
@@ -1514,6 +1596,87 @@ def _render_blast_report(r):
 
 
 _REPORT_RENDERERS["blast"] = _render_blast_report
+
+
+MD_REPORT_SYSTEM = (
+    "You are MUMO, explaining a molecular-simulation result to a pharmacy student NEW to "
+    "molecular dynamics. Make it genuinely easy while staying correct.\n\n"
+    "Markdown sections and headings:\n"
+    "## What this simulation did\n(2–3 sentences: docking gives one static best-guess pose; "
+    "this step used real physics — energy minimisation plus a short relaxation with OpenMM — "
+    "to let the docked complex settle and to check the drug doesn't immediately fall out of "
+    "the pocket. Note it is a FAST, lightweight precursor to full molecular dynamics, not a "
+    "long simulation.)\n"
+    "## What happened to the pose\n(explain the ligand RMSD — root-mean-square deviation, i.e. "
+    "how far on average the drug's atoms moved, in ångström — and the energy drop, which means "
+    "steric clashes from docking were relieved. Say what a small vs large movement implies.)\n"
+    "## What this tells us\n(the plain-language takeaway: is the docked pose physically "
+    "sensible / likely to stay put, or does it look strained? What a medicinal chemist takes "
+    "from this.)\n"
+    "## The honest caveat\n(one line: a true 'does it stay bound over time' answer needs a "
+    "much longer dynamics run on a GPU — this is the quick first look.)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm tutor "
+    "tone. No emojis. Use ONLY the numbers provided — never invent values."
+)
+
+
+def _md_narrative(data):
+    """Plain-language explanation of a stability-simulation result."""
+    if _llm is None:
+        return ""
+    prompt = (
+        f"LIGAND: {data.get('ligand', 'the ligand')}  TARGET: {data.get('meta', {}).get('gene', '')}\n"
+        f"Energy before minimisation: {data.get('energy_initial')} kcal/mol\n"
+        f"Energy after minimisation: {data.get('energy_minimized')} kcal/mol\n"
+        f"Energy drop (strain relieved): {data.get('energy_drop')} kcal/mol\n"
+        f"Ligand movement during minimisation (RMSD): {data.get('lig_rmsd_min')} Å\n"
+        f"Ligand movement during {data.get('relax_ps')} ps relaxation (RMSD): {data.get('lig_rmsd_relax')} Å\n"
+        f"Verdict: {data.get('verdict')}\n\n"
+        "Write the beginner-friendly simulation report now.")
+    try:
+        return _llm.chat(MD_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1000)
+    except Exception:
+        return ""
+
+
+def _render_md_report(r):
+    """Molecular stability-simulation report: metrics + narrative + refined structure."""
+    st.markdown(f"#### Stability simulation — {r.get('ligand', 'ligand')}")
+    st.caption("OpenMM energy minimisation + short relaxation (implicit solvent, protein "
+               "restrained) — a fast precursor to full molecular dynamics.")
+
+    metrics = [
+        ("Verdict", str(r.get("verdict", "—"))),
+        ("Ligand RMSD (minimise)", f"{r.get('lig_rmsd_min', '—')} Å"),
+        ("Ligand RMSD (relax)", f"{r.get('lig_rmsd_relax', '—')} Å"
+         if r.get("lig_rmsd_relax") is not None else "—"),
+        ("Energy relieved", f"{r.get('energy_drop', '—')} kcal/mol"),
+    ]
+    cells = "".join(
+        f"<div style='min-width:120px;'>"
+        f"<div style='font:10.5px \"Inter\",sans-serif;color:#93a0aa;margin-bottom:4px;'>{label}</div>"
+        f"<div style='font:600 19px \"IBM Plex Serif\",serif;color:#eef5fa;'>{value}</div></div>"
+        for label, value in metrics)
+    st.markdown(f"<div style='display:flex;flex-wrap:wrap;gap:18px;margin:12px 0 18px;'>{cells}</div>",
+                unsafe_allow_html=True)
+
+    narrative = r.get("narrative")
+    if narrative:
+        st.markdown(narrative)
+        st.markdown("---")
+
+    refined = r.get("refined_pdb")
+    if refined:
+        try:
+            with open(refined) as f:
+                st.download_button("Download refined structure (.pdb)", f.read(),
+                                   file_name=f"MUMO_{r.get('ligand', 'complex')}_refined.pdb",
+                                   mime="chemical/x-pdb", key=f"mdpdb_{id(r)}")
+        except Exception:
+            pass
+
+
+_REPORT_RENDERERS["md"] = _render_md_report
 
 
 def render_chat():

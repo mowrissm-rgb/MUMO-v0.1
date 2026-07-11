@@ -15,6 +15,9 @@ dependencies:
   - gemmi              # required by meeko's receptor preparation
   - pandas
   - lxml
+  - openmm             # molecular simulation engine (MIT) — pose refinement + relaxation
+  - openff-toolkit     # SMIRNOFF ligand parameterisation (MIT), no AmberTools needed
+  - openmmforcefields  # glue: Amber protein + OpenFF ligand force fields (MIT)
   - pip
   - pip:
       - streamlit
