@@ -1388,8 +1388,13 @@ def render_results():
                            "Discovery Studio, Maestro, BIOVIA, PyMOL, etc.")
 
         # Molecular stability simulation (OpenMM) — minimise + short relaxation of the
-        # best docked complex. Takes a few minutes on CPU, so it's an on-demand button.
-        if r.get("viz"):
+        # best docked complex. Only shown when the MD stack is actually installed
+        # (it was rolled out of the shared conda env — see environment.yml note).
+        try:
+            from agents.md_analyst import MD_AVAILABLE as _MD_OK
+        except Exception:
+            _MD_OK = False
+        if r.get("viz") and _MD_OK:
             if st.button("Run stability simulation (OpenMM)", key=f"md_{id(r)}",
                          help="Energy-minimise + briefly relax the docked complex with real "
                               "physics — a fast precursor to full molecular dynamics."):

@@ -15,9 +15,11 @@ dependencies:
   - gemmi              # required by meeko's receptor preparation
   - pandas
   - lxml
-  - openmm             # molecular simulation engine (MIT) — pose refinement + relaxation
-  - openff-toolkit     # SMIRNOFF ligand parameterisation (MIT), no AmberTools needed
-  - openmmforcefields  # glue: Amber protein + OpenFF ligand force fields (MIT)
+  # NOTE: openmm + openff-toolkit + openmmforcefields were REMOVED — adding them
+  # destabilised the native stack (numpy/MKL/libstdc++ ABI conflict) and caused
+  # SEGFAULTS (exit 139) in ProLIF/MDAnalysis during interaction analysis, taking
+  # the whole Space down. The MD feature needs an isolated env/subprocess (or GPU);
+  # do not re-add these to the shared conda env without isolation.
   - pip
   - pip:
       - streamlit
