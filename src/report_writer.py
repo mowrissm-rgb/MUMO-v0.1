@@ -388,6 +388,50 @@ def _split_complex_pdb(pdb_text):
     return rec_txt, lig_txt
 
 
+def _corrected_ligand_mol(lig_pdb, smiles=None):
+    """RDKit ligand mol from the docked PDB block with bond orders restored from the
+    known SMILES (a docked PDB has coordinates but NO bonds). Returns None on failure."""
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+    except Exception:
+        return None
+    mol = (Chem.MolFromPDBBlock(lig_pdb, sanitize=True, removeHs=False)
+           or Chem.MolFromPDBBlock(lig_pdb, sanitize=False, removeHs=False))
+    if mol is None:
+        return None
+    if smiles:
+        try:
+            tmpl = Chem.MolFromSmiles(smiles)
+            if tmpl is not None:
+                mol = AllChem.AssignBondOrdersFromTemplate(tmpl, mol)
+        except Exception:
+            pass
+    return mol
+
+
+def _add_ligand_conect(complex_pdb, lig_mol):
+    """Append CONECT records for the ligand's bonds to a complex PDB, so viewers
+    draw the ligand with its REAL connectivity instead of guessing bonds from atom
+    distances (which tangles folded/large ligands). No-op if the atom counts don't
+    line up."""
+    if lig_mol is None:
+        return complex_pdb
+    serials = []
+    for ln in complex_pdb.splitlines():
+        if ln.startswith("HETATM") and ln[17:20].strip() == "LIG":
+            try:
+                serials.append(int(ln[6:11]))
+            except ValueError:
+                return complex_pdb
+    if lig_mol.GetNumAtoms() != len(serials):
+        return complex_pdb
+    conect = [f"CONECT{serials[b.GetBeginAtomIdx()]:>5}{serials[b.GetEndAtomIdx()]:>5}"
+              for b in lig_mol.GetBonds()]
+    lines = [ln for ln in complex_pdb.splitlines() if ln.strip() != "END"]
+    return "\n".join(lines + conect + ["END"]) + "\n"
+
+
 def _ligand_sdf(lig_pdb, smiles=None):
     """Ligand PDB block → MDL molblock (.sdf/.mol) text. Uses the known SMILES
     to restore correct bond orders (PDB has none). Returns None on failure."""
@@ -530,14 +574,27 @@ def build_structure_zip(r):
             except Exception:
                 continue
             rec_pdb, lig_pdb = _split_complex_pdb(complex_pdb)
-            z.writestr(f"{gene}_{safe}_complex.pdb", complex_pdb)
+            smi = smiles_by.get(label)
+            # correct-bond ligand mol → used to add CONECT records so viewers show
+            # the ligand with real bonds (not distance-guessed tangles)
+            lig_mol = _corrected_ligand_mol(lig_pdb, smi) if lig_pdb else None
+            z.writestr(f"{gene}_{safe}_complex.pdb", _add_ligand_conect(complex_pdb, lig_mol))
             wrote_any = True
             if lig_pdb:
-                z.writestr(f"{safe}_ligand.pdb", lig_pdb)
-                sdf = _ligand_sdf(lig_pdb, smiles_by.get(label))
+                # ligand.pdb from the corrected mol (RDKit writes CONECT records) so
+                # the standalone ligand also opens with correct bonds; else raw block
+                lig_pdb_out = lig_pdb
+                if lig_mol is not None:
+                    try:
+                        from rdkit import Chem
+                        lig_pdb_out = Chem.MolToPDBBlock(lig_mol)
+                    except Exception:
+                        pass
+                z.writestr(f"{safe}_ligand.pdb", lig_pdb_out)
+                sdf = _ligand_sdf(lig_pdb, smi)
                 if sdf:
                     z.writestr(f"{safe}_ligand.sdf", sdf)
-                mol2 = _ligand_mol2(lig_pdb, smiles_by.get(label))
+                mol2 = _ligand_mol2(lig_pdb, smi)
                 if mol2:
                     z.writestr(f"{safe}_ligand.mol2", mol2)
             if not receptor_written and rec_pdb:
