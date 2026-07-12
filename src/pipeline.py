@@ -48,13 +48,13 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
 
     single = len(ligands) == 1
     n_lig = len(ligands)
-    eff_rep = max(1, n_replicas) if single else 1
-    # A focused single-ligand dock runs deep; a batch screen scales exhaustiveness
-    # DOWN as the shortlist grows, so 10-15 ligands finish in minutes instead of
-    # 10-15 min (promote a hit, then re-dock it alone at full depth).
-    if single:
-        eff_exh = exhaustiveness
-    elif n_lig <= 5:
+    # FAST by default on free CPU (2 vCPU): 1 replica, and exhaustiveness scaled to
+    # batch size. A single deep dock at exhaustiveness 12 x 2 replicas took ~15 min
+    # on a big protein — far too slow. exhaustiveness 8 (Vina's own default) x 1
+    # replica is a solid dock in a few minutes. (A future "deep/accurate" toggle can
+    # re-enable replicas + higher exhaustiveness for users who want it.)
+    eff_rep = 1
+    if single or n_lig <= 5:
         eff_exh = min(exhaustiveness, 8)
     elif n_lig <= 10:
         eff_exh = 6
@@ -71,11 +71,14 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
 
     # Gold-standard validation: if the structure has a co-crystal ligand, redock it
     # and report RMSD to the real pose (only experimental complexes — not AlphaFold).
+    # This is a WHOLE extra dock, so run it shallow (exhaustiveness 4) — it only needs
+    # to confirm the setup, not to be publication-grade, and it must not double the
+    # user's wait.
     validation = None
     if "co-crystal" in pocket.lower():
         status("Validating setup: re-docking the native co-crystal ligand…")
         validation = validate_native_redock(pdb_path, receptor, vina, center, size,
-                                            data_dir, exhaustiveness=eff_exh, seed=seed)
+                                            data_dir, exhaustiveness=min(eff_exh, 4), seed=seed)
 
     rows, viz, reliability_by = [], {}, {}
     for k, lig in enumerate(ligands):
