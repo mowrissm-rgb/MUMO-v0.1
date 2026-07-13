@@ -48,16 +48,14 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
 
     single = len(ligands) == 1
     n_lig = len(ligands)
-    # FAST by default on free CPU (2 vCPU): 1 replica, and exhaustiveness scaled to
-    # batch size. A single deep dock at exhaustiveness 12 x 2 replicas took ~15 min
-    # on a big protein — far too slow. exhaustiveness 8 (Vina's own default) x 1
-    # replica is a solid dock in a few minutes. (A future "deep/accurate" toggle can
-    # re-enable replicas + higher exhaustiveness for users who want it.)
+    # FAST by default on free CPU (2 vCPU): 1 replica + low exhaustiveness + a tight
+    # focused search box (set in target_analyst) + few output modes. Vina time scales
+    # with exhaustiveness x box-volume x ligand-flexibility, so on big proteins with
+    # large flexible ligands all three matter. (A future "deep/accurate" toggle can
+    # re-enable replicas + higher exhaustiveness for users who want max rigour.)
     eff_rep = 1
     if single or n_lig <= 5:
-        eff_exh = min(exhaustiveness, 8)
-    elif n_lig <= 10:
-        eff_exh = 6
+        eff_exh = min(exhaustiveness, 6)
     else:
         eff_exh = 4
     status(f"Receptor ready ({pocket}). Docking {n_lig} ligand(s) "

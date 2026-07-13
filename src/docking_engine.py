@@ -165,7 +165,7 @@ def _mol_from_smiles_at_ph(smiles, ph=7.4):
         return None
 
 
-def prepare_ligand(smiles, output_pdbqt_path, ph=7.4, n_confs=8, seed=42):
+def prepare_ligand(smiles, output_pdbqt_path, ph=7.4, n_confs=4, seed=42):
     """
     Convert a SMILES into a docking-ready PDBQT, with industrial-grade preparation:
       1. PROTONATE at physiological pH (default 7.4) so acids/bases carry the right
@@ -420,7 +420,7 @@ def pose_consistency(log_path, rmsd_threshold=2.0):
 
 def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_prefix,
                        center, size, exhaustiveness=16, n_replicas=1, base_seed=42,
-                       num_modes=9):
+                       num_modes=6):
     """
     Run Vina n_replicas times with DIFFERENT seeds to measure reproducibility/precision.
     Returns a dict:

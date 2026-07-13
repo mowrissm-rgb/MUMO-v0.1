@@ -97,8 +97,11 @@ def _read_ca_coords(pdb_path):
     return coords, all_atoms
 
 
-def _box_from_points(points, padding=8.0, min_size=18.0, max_size=30.0):
-    """Given some 3D points, return (center, size) of a cube that wraps them."""
+def _box_from_points(points, padding=5.0, min_size=16.0, max_size=22.0):
+    """Given some 3D points, return (center, size) of a cube that wraps them.
+    Kept TIGHT (focused docking) — a smaller search box is dramatically faster in
+    Vina (time scales with box volume) and, for a well-centred pocket, just as
+    accurate. Widen only for blind docking."""
     xs = [p[0] for p in points]; ys = [p[1] for p in points]; zs = [p[2] for p in points]
     center = (
         round(sum(xs) / len(xs), 3),
@@ -111,7 +114,7 @@ def _box_from_points(points, padding=8.0, min_size=18.0, max_size=30.0):
 
 
 def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
-                  link=3.2, min_pts=12, pad=6.0, min_size=18.0, max_size=26.0):
+                  link=3.2, min_pts=12, pad=5.0, min_size=16.0, max_size=22.0):
     """
     Geometric binding-pocket detection (LIGSITE / burial style — pure numpy + scipy,
     permissive licences). Replaces weak "blind docking over the whole protein" when
@@ -185,7 +188,7 @@ _NOT_LIGAND = {
 }
 
 
-def auto_grid_from_pdb(pdb_path, padding=8.0, min_size=18.0, max_size=30.0):
+def auto_grid_from_pdb(pdb_path, padding=5.0, min_size=16.0, max_size=22.0):
     """
     Automatic grid box for ANY PDB file (uploaded or fetched by ID).
     Strategy:
