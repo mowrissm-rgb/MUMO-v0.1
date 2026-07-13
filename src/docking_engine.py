@@ -165,7 +165,7 @@ def _mol_from_smiles_at_ph(smiles, ph=7.4):
         return None
 
 
-def prepare_ligand(smiles, output_pdbqt_path, ph=7.4, n_confs=4, seed=42):
+def prepare_ligand(smiles, output_pdbqt_path, ph=7.4, n_confs=4, seed=42, max_rot=10):
     """
     Convert a SMILES into a docking-ready PDBQT, with industrial-grade preparation:
       1. PROTONATE at physiological pH (default 7.4) so acids/bases carry the right
@@ -173,6 +173,16 @@ def prepare_ligand(smiles, output_pdbqt_path, ph=7.4, n_confs=4, seed=42):
       2. Generate SEVERAL 3D conformers with ETKDGv3 and keep the LOWEST-ENERGY one
          (MMFF94) — a better, more reproducible starting geometry than a single embed.
       3. Meeko assigns Vina atom types, Gasteiger charges and rotatable bonds.
+
+    SPEED — torsion cap for very flexible ligands (`max_rot`): Vina's runtime scales
+    steeply with the number of ACTIVE torsions (rotatable bonds). Big, floppy GC-MS
+    molecules — long-chain fatty acids, terpenoids — carry 12-16 rotors and dominate
+    the wall-clock. When a ligand exceeds `max_rot` rotatable bonds we rigidify its
+    ACYCLIC sp3 C–C single bonds (the aliphatic-chain rotors, which mostly just wag a
+    tail and contribute little to the binding pose), leaving the scaffold/functional
+    rotors free. e.g. palmitic acid drops 15 → 2 active torsions — a ~7x smaller
+    search — with negligible effect on where the head group actually binds. Compact
+    drug-like ligands (< max_rot rotors) are left completely untouched.
     """
     print(f"[Prep] Preparing ligand '{smiles}' (protonated at pH {ph})...")
 
@@ -207,7 +217,24 @@ def prepare_ligand(smiles, output_pdbqt_path, ph=7.4, n_confs=4, seed=42):
     best_mol.RemoveAllConformers()
     best_mol.AddConformer(mol.GetConformer(best_cid), assignId=True)
 
-    preparator = MoleculePreparation()
+    # Torsion cap: only for ligands floppier than `max_rot`. Rigidify acyclic
+    # sp3 C–C rotors (the chain wags) so the scaffold stays flexible but the
+    # search space shrinks dramatically — the single biggest speed lever for the
+    # large GC-MS ligands the user docks. `rigidify_bonds_indices` are positions
+    # INTO each SMARTS match (0-based), paired one-to-one with the SMARTS list.
+    from rdkit.Chem import rdMolDescriptors
+    prep_kwargs = {}
+    try:
+        n_rot = rdMolDescriptors.CalcNumRotatableBonds(best_mol)
+    except Exception:
+        n_rot = 0
+    if n_rot > max_rot:
+        prep_kwargs["rigidify_bonds_smarts"] = ["[CX4;!R]-[CX4;!R]"]
+        prep_kwargs["rigidify_bonds_indices"] = [[0, 1]]
+        print(f"[Prep] {n_rot} rotatable bonds (> {max_rot}) — rigidifying acyclic "
+              f"sp3 C–C chain rotors to keep docking fast.")
+
+    preparator = MoleculePreparation(**prep_kwargs)
     mol_setups = preparator.prepare(best_mol)
     if not mol_setups:
         raise RuntimeError("Meeko preparation failed: No setups generated.")

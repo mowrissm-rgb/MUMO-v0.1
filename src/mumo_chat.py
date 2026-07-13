@@ -167,6 +167,7 @@ ss.setdefault("panel_expanded", False)  # is the right drawer widened?
 ss.setdefault("active_conversation_id", None)  # Supabase conversation row, once logged in
 ss.setdefault("entered", False)  # has the visitor clicked past the intro landing page?
 ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the flower page reveals
+ss.setdefault("job_id", None)     # id of an in-flight background docking job (subprocess)
 _llm = get_llm()
 
 
@@ -971,104 +972,145 @@ def build_target(c):
     return {"gene": t, "pdb_path": None, "center": None, "size": None, "source": "gene (AlphaFold)"}
 
 
-def run_pipeline(status_area):
-    # lazy imports — the heavy docking/scientific stack only loads on a real run
-    from agents.target_finder import find_targets
-    from agents.ligand_scout import find_ligands
-    from pipeline import dock_pipeline
-    from brain import write_report
-    c = ss.convo
-    # resolve a disease into its top target (Open Targets) if we don't have one
-    if not c.get("target") and c.get("disease"):
-        status_area.write(f"Finding the top target for {c['disease']}…")
-        try:
-            _, tl = find_targets(c["disease"], 5)
-            if tl:
-                c["target"] = tl[0]["symbol"]
-        except Exception:
-            pass
-    if not c.get("target"):
-        say("I couldn't pin down a target — tell me a gene, PDB ID, or disease.")
+def _apply_result(result):
+    """Turn a pipeline_core.run_job result dict into UI state: the chat message,
+    the right-hand results panel, and Supabase persistence. Shared by BOTH the
+    foreground fallback and the background-job poller, so there is exactly one
+    place that knows how a finished run becomes UI."""
+    if not result:
+        say("The run didn't return anything — please try again.")
         return
-
-    tgt = build_target(c)
-    if c.get("ligand_objs"):
-        ligands = c["ligand_objs"]
-    else:
-        n = c.get("n_ligands") or 3
-        status_area.write(f"Scouting {n} ligands for {tgt['gene']}…")
-        try:
-            _, ligs = find_ligands(tgt["gene"], limit=n)
-        except Exception:
-            ligs = []
-        ligands = [{"label": l["chembl_id"], "smiles": l["smiles"]} for l in ligs]
-
-    # guard: nothing to dock (e.g. scouting a raw PDB ID returns nothing)
-    if not ligands:
-        say(f"I couldn't find ligands to dock against **{tgt['gene']}**. "
-            f"Scouting works for gene/protein targets, not raw PDB IDs — "
-            f"tell me a specific ligand, e.g. *“dock {tgt['gene']} with aspirin”*.")
+    if not result.get("ok"):
+        # a plain user-facing guard message (no target resolved / nothing to dock)
+        say(result.get("say_text") or "I couldn't run that — please rephrase.")
         ss.stage = "start"
+        ss.convo = {}
         return
 
-    rows, viz, meta = dock_pipeline(tgt, ligands, VINA, DATA, VENV,
-                                    status=lambda m: status_area.write(m))
-    rdf = pd.DataFrame(rows)
-    num = pd.to_numeric(rdf["Best affinity (kcal/mol)"], errors="coerce")
-    rdf = rdf.assign(_s=num).sort_values("_s").drop(columns="_s").reset_index(drop=True)
-    rdf.index = range(1, len(rdf) + 1)
+    from viz import rehydrate_viz
+    # result["viz"] is already in serialize_viz form (self-contained 2D SVG +
+    # cropped complex text); rehydrate writes the complex back to disk for the
+    # 3D viewer/report — identical to the history-reload path.
+    viz = rehydrate_viz(result.get("viz") or {}, DATA)
+    rdf = pd.DataFrame(result["rows"])         # already sorted best→worst by the core
+    rdf.index = range(1, len(rdf) + 1)         # Rank starts at 1
+    meta = result.get("meta") or {}
     ss.results = {"kind": "docking", "rdf": rdf, "viz": viz, "meta": meta,
-                  "tier": c["tier"] or "Standard"}
+                  "tier": result.get("tier") or "Standard"}
+    ss.panel_open = True
+    # persist the full summary so a reloaded conversation rebuilds the whole
+    # report. Idempotent — the background worker may have already written this.
     if ss.active_conversation_id:
         try:
-            from viz import serialize_viz
-            # persist the image data too (2D SVG + interaction data + pocket-cropped
-            # complex) so a RELOADED conversation can rebuild the full report incl.
-            # 2D/3D — not just the summary rows. Only the report-relevant meta fields
-            # are kept (center/size arrays aren't JSON-safe and aren't shown anyway).
-            meta_store = {k: meta.get(k) for k in
-                          ("gene", "pocket", "exhaustiveness", "replicas", "validation",
-                           "reliability_by")}
             authdb.save_results(ss.active_conversation_id,
-                                 {"gene": meta.get("gene"),
-                                  "rows": rdf.to_dict(orient="records"),
-                                  "meta": meta_store,
-                                  "viz": serialize_viz(viz)})
+                                {"gene": meta.get("gene"), "rows": result["rows"],
+                                 "meta": meta, "viz": result.get("viz") or {}})
         except Exception:
             pass
-
-    # narrative report on the best hit
-    top = rdf.iloc[0]
-    if str(top["Best affinity (kcal/mol)"]) != "FAILED":
-        def _sp(v): return [x for x in str(v).split("; ") if x and x != "-"]
-        _rel = (meta.get("reliability_by") or {}).get(top["Ligand"], {})
-        rep = write_report({"target": meta["gene"], "ligand": top["Ligand"],
-                            "affinity": float(top["Best affinity (kcal/mol)"]),
-                            "estimated_ki": top.get("Est. Ki"),
-                            "ligand_efficiency": top.get("Ligand efficiency"),
-                            "reliability": top.get("Reliability"),
-                            "reliability_reason": _rel.get("reason"),
-                            "total_interactions": top["Total interactions"],
-                            "n_hbonds": int(top["H-bonds"]), "hbond_residues": _sp(top["H-bond residues"]),
-                            "n_hydrophobic": int(top["Hydrophobic"]),
-                            "interacting_residues": _sp(top["All interacting residues"])},
-                           _llm, ss.results["tier"])
-        msd = top.get("Mean ± SD (kcal/mol)", "—")
-        rep_note = (f" (mean ± SD {msd}, confidence {top.get('Confidence','—')})"
-                    if msd and msd != "—" else "")
-        val = meta.get("validation")
-        val_note = ""
-        if val:
-            verdict = "<2 Å — setup validated" if val["passed"] else ">2 Å — interpret with care"
-            val_note = (f" Setup validation: native ligand {val['resname']} redocked to "
-                        f"{val['rmsd']} Å RMSD ({verdict}).")
-        say(f"Done. Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
-            f"kcal/mol**{rep_note} against {meta['gene']} "
-            f"[exhaustiveness {meta.get('exhaustiveness','?')}, {meta.get('replicas','?')} replica(s)].{val_note} "
-            f"Full results & 3D pose are below.\n\n{rep}")
-    else:
-        say("The docking didn't produce a valid pose — see the results below.")
+    say(result["say_text"])
     ss.convo = {}   # reset for the next, independent request
+
+
+def run_pipeline(status_area):
+    """FOREGROUND fallback: run the whole pipeline in-process, then apply the
+    result. Used only when a detached background job can't be launched (e.g. an
+    anonymous session with no persistent conversation to track the job against).
+    The heavy scientific stack loads lazily inside pipeline_core."""
+    from pipeline_core import run_job
+    result = run_job(ss.convo, VINA, DATA, VENV, llm=_llm,
+                     progress=lambda m: status_area.write(m))
+    _apply_result(result)
+
+
+def _job_data_dir(job_id):
+    """A private working directory per background job, so concurrent/next runs
+    never clash over the fixed c_lig_*/c_complex_* filenames dock_pipeline uses."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(job_id))[:60] or "job"
+    d = os.path.join(DATA, "jobs", safe, "work")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _start_background_job():
+    """Launch the docking pipeline in a DETACHED subprocess so it keeps running
+    even if the user closes the tab / refreshes / minimises / quits the browser.
+    Returns True if a background job is now in flight (→ switch to poll mode);
+    False if we should fall back to a foreground run (no conversation to key on)."""
+    import docking_jobs as jobs
+    job_id = ss.active_conversation_id
+    if not job_id:
+        return False   # no persistent conversation id to track the job → foreground
+    if jobs.is_running(job_id):
+        ss.job_id = job_id
+        say("A docking run is already going for this session — it keeps running on the "
+            "server even if you leave. Results will appear here when it's done.")
+        return True
+    spec = {
+        "job_id": job_id,
+        "jobs_dir": jobs.default_jobs_dir(),
+        "convo": dict(ss.convo),
+        "vina": VINA,
+        "data_dir": _job_data_dir(job_id),
+        "venv": VENV,
+        "conversation_id": ss.active_conversation_id,
+    }
+    try:
+        started = jobs.start(job_id, spec)
+    except Exception as e:
+        say(f"Couldn't start the background run ({e}) — running it here instead.")
+        return False
+    if not started:
+        return False
+    ss.job_id = job_id
+    ss.convo = {}   # captured in the spec already; clear so a new message starts fresh
+    return True
+
+
+def _render_job_progress():
+    """If a background docking job is in flight (or just finished) for the current
+    conversation, show its live progress and pick up its result. This is what
+    makes a run survive a page reload: a reconnecting session finds the job by the
+    conversation id and resumes watching it. Returns True if it handled a job."""
+    import docking_jobs as jobs
+    job_id = ss.get("job_id") or ss.active_conversation_id
+    if not job_id:
+        return False
+    st_ = jobs.read_status(job_id)
+    if not st_:
+        return False
+    status = st_.get("status")
+
+    if status == "running":
+        ss.job_id = job_id
+        with st.status("Docking is running on the server…", expanded=True) as area:
+            area.write(st_.get("progress") or "Working…")
+            area.write("✔ You can close this tab, refresh, or minimise — the run keeps "
+                       "going and the result will be waiting here when you come back.")
+        import time as _t
+        _t.sleep(2.5)          # gentle poll cadence; the child does the real work
+        st.rerun()
+        return True
+
+    if status == "done" and not st_.get("consumed"):
+        result = jobs.read_result(job_id)
+        jobs.mark_consumed(job_id)      # so a second tab / rerun won't re-announce it
+        ss.job_id = None
+        if result:
+            _apply_result(result)
+        else:
+            say("The docking finished but its result couldn't be read — please re-run.")
+        st.rerun()
+        return True
+
+    if status == "error" and not st_.get("consumed"):
+        jobs.mark_consumed(job_id)
+        ss.job_id = None
+        say(f"The docking run stopped early: {st_.get('error')}")
+        ss.stage = "start"
+        st.rerun()
+        return True
+
+    return False
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1086,6 +1128,7 @@ with st.sidebar:
             ss.history.insert(0, {"title": title[:40], "messages": ss.messages, "results": ss.results})
         ss.messages, ss.stage, ss.convo, ss.results, ss.run_now, ss.panel_open = [], "start", {}, None, False, False
         ss.active_conversation_id = None
+        ss.job_id = None
         st.rerun()
 
     st.markdown(
@@ -1122,6 +1165,9 @@ with st.sidebar:
                 else:
                     ss.results = None
                 ss.stage, ss.active_conversation_id = "start", h["id"]
+                # clear any job id from the previous conversation; the poller will
+                # re-discover a job for THIS conversation from its id if one is live.
+                ss.job_id = None
                 ss.panel_open = bool(ss.results)
                 st.rerun()
     else:
@@ -1138,6 +1184,7 @@ with st.sidebar:
         if st.button("Log out", use_container_width=True):
             authdb.sign_out()
             ss.messages, ss.results, ss.active_conversation_id = [], None, None
+            ss.job_id = None
             ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
             st.rerun()
 
@@ -1165,18 +1212,26 @@ user_input = st.chat_input("Message MUMO…  e.g. “find a drug for cystic fibr
 if user_input and user_input.strip():
     converse(user_input.strip())
 
-# ── run the pipeline (full width; opens the panel when done) ──
+# ── run the pipeline. Preferred path: a DETACHED SUBPROCESS that survives the
+#    user leaving (tab close / refresh / minimise). Fallback: a foreground run
+#    (anonymous sessions with no conversation id to track the job against). ──
 if ss.run_now:
     ss.run_now = False
-    with st.status("Running the pipeline…", expanded=True) as status_area:
-        try:
-            run_pipeline(status_area)
-            status_area.update(label="Done", state="complete")
-            ss.panel_open = True
-        except Exception as e:
-            say(f"The run hit a snag: {e}")
-            status_area.update(label="Failed", state="error")
-    st.rerun()
+    if _start_background_job():
+        st.rerun()                     # → poll mode, below
+    else:
+        with st.status("Running the pipeline…", expanded=True) as status_area:
+            try:
+                run_pipeline(status_area)
+                status_area.update(label="Done", state="complete")
+            except Exception as e:
+                say(f"The run hit a snag: {e}")
+                status_area.update(label="Failed", state="error")
+        st.rerun()
+
+# ── watch an in-flight (or freshly finished) background job for this conversation.
+#    Runs every rerun, so a reconnecting session resumes the live progress. ──
+_render_job_progress()
 
 
 # ── report system: EVERY pipeline's output lands in the right-side panel,

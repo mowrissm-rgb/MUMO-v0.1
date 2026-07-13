@@ -1,71 +1,243 @@
 """
-MUMO — Background docking jobs
+MUMO — Background docking jobs (SUBPROCESS-based, crash-isolated)
 Multi-Agent Drug Discovery & Development AI Platform
+Author: Mowriss & Claude (research partner)
 
-Runs a docking job in a DAEMON THREAD so it keeps going even if the user closes
-the tab, refreshes, or minimises the browser (a Streamlit script run is tied to
-the WebSocket; a plain thread in the server process is not). Progress + the final
-result live in a process-global registry keyed by a job id (the conversation id),
-so a reconnecting session finds the running/finished job. The worker also persists
-the result to the database on its own, so results survive even across page loads.
+WHY A SUBPROCESS (and not a thread)
+-----------------------------------
+Docking pulls in native code (AutoDock Vina, RDKit, ProLIF, MDAnalysis, BLAS).
+Running that native stack OFF the main interpreter thread SEGFAULTS the whole
+Streamlit container (exit 139) — uncatchable from Python, so the app just dies.
+We learned this the hard way twice. A *separate process* is fully isolated: if
+the native code segfaults, only the child dies. The parent (the Streamlit app)
+sees the child exit and reports a clean error instead of crashing.
 
-The worker MUST be pure Python — no Streamlit calls (`st.*` has no ScriptRunContext
-in a spawned thread). It talks to the DB via a standalone client, not the session's.
+HOW IT SURVIVES A CLOSED TAB
+----------------------------
+A Streamlit script run is tied to the browser WebSocket, so closing the tab /
+refreshing / minimising kills the script run. The docking subprocess is spawned
+DETACHED (new session / new process group) from the Streamlit server process, so
+it keeps running independently of any browser connection. Progress and the final
+result are written to plain files under a per-job directory on disk, and the
+worker ALSO persists the result to Supabase — so a reconnecting session (even a
+brand-new one) finds the running/finished job by its id and picks up where it
+left off.
+
+FILE LAYOUT  (jobs_dir/<job_id>/)
+    spec.json     the job input (target, ligands, params) — written by start()
+    status.json   {status, progress, pid, started, updated, error}
+    result.json   the finished pipeline result — written by the worker on success
+    worker.log    the child's stdout/stderr (for debugging a crash)
+
+The worker (dock_runner.py) is a plain `python dock_runner.py <spec.json>` — no
+Streamlit imports at all.
 """
 
-import threading
+import os
+import sys
+import json
 import time
+import tempfile
+import subprocess
 
-_JOBS = {}          # job_id -> dict(status, progress, result, error, started, updated)
-_LOCK = threading.Lock()
-
-
-def _set(job_id, **kw):
-    with _LOCK:
-        j = _JOBS.get(job_id)
-        if j is not None:
-            j.update(updated=time.time(), **kw)
+_RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dock_runner.py")
 
 
-def status(job_id):
-    """A snapshot of the job, or None if there's no job for this id."""
-    with _LOCK:
-        j = _JOBS.get(job_id)
-        return dict(j) if j else None
+# ───────────────────────────── path helpers ──────────────────────────────
+
+def default_jobs_dir():
+    """Where jobs live by default: <project>/data/jobs."""
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    d = os.path.join(base, "data", "jobs")
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
-def is_running(job_id):
-    j = _JOBS.get(job_id)
-    return bool(j and j.get("status") == "running")
+def job_dir(jobs_dir, job_id):
+    return os.path.join(jobs_dir, _safe(job_id))
 
 
-def clear(job_id):
-    with _LOCK:
-        _JOBS.pop(job_id, None)
+def _safe(job_id):
+    return "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in str(job_id))[:80] or "job"
 
 
-def start(job_id, work):
-    """Start `work(progress_cb)` in a background daemon thread. `work` returns the
-    result dict; `progress_cb(msg)` reports progress. Idempotent: if a job is
-    already running for this id, does nothing."""
-    with _LOCK:
-        existing = _JOBS.get(job_id)
-        if existing and existing.get("status") == "running":
-            return False
-        _JOBS[job_id] = {"status": "running", "progress": "Starting…", "result": None,
-                         "error": None, "started": time.time(), "updated": time.time()}
+# ─────────────────────────── atomic json files ───────────────────────────
 
-    def _progress(msg):
-        _set(job_id, progress=str(msg))
+def _read_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
-    def _worker():
+
+def _write_json(path, obj):
+    """Write atomically (temp file + os.replace) so a reader never sees a
+    half-written file — important because the worker and the UI poll the same
+    status.json concurrently."""
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(obj, f)
+        os.replace(tmp, path)
+    except Exception:
         try:
-            result = work(_progress)
-            _set(job_id, status="done", result=result, progress="Complete")
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            _set(job_id, status="error", error=f"{type(e).__name__}: {e}")
+            os.remove(tmp)
+        except Exception:
+            pass
+        raise
 
-    threading.Thread(target=_worker, daemon=True, name=f"dock-{job_id}").start()
+
+def update_status(jd, **fields):
+    """Merge `fields` into the job's status.json (used by the worker to report
+    progress). `jd` is the job directory."""
+    path = os.path.join(jd, "status.json")
+    cur = _read_json(path) or {}
+    cur.update(fields, updated=time.time())
+    _write_json(path, cur)
+
+
+# ───────────────────────────── pid liveness ──────────────────────────────
+
+def _pid_alive(pid):
+    """True if a process with this pid is currently running. Cross-platform:
+    signal-0 probe on POSIX, OpenProcess+exit-code probe on Windows."""
+    if not pid:
+        return False
+    pid = int(pid)
+    if os.name == "nt":
+        try:
+            import ctypes
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
+            k = ctypes.windll.kernel32
+            h = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not h:
+                return False
+            code = ctypes.c_ulong()
+            k.GetExitCodeProcess(h, ctypes.byref(code))
+            k.CloseHandle(h)
+            return code.value == STILL_ACTIVE
+        except Exception:
+            return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True   # exists but not ours — still alive
+    except Exception:
+        return False
     return True
+
+
+# ─────────────────────────────── public API ──────────────────────────────
+
+def start(job_id, spec, jobs_dir=None, python_exe=None, runner=None, extra_env=None):
+    """Launch the docking worker for `spec` in a DETACHED subprocess.
+
+    Idempotent: if a job with this id is already running, returns False and does
+    not start a second one. Returns True when a new worker was launched.
+
+    `spec` is a JSON-serialisable dict the worker understands (see dock_runner).
+    """
+    jobs_dir = jobs_dir or default_jobs_dir()
+    jd = job_dir(jobs_dir, job_id)
+
+    # already running? don't double-launch.
+    st = read_status(job_id, jobs_dir)
+    if st and st.get("status") == "running":
+        return False
+
+    os.makedirs(jd, exist_ok=True)
+    _write_json(os.path.join(jd, "spec.json"), spec)
+    # clear any stale result from a previous run of this id
+    for stale in ("result.json",):
+        try:
+            os.remove(os.path.join(jd, stale))
+        except OSError:
+            pass
+    _write_json(os.path.join(jd, "status.json"),
+                {"status": "running", "progress": "Starting…", "pid": None,
+                 "started": time.time(), "updated": time.time(), "error": None})
+
+    python_exe = python_exe or sys.executable
+    runner = runner or _RUNNER
+    log = open(os.path.join(jd, "worker.log"), "w", encoding="utf-8")
+
+    env = dict(os.environ)
+    if extra_env:
+        env.update({k: str(v) for k, v in extra_env.items()})
+    # the worker needs to find sibling modules (pipeline, agents, …)
+    env["PYTHONPATH"] = (os.path.dirname(os.path.abspath(__file__)) +
+                         os.pathsep + env.get("PYTHONPATH", ""))
+
+    kwargs = {"stdout": log, "stderr": subprocess.STDOUT, "cwd": jd, "env": env,
+              "close_fds": True}
+    if os.name == "nt":
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        kwargs["creationflags"] = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True   # setsid: survives parent/WebSocket death
+
+    proc = subprocess.Popen([python_exe, runner, os.path.join(jd, "spec.json")], **kwargs)
+    update_status(jd, pid=proc.pid)
+    return True
+
+
+def read_status(job_id, jobs_dir=None):
+    """A snapshot of the job's status, or None if there is no job for this id.
+
+    Crash detection: if the status still says 'running' but the worker process
+    is dead and never wrote a result, we surface a synthetic 'error' status so
+    the UI shows a clean message instead of polling a dead job forever. This is
+    exactly the case a native segfault produces."""
+    jobs_dir = jobs_dir or default_jobs_dir()
+    jd = job_dir(jobs_dir, job_id)
+    st = _read_json(os.path.join(jd, "status.json"))
+    if st is None:
+        return None
+    if st.get("status") == "running":
+        pid = st.get("pid")
+        result_exists = os.path.exists(os.path.join(jd, "result.json"))
+        # give a just-launched job a moment before deciding its pid is 'dead'
+        launched_recently = (time.time() - st.get("started", 0)) < 8
+        if pid and not _pid_alive(pid) and not result_exists and not launched_recently:
+            st = dict(st, status="error",
+                      error="The docking process stopped unexpectedly. This can happen "
+                            "on very large/flexible ligands that exhaust the free CPU tier. "
+                            "Try fewer or smaller ligands, or re-run.")
+    return st
+
+
+def read_result(job_id, jobs_dir=None):
+    """The finished result dict, or None if the job hasn't produced one yet."""
+    jobs_dir = jobs_dir or default_jobs_dir()
+    return _read_json(os.path.join(job_dir(jobs_dir, job_id), "result.json"))
+
+
+def is_running(job_id, jobs_dir=None):
+    st = read_status(job_id, jobs_dir)
+    return bool(st and st.get("status") == "running")
+
+
+def mark_consumed(job_id, jobs_dir=None):
+    """Flag that a UI session has already applied+announced this finished job, so
+    another rerun (or a second tab) doesn't render/say it twice."""
+    jobs_dir = jobs_dir or default_jobs_dir()
+    jd = job_dir(jobs_dir, job_id)
+    if os.path.exists(os.path.join(jd, "status.json")):
+        update_status(jd, consumed=True)
+
+
+def clear(job_id, jobs_dir=None):
+    """Remove all files for a job (best-effort)."""
+    import shutil
+    jobs_dir = jobs_dir or default_jobs_dir()
+    try:
+        shutil.rmtree(job_dir(jobs_dir, job_id))
+    except Exception:
+        pass
