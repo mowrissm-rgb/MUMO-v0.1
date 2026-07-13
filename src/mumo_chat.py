@@ -971,73 +971,36 @@ def build_target(c):
     return {"gene": t, "pdb_path": None, "center": None, "size": None, "source": "gene (AlphaFold)"}
 
 
-def run_pipeline(status_area):
-    # lazy imports — the heavy docking/scientific stack only loads on a real run
-    from agents.target_finder import find_targets
-    from agents.ligand_scout import find_ligands
+def _dock_work(tgt_str, ligands, tier, progress_cb, conversation_id=None):
+    """The whole docking run as PURE PYTHON (no Streamlit) so it can execute in a
+    background thread that survives the browser disconnecting. Persists results to
+    the DB itself, and returns a result dict (with a ready-to-post chat message)."""
     from pipeline import dock_pipeline
     from brain import write_report
-    c = ss.convo
-    # resolve a disease into its top target (Open Targets) if we don't have one
-    if not c.get("target") and c.get("disease"):
-        status_area.write(f"Finding the top target for {c['disease']}…")
-        try:
-            _, tl = find_targets(c["disease"], 5)
-            if tl:
-                c["target"] = tl[0]["symbol"]
-        except Exception:
-            pass
-    if not c.get("target"):
-        say("I couldn't pin down a target — tell me a gene, PDB ID, or disease.")
-        return
+    from viz import serialize_viz
 
-    tgt = build_target(c)
-    if c.get("ligand_objs"):
-        ligands = c["ligand_objs"]
-    else:
-        n = c.get("n_ligands") or 3
-        status_area.write(f"Scouting {n} ligands for {tgt['gene']}…")
-        try:
-            _, ligs = find_ligands(tgt["gene"], limit=n)
-        except Exception:
-            ligs = []
-        ligands = [{"label": l["chembl_id"], "smiles": l["smiles"]} for l in ligs]
-
-    # guard: nothing to dock (e.g. scouting a raw PDB ID returns nothing)
-    if not ligands:
-        say(f"I couldn't find ligands to dock against **{tgt['gene']}**. "
-            f"Scouting works for gene/protein targets, not raw PDB IDs — "
-            f"tell me a specific ligand, e.g. *“dock {tgt['gene']} with aspirin”*.")
-        ss.stage = "start"
-        return
-
-    rows, viz, meta = dock_pipeline(tgt, ligands, VINA, DATA, VENV,
-                                    status=lambda m: status_area.write(m))
+    tgt = build_target({"target": tgt_str})
+    rows, viz, meta = dock_pipeline(tgt, ligands, VINA, DATA, VENV, status=progress_cb)
     rdf = pd.DataFrame(rows)
     num = pd.to_numeric(rdf["Best affinity (kcal/mol)"], errors="coerce")
     rdf = rdf.assign(_s=num).sort_values("_s").drop(columns="_s").reset_index(drop=True)
     rdf.index = range(1, len(rdf) + 1)
-    ss.results = {"kind": "docking", "rdf": rdf, "viz": viz, "meta": meta,
-                  "tier": c["tier"] or "Standard"}
-    if ss.active_conversation_id:
+
+    # persist results (thread-safe standalone client) so they survive page reloads
+    if conversation_id:
         try:
-            from viz import serialize_viz
-            # persist the image data too (2D SVG + interaction data + pocket-cropped
-            # complex) so a RELOADED conversation can rebuild the full report incl.
-            # 2D/3D — not just the summary rows. Only the report-relevant meta fields
-            # are kept (center/size arrays aren't JSON-safe and aren't shown anyway).
+            client = authdb.standalone_client()
             meta_store = {k: meta.get(k) for k in
                           ("gene", "pocket", "exhaustiveness", "replicas", "validation",
                            "reliability_by")}
-            authdb.save_results(ss.active_conversation_id,
-                                 {"gene": meta.get("gene"),
-                                  "rows": rdf.to_dict(orient="records"),
-                                  "meta": meta_store,
-                                  "viz": serialize_viz(viz)})
+            authdb.save_results_with(client, conversation_id,
+                                     {"gene": meta.get("gene"),
+                                      "rows": rdf.to_dict(orient="records"),
+                                      "meta": meta_store,
+                                      "viz": serialize_viz(viz)})
         except Exception:
             pass
 
-    # narrative report on the best hit
     top = rdf.iloc[0]
     if str(top["Best affinity (kcal/mol)"]) != "FAILED":
         def _sp(v): return [x for x in str(v).split("; ") if x and x != "-"]
@@ -1052,9 +1015,9 @@ def run_pipeline(status_area):
                             "n_hbonds": int(top["H-bonds"]), "hbond_residues": _sp(top["H-bond residues"]),
                             "n_hydrophobic": int(top["Hydrophobic"]),
                             "interacting_residues": _sp(top["All interacting residues"])},
-                           _llm, ss.results["tier"])
+                           _llm, tier)
         msd = top.get("Mean ± SD (kcal/mol)", "—")
-        rep_note = (f" (mean ± SD {msd}, confidence {top.get('Confidence','—')})"
+        rep_note = (f" (mean ± SD {msd}, confidence {top.get('Confidence', '—')})"
                     if msd and msd != "—" else "")
         val = meta.get("validation")
         val_note = ""
@@ -1062,12 +1025,71 @@ def run_pipeline(status_area):
             verdict = "<2 Å — setup validated" if val["passed"] else ">2 Å — interpret with care"
             val_note = (f" Setup validation: native ligand {val['resname']} redocked to "
                         f"{val['rmsd']} Å RMSD ({verdict}).")
-        say(f"Done. Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
-            f"kcal/mol**{rep_note} against {meta['gene']} "
-            f"[exhaustiveness {meta.get('exhaustiveness','?')}, {meta.get('replicas','?')} replica(s)].{val_note} "
-            f"Full results & 3D pose are below.\n\n{rep}")
+        done_msg = (f"Done. Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
+                    f"kcal/mol**{rep_note} against {meta['gene']} "
+                    f"[exhaustiveness {meta.get('exhaustiveness', '?')}, "
+                    f"{meta.get('replicas', '?')} replica(s)].{val_note} "
+                    f"Full results & 3D pose are below.\n\n{rep}")
     else:
-        say("The docking didn't produce a valid pose — see the results below.")
+        done_msg = "The docking didn't produce a valid pose — see the results below."
+
+    return {"kind": "docking", "rdf": rdf, "viz": viz, "meta": meta,
+            "tier": tier, "done_message": done_msg}
+
+
+def run_pipeline():
+    """Resolve the target + ligands, then launch docking in a BACKGROUND thread so
+    it keeps running even if the user closes the tab, refreshes or minimises. The
+    layout's poll section surfaces progress and the final result."""
+    from agents.target_finder import find_targets
+    from agents.ligand_scout import find_ligands
+    import docking_jobs
+    c = ss.convo
+
+    if not c.get("target") and c.get("disease"):
+        try:
+            _, tl = find_targets(c["disease"], 5)
+            if tl:
+                c["target"] = tl[0]["symbol"]
+        except Exception:
+            pass
+    if not c.get("target"):
+        say("I couldn't pin down a target — tell me a gene, PDB ID, or disease.")
+        return
+    tgt_str = c["target"]
+
+    if c.get("ligand_objs"):
+        ligands = c["ligand_objs"]
+    else:
+        n = c.get("n_ligands") or 3
+        try:
+            _, ligs = find_ligands(tgt_str, limit=n)
+            ligands = [{"label": l["chembl_id"], "smiles": l["smiles"]} for l in ligs]
+        except Exception:
+            ligands = []
+    if not ligands:
+        say(f"I couldn't find ligands to dock against **{tgt_str}**. "
+            f"Scouting works for gene/protein targets, not raw PDB IDs — "
+            f"tell me a specific ligand, e.g. *“dock {tgt_str} with aspirin”*.")
+        ss.stage = "start"
+        return
+
+    tier = c.get("tier") or "Standard"
+    # Capture everything as PLAIN VALUES now (main thread) — the worker runs in a
+    # background thread with no Streamlit context, so it must not touch ss.*.
+    persist_cid = ss.active_conversation_id          # None for anonymous → no DB persist
+    # durable job key: the conversation id (logged-in) so a reconnecting session
+    # finds the job; a session-local id otherwise.
+    job_id = persist_cid
+    if not job_id:
+        import uuid
+        job_id = ss.setdefault("_local_job_id", "local-" + uuid.uuid4().hex[:8])
+
+    docking_jobs.start(job_id, lambda cb: _dock_work(tgt_str, ligands, tier, cb,
+                                                     conversation_id=persist_cid))
+    ss["_dock_job_id"] = job_id
+    say("Docking started — it's running in the background. You can close this tab, "
+        "refresh, or come back later; the results will appear here when it's done.")
     ss.convo = {}   # reset for the next, independent request
 
 
@@ -1165,18 +1187,37 @@ user_input = st.chat_input("Message MUMO…  e.g. “find a drug for cystic fibr
 if user_input and user_input.strip():
     converse(user_input.strip())
 
-# ── run the pipeline (full width; opens the panel when done) ──
+# ── launch docking as a BACKGROUND job (survives tab close / refresh) ──
 if ss.run_now:
     ss.run_now = False
-    with st.status("Running the pipeline…", expanded=True) as status_area:
-        try:
-            run_pipeline(status_area)
-            status_area.update(label="Done", state="complete")
-            ss.panel_open = True
-        except Exception as e:
-            say(f"The run hit a snag: {e}")
-            status_area.update(label="Failed", state="error")
+    try:
+        run_pipeline()
+    except Exception as e:
+        say(f"Couldn't start the docking: {e}")
     st.rerun()
+
+# ── surface a FINISHED/errored background job before rendering (so the panel +
+#    chat show the result this run). The still-running poll happens at the very
+#    end of the script, after everything has rendered.
+import docking_jobs as _dj
+_job_id = ss.get("_dock_job_id") or ss.active_conversation_id
+if _job_id:
+    _job = _dj.status(_job_id)
+    if _job and _job["status"] == "done" and _job.get("result"):
+        _res = _job["result"]
+        _dj.clear(_job_id)
+        ss.pop("_dock_job_id", None)
+        _dm = _res.pop("done_message", None)
+        ss.results = _res
+        ss.panel_open = True
+        if _dm:
+            say(_dm)
+        st.rerun()
+    elif _job and _job["status"] == "error":
+        _dj.clear(_job_id)
+        ss.pop("_dock_job_id", None)
+        say(f"The docking run hit a snag: {_job.get('error', 'unknown error')}")
+        st.rerun()
 
 
 # ── report system: EVERY pipeline's output lands in the right-side panel,
@@ -1768,3 +1809,15 @@ elif ss.results and not ss.panel_open:
     if st.button(f"› Open {_rep}", key="open_panel"):
         ss.panel_open = True
         st.rerun()
+
+
+# ── keep polling while a background docking job runs (placed LAST so the chat +
+#    panel have already rendered this pass) ──
+if _job_id and _dj.is_running(_job_id):
+    _rj = _dj.status(_job_id)
+    st.info(f"🧪 **Docking running in the background** — {(_rj or {}).get('progress', '…')}.  \n"
+            "You can close this tab, refresh, or come back later — the results will "
+            "appear here automatically when it's done.")
+    import time as _time
+    _time.sleep(2)
+    st.rerun()

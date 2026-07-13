@@ -116,6 +116,31 @@ def is_configured():
     return get_client() is not None
 
 
+def standalone_client():
+    """A FRESH Supabase client not cached in st.session_state — safe to use from a
+    background thread (where st.session_state has no ScriptRunContext)."""
+    if create_client is None:
+        return None
+    url, key = _secret("SUPABASE_URL"), _secret("SUPABASE_KEY")
+    if not url or not key:
+        return None
+    try:
+        return create_client(url, key)
+    except Exception:
+        return None
+
+
+def save_results_with(client, conversation_id, results_summary):
+    """Save docking results using a caller-supplied client (for background jobs)."""
+    if client is None:
+        return
+    try:
+        client.table("conversations").update(
+            {"results": results_summary}).eq("id", conversation_id).execute()
+    except Exception:
+        pass
+
+
 # ── resilient calls: Supabase (via httpx) keeps a persistent HTTP/2 connection,
 #    and its server closes IDLE connections with a GOAWAY. The next query on the
 #    stale cached client then raises a transport error (e.g. RemoteProtocolError:

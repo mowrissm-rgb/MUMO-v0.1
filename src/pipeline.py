@@ -54,10 +54,9 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     # large flexible ligands all three matter. (A future "deep/accurate" toggle can
     # re-enable replicas + higher exhaustiveness for users who want max rigour.)
     eff_rep = 1
-    if single or n_lig <= 5:
-        eff_exh = min(exhaustiveness, 6)
-    else:
-        eff_exh = 4
+    # exhaustiveness 4 everywhere for speed (Vina finds the pocket fine in a tight
+    # focused box; deeper search is a GPU-era "accurate" toggle).
+    eff_exh = 4
     status(f"Receptor ready ({pocket}). Docking {n_lig} ligand(s) "
            f"— exhaustiveness {eff_exh}, {eff_rep} replica(s)…")
 
