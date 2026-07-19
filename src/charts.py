@@ -35,6 +35,12 @@ from collections import Counter
 
 # ── palette (validated against a #ffffff surface) ──────────────────────────
 SERIES = "#2a78d6"      # categorical slot 1, the single hue for every bar
+# Ordinal ramp for the contact map: one hue, light→dark. On a light surface an
+# ordinal step must still clear 2:1 against it, so the pale step is 250 — not
+# the near-white end of the ramp, which is only legal for continuous scales.
+SEQ_LIGHT = "#86b6ef"   # blue step 250 — "contact"
+SEQ_STRONG = "#2a78d6"  # blue step 450 — "hydrogen bond"
+NEUTRAL = "#f0efec"     # "no contact": present as a cell, recedes as a value
 SURFACE = "#ffffff"     # the docx page
 INK = "#0b0b0b"         # primary text
 INK_SECOND = "#52514e"  # subtitles
@@ -144,13 +150,21 @@ def _frame(width, height, title, subtitle):
     ]
 
 
-def _axis(out, x0, plot_w, y_top, y_bot, ticks, top, unit=""):
-    """Hairline vertical gridlines + tick labels, drawn UNDER the bars."""
+def _axis(out, x0, plot_w, y_top, y_bot, ticks, top, unit="", negate=False):
+    """Hairline vertical gridlines + tick labels, drawn UNDER the bars.
+
+    `negate` labels the scale as it truly runs for docking scores — 0, -2, -4 …
+    — while the bars still grow rightward by magnitude. Vina affinities are
+    negative and more-negative is tighter binding, so this is the axis a reader
+    of a docking paper expects; without it the scale silently reports
+    magnitudes that are the opposite sign to every number in the table.
+    """
     for t in ticks:
         x = x0 + (t / top) * plot_w if top else x0
         out.append(f'<line x1="{x:.1f}" y1="{y_top}" x2="{x:.1f}" y2="{y_bot}" '
                    f'stroke="{GRID}" stroke-width="1"/>')
-        lab = f"{t:g}{unit}"
+        lab = ("0" if (negate and t == 0) else
+               (f"−{t:g}{unit}" if negate else f"{t:g}{unit}"))
         out.append(f'<text x="{x:.1f}" y="{y_bot + 18}" font-size="11" '
                    f'fill="{INK_MUTED}" text-anchor="middle">{lab}</text>')
     out.append(f'<line x1="{x0}" y1="{y_top}" x2="{x0}" y2="{y_bot}" '
@@ -190,7 +204,7 @@ def affinity_chart_svg(rows, width=900):
     out = _frame(width, height,
                  "Binding affinity by ligand",
                  "More negative = stronger predicted binding (AutoDock Vina, kcal/mol)")
-    _axis(out, pad_l, plot_w, y_top, y_bot, ticks, top)
+    _axis(out, pad_l, plot_w, y_top, y_bot, ticks, top, negate=True)
 
     for i, (label, v) in enumerate(pairs):
         y = y_top + i * BAND_H + (BAND_H - BAR_H) / 2
@@ -201,11 +215,115 @@ def affinity_chart_svg(rows, width=900):
                    f'{_esc(_truncate(label, pad_l - 22))}</text>')
         out.append(f'<text x="{pad_l + w + 8:.1f}" y="{y + BAR_H / 2 + 4:.1f}" '
                    f'font-size="11.5" font-weight="600" fill="{INK}">'
-                   f'{v:.1f}</text>')
+                   f'−{abs(v):.1f}</text>')
 
     out.append(f'<text x="{MARGIN}" y="{height - 12}" font-size="11" '
-               f'fill="{INK_MUTED}">Bar length shows magnitude; labels give the '
-               f'signed score.</text>')
+               f'fill="{INK_MUTED}">Longer bar = more negative ΔG = tighter '
+               f'predicted binding.</text>')
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def contact_heatmap_svg(rows, width=960, top_n=14):
+    """Ligand × residue contact matrix — which ligands touch which residues.
+
+    This is the figure a multi-ligand docking study is actually about: the two
+    bar charts each collapse one axis (per-ligand strength, per-residue
+    popularity), and only the matrix shows the PATTERN — whether the ligands
+    share a binding mode or split into groups that engage different parts of
+    the pocket. It is genuinely two-dimensional data, which is why it earns a
+    grid where a 3-D bar would only be adding a decorative axis to a single
+    number per ligand.
+
+    Cells are an ORDINAL scale of contact specificity, one hue, light→dark:
+    no contact → contact → hydrogen bond. Absent cells keep a neutral wash
+    rather than nothing so the grid still reads as a matrix, and every step is
+    named in a scale legend, since here colour carries meaning on its own.
+
+    Rows are ordered by affinity and columns by contact frequency, matching the
+    two bar charts, so a reader moving between figures keeps their bearings.
+
+    Returns an SVG string, or None when the data can't support a matrix.
+    """
+    def _split(v):
+        return [x.strip() for x in str(v or "").split(";") if x.strip() and x.strip() != "-"]
+
+    ligands, contacts = [], Counter()
+    for r in rows or []:
+        res = set(_split(r.get("All interacting residues")))
+        if not res:
+            continue
+        try:
+            aff = float(r.get("Best affinity (kcal/mol)"))
+        except (TypeError, ValueError):
+            aff = 0.0
+        ligands.append({"label": str(r.get("Ligand", "?")), "aff": aff, "res": res,
+                        "hb": set(_split(r.get("H-bond residues")))})
+        for x in res:
+            contacts[x] += 1
+    if len(ligands) < 2 or len(contacts) < 2:
+        return None
+
+    ligands.sort(key=lambda d: d["aff"])                       # strongest first
+    cols = [r for r, _ in sorted(contacts.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]]
+
+    # Cells widen when there are few residues, so a 5-column map fills its
+    # figure instead of huddling against the labels; capped so a 2-column map
+    # doesn't turn into slabs. The figure is then sized to its content rather
+    # than padded out to a fixed width, which is what left it looking lopsided.
+    CELL_H, GAP = 26, 2
+    CELL_W = int(max(38, min(64, 430 / max(1, len(cols)))))
+    COL_LABEL_H = 56
+    pad_l = _gutter([_truncate(l["label"], PAD_L - 24) for l in ligands])
+    grid_w = len(cols) * CELL_W
+    width = max(pad_l + grid_w + MARGIN + 24, 680)
+    y_top = PAD_T + COL_LABEL_H
+    grid_h = len(ligands) * CELL_H
+    height = y_top + grid_h + 74                               # + legend + caption
+
+    out = _frame(width, height,
+                 "Ligand × residue contact map",
+                 f"Which of the {len(ligands)} ligands contact which binding-site "
+                 f"residues, and where those contacts are hydrogen bonds")
+
+    # column headers, rotated so 7-character residue codes don't collide
+    for j, res in enumerate(cols):
+        cx = pad_l + j * CELL_W + CELL_W / 2
+        out.append(f'<text x="{cx:.1f}" y="{y_top - 8}" font-size="11" '
+                   f'fill="{INK_MUTED}" text-anchor="start" '
+                   f'transform="rotate(-45 {cx:.1f} {y_top - 8})">{_esc(res)}</text>')
+
+    for i, lig in enumerate(ligands):
+        y = y_top + i * CELL_H
+        out.append(f'<text x="{pad_l - 10}" y="{y + CELL_H / 2 + 4:.1f}" '
+                   f'font-size="11.5" fill="{INK_MUTED}" text-anchor="end">'
+                   f'{_esc(_truncate(lig["label"], pad_l - 22))}</text>')
+        for j, res in enumerate(cols):
+            x = pad_l + j * CELL_W
+            if res in lig["hb"]:
+                fill = SEQ_STRONG
+            elif res in lig["res"]:
+                fill = SEQ_LIGHT
+            else:
+                fill = NEUTRAL
+            # the 2px inset IS the separator — never a stroke around a mark
+            out.append(f'<rect x="{x + GAP / 2:.1f}" y="{y + GAP / 2:.1f}" '
+                       f'width="{CELL_W - GAP}" height="{CELL_H - GAP}" '
+                       f'rx="2" fill="{fill}"/>')
+
+    # scale legend — colour carries meaning here, so it is never colour-alone
+    ly = y_top + grid_h + 26
+    lx = MARGIN
+    for fill, name in ((NEUTRAL, "no contact"), (SEQ_LIGHT, "contact"),
+                       (SEQ_STRONG, "hydrogen bond")):
+        out.append(f'<rect x="{lx}" y="{ly - 9}" width="12" height="12" rx="2" fill="{fill}"/>')
+        out.append(f'<text x="{lx + 18}" y="{ly + 1}" font-size="11" '
+                   f'fill="{INK_SECOND}">{name}</text>')
+        lx += 20 + len(name) * CHAR_W + 22
+
+    out.append(f'<text x="{MARGIN}" y="{height - 12}" font-size="11" '
+               f'fill="{INK_MUTED}">Rows ordered by affinity (strongest first); '
+               f'columns by how many ligands contact the residue.</text>')
     out.append("</svg>")
     return "\n".join(out)
 

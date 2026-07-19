@@ -215,7 +215,8 @@ def build_docking_docx(r, llm=None):
         import charts
         chart_rows = rdf.reset_index(drop=True).to_dict(orient="records")
         figures = [("Binding affinity", charts.affinity_chart_svg(chart_rows)),
-                   ("Residue contact frequency", charts.residue_frequency_svg(chart_rows))]
+                   ("Residue contact frequency", charts.residue_frequency_svg(chart_rows)),
+                   ("Ligand × residue contact map", charts.contact_heatmap_svg(chart_rows))]
         drawn = [(cap, svg) for cap, svg in figures if svg]
         if drawn:
             doc.add_heading("Figures", level=1)
