@@ -233,6 +233,46 @@ def mark_consumed(job_id, jobs_dir=None):
         update_status(jd, consumed=True)
 
 
+def find_for_conversations(conversation_ids, jobs_dir=None):
+    """Job ids belonging to these conversations that still need attention.
+
+    When the browser's websocket drops mid-run — which a flaky host does often —
+    the reconnecting session is BRAND NEW: no job id, no active conversation, so
+    the poller has nothing to key on and the finished run is orphaned. That is
+    what "it just opens a new chat and the result never comes" looks like from
+    the outside, even though the subprocess completed fine.
+
+    Scanning the job directory for this user's conversations recovers it. Only
+    jobs that are running, or done/errored and NOT yet consumed, are returned —
+    a run the user has already seen is not resurfaced.
+    """
+    wanted = {str(c) for c in (conversation_ids or []) if c}
+    if not wanted:
+        return []
+    jobs_dir = jobs_dir or default_jobs_dir()
+    out = []
+    try:
+        entries = sorted(os.listdir(jobs_dir))
+    except OSError:
+        return []
+    for name in entries:
+        jd = os.path.join(jobs_dir, name)
+        spec = _read_json(os.path.join(jd, "spec.json")) or {}
+        conv = str(spec.get("conversation_id") or spec.get("job_id") or "")
+        if conv not in wanted:
+            continue
+        st = read_status(spec.get("job_id") or name, jobs_dir)
+        if not st or st.get("consumed"):
+            continue
+        if st.get("status") in ("running", "done", "error"):
+            out.append({"job_id": spec.get("job_id") or name,
+                        "conversation_id": conv,
+                        "status": st.get("status"),
+                        "started": st.get("started") or 0})
+    out.sort(key=lambda j: -(j.get("started") or 0))
+    return out
+
+
 def clear(job_id, jobs_dir=None):
     """Remove all files for a job (best-effort)."""
     import shutil

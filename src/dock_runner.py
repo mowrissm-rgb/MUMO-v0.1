@@ -24,6 +24,7 @@ The spec is a JSON dict:
 import os
 import sys
 import json
+import time
 import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -61,21 +62,33 @@ def main(spec_path):
         result = run_job(spec["convo"], spec["vina"], spec["data_dir"], spec["venv"],
                          llm=llm, progress=progress)
 
-        # persist to Supabase so a reconnecting / brand-new session finds the answer
+        # Persist to Supabase so a reconnecting / brand-new session finds the
+        # answer. This is the ONLY path that survives the browser session dying
+        # mid-run, so its outcome is recorded in status.json rather than
+        # swallowed — a run that computed fine but was never stored has to be
+        # visible, not silent.
         conv_id = spec.get("conversation_id")
+        saved, save_err = False, None
         if conv_id and result.get("ok"):
             try:
                 from auth_store import standalone_client, save_results_with
                 client = standalone_client()
-                save_results_with(client, conv_id,
-                                  {"gene": result["meta"].get("gene"),
-                                   "rows": result["rows"], "meta": result["meta"],
-                                   "viz": result["viz"]})
-            except Exception:
+                saved, save_err = save_results_with(
+                    client, conv_id,
+                    {"gene": result["meta"].get("gene"),
+                     "rows": result["rows"], "meta": result["meta"],
+                     "viz": result["viz"],
+                     "saved_at": time.time()})
+            except Exception as e:
+                save_err = f"{type(e).__name__}: {e}"
                 traceback.print_exc()
+            print(f"[persist] saved={saved} err={save_err}", flush=True)
 
         jobs._write_json(os.path.join(jd, "result.json"), result)
-        jobs.update_status(jd, status="done", progress="Complete", error=None)
+        # record whether the result reached the user's history, so the UI can
+        # say "computed but not saved" instead of the run vanishing
+        jobs.update_status(jd, status="done", progress="Complete", error=None,
+                           persisted=saved, persist_error=save_err)
         print("[done]", flush=True)
         return 0
 

@@ -170,6 +170,8 @@ ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the
 ss.setdefault("job_id", None)     # id of an in-flight background docking job (subprocess)
 ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in session
 ss.setdefault("pending_actions", [])   # steps queued behind a running dock
+ss.setdefault("stored_runs", [])       # every docking run in this conversation
+ss.setdefault("run_index", 0)          # which stored run the panel is showing
 ss.setdefault("asked_last_turn", False)  # did we just ask a clarifying question?
 
 # how to name each follow-up step when telling the user what happens next
@@ -1249,6 +1251,43 @@ def build_target(c):
     return {"gene": t, "pdb_path": None, "center": None, "size": None, "source": "gene (AlphaFold)"}
 
 
+def _run_to_results(run):
+    """Turn one STORED docking run back into a live results dict.
+
+    Rehydrating the viz is what restores the 3D pose and the 2D interaction
+    diagram — without it a re-opened conversation shows a bare table, which is
+    what "nothing shows except the written report" meant.
+    """
+    if not run or not run.get("rows"):
+        return None
+    try:
+        from viz import rehydrate_viz
+        rdf = pd.DataFrame(run["rows"])
+        rdf.index = range(1, len(rdf) + 1)     # Rank starts at 1, as for a fresh run
+        meta = dict(run.get("meta") or {})
+        meta.setdefault("gene", run.get("gene"))
+        return {"kind": "docking", "rdf": rdf,
+                "viz": rehydrate_viz(run.get("viz") or {}, DATA),
+                "meta": meta, "tier": run.get("tier") or "Standard"}
+    except Exception:
+        return None
+
+
+def _run_label(run, i):
+    """Short label for a stored run, for the panel's run picker."""
+    meta = run.get("meta") or {}
+    gene = meta.get("gene") or run.get("gene") or "target"
+    n = len(run.get("rows") or [])
+    stamp = ""
+    try:
+        import datetime as _dt
+        if run.get("saved_at"):
+            stamp = _dt.datetime.fromtimestamp(run["saved_at"]).strftime(" · %d %b %H:%M")
+    except Exception:
+        pass
+    return f"{i + 1}. {gene} — {n} ligand{'s' if n != 1 else ''}{stamp}"
+
+
 def _apply_result(result):
     """Turn a pipeline_core.run_job result dict into UI state: the chat message,
     the right-hand results panel, and Supabase persistence. Shared by BOTH the
@@ -1277,6 +1316,13 @@ def _apply_result(result):
     ss.panel_open = True
     # persist the full summary so a reloaded conversation rebuilds the whole
     # report. Idempotent — the background worker may have already written this.
+    # keep it in the in-session history too, so the panel's run picker shows it
+    # straight away rather than only after a reload
+    ss.stored_runs = ([{"gene": meta.get("gene"), "rows": result["rows"],
+                        "meta": meta, "viz": result.get("viz") or {},
+                        "saved_at": __import__("time").time()}]
+                      + list(ss.get("stored_runs") or []))[:6]
+    ss.run_index = 0
     if ss.active_conversation_id:
         try:
             authdb.save_results(ss.active_conversation_id,
@@ -1374,11 +1420,36 @@ def _render_job_progress():
     conversation id and resumes watching it. Returns True if it handled a job."""
     import docking_jobs as jobs
     job_id = ss.get("job_id") or ss.active_conversation_id or ss.get("anon_job_id")
-    if not job_id:
-        return False
-    st_ = jobs.read_status(job_id)
+    st_ = jobs.read_status(job_id) if job_id else None
+
     if not st_:
-        return False
+        # Nothing to watch by id. A session that reconnected after a dropped
+        # websocket has NO job id and NO active conversation, so its finished
+        # run would sit on disk forever — recover it by looking for unconsumed
+        # jobs belonging to any of this user's conversations.
+        user = authdb.current_user()
+        if not user:
+            return False
+        try:
+            convo_ids = [c["id"] for c in authdb.list_conversations(user["id"])]
+        except Exception:
+            return False
+        found = jobs.find_for_conversations(convo_ids)
+        if not found:
+            return False
+        job_id = found[0]["job_id"]
+        ss.job_id = job_id
+        ss.active_conversation_id = found[0]["conversation_id"]
+        st_ = jobs.read_status(job_id)
+        if not st_:
+            return False
+        if st_.get("status") != "running" and not ss.messages:
+            # reconnected into an empty chat: bring the conversation back too,
+            # so the recovered result lands in the thread it belongs to
+            try:
+                ss.messages = authdb.load_messages(ss.active_conversation_id)
+            except Exception:
+                pass
     status = st_.get("status")
 
     if status == "running":
@@ -1394,12 +1465,26 @@ def _render_job_progress():
 
     if status == "done" and not st_.get("consumed"):
         result = jobs.read_result(job_id)
-        jobs.mark_consumed(job_id)      # so a second tab / rerun won't re-announce it
-        ss.job_id = None
-        if result:
-            _apply_result(result)
-        else:
+        if not result:
+            jobs.mark_consumed(job_id)
+            ss.job_id = None
             say("The docking finished but its result couldn't be read — please re-run.")
+            st.rerun()
+            return True
+        # APPLY FIRST, consume second. Marking consumed up front meant that a
+        # rerun or a dropped websocket in the gap left the job flagged as
+        # delivered while the user had seen nothing — and the poller would then
+        # skip it forever. That is the "it says it's running and the result
+        # never comes" failure. Consuming only after the result is in session
+        # state makes the worst case a duplicate announcement, not a lost run.
+        _apply_result(result)
+        jobs.mark_consumed(job_id)
+        ss.job_id = None
+        if st_.get("persisted") is False:
+            # computed fine but never reached their history — say so plainly
+            say("Note: I couldn't save this run to your history "
+                f"({st_.get('persist_error') or 'unknown error'}), so it may not "
+                f"be here when you come back. Download the report if you need it.")
         st.rerun()
         return True
 
@@ -1431,6 +1516,7 @@ with st.sidebar:
         ss.active_conversation_id = None
         ss.job_id = None
         ss.anon_job_id = None   # a new session gets a fresh job slot
+        ss.stored_runs, ss.run_index = [], 0
         ss.pending_actions = []
         st.rerun()
 
@@ -1449,24 +1535,17 @@ with st.sidebar:
         for h in convos:
             if st.button(h["title"] or "Chat", key=f"h{h['id']}", use_container_width=True):
                 ss.messages = authdb.load_messages(h["id"])
-                stored = None
+                runs = []
                 try:
-                    stored = authdb.load_results(h["id"])
+                    runs = authdb.load_runs(h["id"])
                 except Exception:
                     pass
-                if stored:
-                    from viz import rehydrate_viz
-                    rdf = pd.DataFrame(stored["rows"])
-                    rdf.index = range(1, len(rdf) + 1)   # match fresh docking (Rank starts at 1)
-                    meta = stored.get("meta") or {}
-                    meta.setdefault("gene", stored.get("gene"))
-                    # rebuild the 2D/3D image data from what we persisted, so the
-                    # reloaded report is as complete as a fresh one
-                    viz = rehydrate_viz(stored.get("viz") or {}, DATA)
-                    ss.results = {"kind": "docking", "rdf": rdf, "viz": viz,
-                                  "meta": meta, "tier": "Standard"}
-                else:
-                    ss.results = None
+                # Every docking run in this conversation, newest first — not just
+                # the latest. Re-opening a conversation used to show only the most
+                # recent table because a new run overwrote the old one.
+                ss.stored_runs = runs
+                ss.run_index = 0
+                ss.results = _run_to_results(runs[0]) if runs else None
                 ss.stage, ss.active_conversation_id = "start", h["id"]
                 # clear any job id from the previous conversation; the poller will
                 # re-discover a job for THIS conversation from its id if one is live.
@@ -1490,6 +1569,7 @@ with st.sidebar:
             ss.messages, ss.results, ss.active_conversation_id = [], None, None
             ss.job_id = None
             ss.anon_job_id = None
+            ss.stored_runs, ss.run_index = [], 0
             ss.pending_actions = []
             ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
             st.rerun()
@@ -1622,9 +1702,35 @@ def _run_stability_md(r, status_cb=lambda m: None):
     return res
 
 
+def _render_run_picker():
+    """Let the user switch between every docking run in this conversation.
+
+    Previously the panel could only ever show the newest run, so coming back to
+    a conversation after several docks lost all but the last one. Each entry
+    restores the full report — table, 2D diagram and 3D pose.
+    """
+    runs = ss.get("stored_runs") or []
+    if len(runs) < 2:
+        return
+    labels = [_run_label(run, i) for i, run in enumerate(runs)]
+    idx = min(int(ss.get("run_index") or 0), len(runs) - 1)
+    choice = st.selectbox("Docking runs in this conversation", labels, index=idx,
+                          key="run_picker")
+    picked = labels.index(choice)
+    if picked != idx:
+        restored = _run_to_results(runs[picked])
+        if restored:
+            ss.run_index = picked
+            ss.results = restored
+            st.rerun()
+        else:
+            st.caption("That run's stored data couldn't be rebuilt.")
+
+
 def render_results():
     from viz import render_complex_html  # lazy: 3D viewer helper
     _trace("render-results:enter")
+    _render_run_picker()
     r = ss.results
     kind = _report_kind(r)
     _extra = _REPORT_RENDERERS.get(kind)

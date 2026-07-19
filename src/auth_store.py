@@ -130,15 +130,57 @@ def standalone_client():
         return None
 
 
+MAX_STORED_RUNS = 6      # keep the recent history bounded; viz blobs are large
+
+
+def _merge_runs(existing, new_run):
+    """Append a run to a conversation's stored history.
+
+    Results used to be ONE blob per conversation, so a second docking run
+    silently destroyed the first — the user would come back to a conversation
+    and find only the newest table. Runs are now a list, newest first, capped
+    so the stored JSON cannot grow without bound (each run carries cropped
+    complex PDBs for its 3D views).
+
+    Accepts the OLD single-dict shape as the first entry, so conversations
+    saved before this change still open.
+    """
+    runs = []
+    if isinstance(existing, dict):
+        if isinstance(existing.get("runs"), list):
+            runs = list(existing["runs"])
+        elif existing.get("rows"):
+            runs = [existing]                 # legacy single-result shape
+    elif isinstance(existing, list):
+        runs = list(existing)
+    runs.insert(0, new_run)
+    return {"runs": runs[:MAX_STORED_RUNS]}
+
+
 def save_results_with(client, conversation_id, results_summary):
-    """Save docking results using a caller-supplied client (for background jobs)."""
+    """Save docking results using a caller-supplied client (for background jobs).
+
+    Returns (ok, error). The caller MUST surface a failure: this is the only
+    path that persists a result when the browser session has already died, so
+    swallowing the error meant the run completed, the user saw nothing, and
+    nothing was written anywhere — the exact "the result never comes out"
+    complaint.
+    """
     if client is None:
-        return
+        return False, "no Supabase client"
+    try:
+        cur = client.table("conversations").select("results").eq(
+            "id", conversation_id).single().execute()
+        existing = (cur.data or {}).get("results")
+    except Exception:
+        existing = None          # first run, or the read failed — still try to write
     try:
         client.table("conversations").update(
-            {"results": results_summary}).eq("id", conversation_id).execute()
-    except Exception:
-        pass
+            {"results": _merge_runs(existing, results_summary)}
+        ).eq("id", conversation_id).execute()
+        return True, None
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
 
 
 # ── resilient calls: Supabase (via httpx) keeps a persistent HTTP/2 connection,
@@ -307,17 +349,44 @@ def load_messages(conversation_id):
 
 
 def save_results(conversation_id, results_summary):
-    """Store a small JSON summary of docking results (not the raw viz blobs)."""
+    """Append a docking run to this conversation's stored history."""
     def _q(sb):
-        sb.table("conversations").update({"results": results_summary}).eq("id", conversation_id).execute()
+        try:
+            cur = sb.table("conversations").select("results").eq(
+                "id", conversation_id).single().execute()
+            existing = (cur.data or {}).get("results")
+        except Exception:
+            existing = None
+        sb.table("conversations").update(
+            {"results": _merge_runs(existing, results_summary)}
+        ).eq("id", conversation_id).execute()
     return _run(_q)
 
 
 def load_results(conversation_id):
+    """The RAW stored value — may be the new {"runs": [...]} or a legacy dict."""
     def _q(sb):
         r = sb.table("conversations").select("results").eq("id", conversation_id).single().execute()
         return (r.data or {}).get("results")
     return _run(_q, default=None, swallow=True)
+
+
+def load_runs(conversation_id):
+    """Every stored docking run for a conversation, newest first.
+
+    Normalises both shapes so callers never have to care whether a conversation
+    was saved before or after runs became a list.
+    """
+    stored = load_results(conversation_id)
+    if not stored:
+        return []
+    if isinstance(stored, dict):
+        if isinstance(stored.get("runs"), list):
+            return [r for r in stored["runs"] if isinstance(r, dict)]
+        return [stored] if stored.get("rows") else []
+    if isinstance(stored, list):
+        return [r for r in stored if isinstance(r, dict)]
+    return []
 
 
 def delete_conversation(conversation_id):
