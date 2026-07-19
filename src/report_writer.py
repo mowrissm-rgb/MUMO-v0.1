@@ -206,6 +206,29 @@ def build_docking_docx(r, llm=None):
                         return None, f"{type(e2).__name__}: {e2}"
         return None, bh["err"]
 
+    # ── Figures: the two views the per-ligand sections can't give you ──
+    # The summary table has every number but no shape; these say which ligands
+    # separate from the pack and which residues the whole series converges on.
+    # Both are skipped when the data can't support them (see charts.py), so a
+    # single-ligand report simply doesn't get a one-bar chart.
+    try:
+        import charts
+        chart_rows = rdf.reset_index(drop=True).to_dict(orient="records")
+        figures = [("Binding affinity", charts.affinity_chart_svg(chart_rows)),
+                   ("Residue contact frequency", charts.residue_frequency_svg(chart_rows))]
+        drawn = [(cap, svg) for cap, svg in figures if svg]
+        if drawn:
+            doc.add_heading("Figures", level=1)
+            for cap, svg in drawn:
+                png, err = _shot("2d", svg)
+                if png:
+                    doc.add_picture(io.BytesIO(png), width=Inches(6.2))
+                else:
+                    doc.add_paragraph(f"[{cap} chart unavailable: {err}]")
+    except Exception as e:
+        # a figure is a nice-to-have; never lose the whole report over one
+        doc.add_paragraph(f"[Charts unavailable: {type(e).__name__}: {e}]")
+
     try:
         for pos, (rank, row) in enumerate(rdf.iterrows()):
             label = row["Ligand"]
@@ -545,9 +568,33 @@ def build_structure_zip(r):
     gene = re.sub(r"[^A-Za-z0-9_.-]", "_", str(meta.get("gene", "target"))) or "target"
 
     smiles_by = {}
+    rank_by = {}
     if rdf is not None:
-        for _, row in rdf.iterrows():
+        for idx, row in rdf.iterrows():
             smiles_by[row.get("Ligand")] = row.get("SMILES")
+            rank_by[row.get("Ligand")] = idx      # rdf is already sorted best→worst
+
+    used_stems = set()
+
+    def _stem(label, fallback_rank):
+        """A unique, rank-prefixed filename stem for one ligand.
+
+        Compound names are truncated to keep paths sane, and GC-MS peak lists are
+        full of homologs that differ only in a suffix ('…-, methyl ester' vs
+        '…-, octadecyl ester') — those collide once truncated, and a zip member
+        written twice means the second silently replaces the first on extraction,
+        losing a ligand's structures. The rank prefix makes the name unique AND
+        lets a file be matched to its row in the results table.
+        """
+        base = re.sub(r"[^A-Za-z0-9_.-]", "_", str(label))[:40] or "ligand"
+        stem = f"{rank_by.get(label, fallback_rank):02d}_{base}"
+        if stem in used_stems:                    # belt and braces
+            n = 2
+            while f"{stem}_{n}" in used_stems:
+                n += 1
+            stem = f"{stem}_{n}"
+        used_stems.add(stem)
+        return stem
 
     buf = io.BytesIO()
     receptor_written = False
@@ -566,8 +613,8 @@ def build_structure_zip(r):
               "Ligands:"]
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for label, entry in viz.items():
-            safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(label))[:40] or "ligand"
+        for i, (label, entry) in enumerate(viz.items(), 1):
+            safe = _stem(label, i)
             try:
                 with open(entry["complex"]) as f:
                     complex_pdb = f.read()
@@ -600,7 +647,7 @@ def build_structure_zip(r):
             if not receptor_written and rec_pdb:
                 z.writestr(f"{gene}_receptor.pdb", rec_pdb)
                 receptor_written = True
-            readme.append(f"  - {label}")
+            readme.append(f"  - [{safe.split('_')[0]}] {label}")
         z.writestr("README.txt", "\n".join(readme) + "\n")
 
     return buf.getvalue() if wrote_any else None
