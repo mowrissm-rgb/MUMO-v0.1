@@ -146,9 +146,13 @@ def _ligand_mol_from_pose(ligand_pdbqt, smiles=None):
         return None
 
 
-def _ligand_pdb_block(lig_mol):
+def _ligand_pdb_block(lig_mol, start_serial=1):
     """Heavy-atom PDB lines for the ligand, forced to HETATM residue 'LIG' on
-    chain Z so the 2D diagram + 3D viewer treat it as the ligand."""
+    chain Z so the 2D diagram + 3D viewer treat it as the ligand.
+
+    `start_serial` renumbers the atoms so they can continue after a receptor's
+    serials instead of restarting at 1 — see build_complex for why that matters.
+    """
     try:
         heavy = Chem.RemoveHs(lig_mol)
     except Exception:
@@ -165,6 +169,7 @@ def _ligand_pdb_block(lig_mol):
     for line in Chem.MolToPDBBlock(heavy, confId=conf_id).splitlines():
         if line.startswith(("ATOM", "HETATM")):
             line = "HETATM" + line[6:]            # force HETATM
+            line = line[:6] + f"{start_serial + len(fixed):>5}" + line[11:]  # renumber
             line = line[:17] + "LIG" + line[20:]  # residue name -> LIG
             line = line[:21] + "Z" + line[22:]    # chain -> Z
             fixed.append(line)
@@ -173,11 +178,26 @@ def _ligand_pdb_block(lig_mol):
 
 def build_complex(receptor_pdb, lig_mol, out_complex_pdb):
     """Glue protein + best ligand pose into one complex PDB (protein + ligand),
-    used by the 2D diagram and the 3D viewer."""
+    used by the 2D diagram, the 3D viewer and the structure export.
+
+    The ligand's atom serials continue after the receptor's rather than
+    restarting at 1. A PDB serial is the identity a viewer resolves CONECT
+    records against, so duplicates are not cosmetic: with the ligand numbered
+    1..N over a protein that already owns those serials, every ligand CONECT
+    record points at a PROTEIN atom. Discovery Studio then cannot perceive the
+    ligand as its own molecule and reports no ligand at all.
+    """
     with open(receptor_pdb) as f:
         protein_lines = [ln.rstrip("\n") for ln in f
                          if ln.startswith(("ATOM", "TER"))]
-    ligand_block = _ligand_pdb_block(lig_mol)
+    max_serial = 0
+    for ln in protein_lines:
+        if ln.startswith("ATOM"):
+            try:
+                max_serial = max(max_serial, int(ln[6:11]))
+            except ValueError:
+                pass
+    ligand_block = _ligand_pdb_block(lig_mol, start_serial=max_serial + 1)
 
     with open(out_complex_pdb, "w") as f:
         f.write("\n".join(protein_lines) + "\n")
