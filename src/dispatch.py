@@ -41,6 +41,7 @@ import re
 ACTION_SLOTS = {
     "dock":    (("target", "disease"),),
     "analyze": (("ligand",),),
+    "metabolism": (("ligand",),),
     "string":  (("target",),),
     "blast":   (("target",),),
 }
@@ -51,6 +52,9 @@ REAL_ACTIONS = tuple(ACTION_SLOTS)
 # position is what lets "dock X and then run ADME" produce [dock, analyze]
 # rather than a single guess.
 ACTION_CUES = {
+    "metabolism": (r"\bmetaboli", r"\bmetabolite", r"\bbiotransform",
+                   r"\bphase (i|ii|1|2)\b", r"\bglucuronid",
+                   r"\bfirst[- ]pass\b", r"\bconjugat"),
     "analyze": (r"\badmet?\b", r"\bdrug-?likeness\b", r"\btoxicity\b", r"\btoxic\b",
                 r"\bpharmacokinetic", r"\babsorption\b", r"\bbioavailab",
                 r"\blipinski\b", r"\bherg\b", r"\bames\b"),
@@ -324,6 +328,11 @@ def next_step(kind, top_ligand=None, target=None, already_done=()):
     if kind == "admet" and "dock" not in done and top_ligand:
         return (f"If you want to see how **{top_ligand}** actually binds, give me a "
                 f"target and I'll dock it.")
+    if kind == "metabolism" and "analyze" not in done and top_ligand:
+        return (f"I can also run the full ADMET profile for **{top_ligand}** — "
+                f"metabolism is one part of that picture.")
+    if kind == "admet" and "metabolism" not in done and top_ligand:
+        pass
     if kind == "string" and "blast" not in done and target:
         return (f"I can also run a BLAST search on **{target}** to find related "
                 f"proteins across species.")
@@ -404,5 +413,6 @@ def gap_prompt(action, convo):
              "ligand": "a ligand — a drug name, a compound name, or a SMILES string"}
     need = human.get(gaps[0], gaps[0])
     verb = {"dock": "dock", "analyze": "run the ADMET analysis",
+            "metabolism": "predict the metabolism",
             "string": "build the interaction network", "blast": "run BLAST"}.get(action, action)
     return f"To {verb} I still need {need}."

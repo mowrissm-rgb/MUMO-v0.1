@@ -44,7 +44,15 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     cleaned = os.path.join(data_dir, "c_cleaned.pdb")
     receptor = os.path.join(data_dir, "c_receptor.pdbqt")
     clean_protein_pdb(pdb_path, cleaned)
-    prepare_receptor(cleaned, receptor, venv_dir)
+    dropped = prepare_receptor(cleaned, receptor, venv_dir) or []
+    if dropped:
+        # Say it out loud. Meeko has no templates for nucleotides/sugars, so a
+        # protein-DNA entry like 1NFK only preps after they are removed — and
+        # the user must know the receptor is protein-only before reading any
+        # affinity from it.
+        status(f"Note: {len(dropped)} residues had no chemical template "
+               f"(usually DNA/RNA or sugar chains) and were removed from "
+               f"{tgt['gene']} — docking against the protein only.")
 
     single = len(ligands) == 1
     n_lig = len(ligands)

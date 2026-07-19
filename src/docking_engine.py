@@ -103,10 +103,40 @@ def clean_protein_pdb(input_path, output_path):
                 
     print(f"[Prep] Cleaned protein saved to: {output_path} ({atom_count} atoms written)")
 
+def parse_untemplated_residues(text):
+    """Residue keys Meeko could not build a chemical template for.
+
+    Meeko fails with "Template generation failed for unknown residues:
+    {'A:209', 'B:224', ...}" whenever the structure contains something outside
+    its protein template set — nucleotides in a protein-DNA complex, sugars,
+    modified residues. Its own error text recommends re-running with
+    --delete_residues, so the keys are worth extracting rather than showing the
+    user a wall of residue ids they cannot act on.
+
+    Returns a sorted list like ["A:209", "B:224"], or [] if that isn't the
+    failure. Pure and testable — no Meeko import needed.
+    """
+    import re as _re
+    if not text:
+        return []
+    m = _re.search(r"unknown residues:\s*\{([^}]*)\}", str(text))
+    if not m:
+        return []
+    keys = _re.findall(r"['\"]\s*([A-Za-z0-9]*:-?\d+[A-Za-z]?)\s*['\"]", m.group(1))
+    return sorted(set(keys))
+
+
 def prepare_receptor(cleaned_pdb_path, output_pdbqt_path, venv_bin_dir):
     """
     Converts a cleaned PDB receptor into the PDBQT format required by AutoDock Vina.
     Uses Meeko's mk_prepare_receptor tool to add atom types and gasteiger charges.
+
+    Retries once, dropping residues Meeko has no template for. Many real PDB
+    entries are protein-DNA or protein-sugar complexes (1NFK, for instance, is
+    NF-kB bound to DNA), and Meeko's templates cover protein only — so the first
+    attempt fails on the nucleotides. Deleting them is exactly what Meeko's own
+    error recommends, and the deleted residues are reported back so the user
+    knows what was removed rather than silently docking a modified receptor.
     """
     print(f"[Prep] Preparing receptor using Meeko...")
     # Call Meeko as a Python module ('python -m meeko.cli.mk_prepare_receptor').
@@ -124,17 +154,36 @@ def prepare_receptor(cleaned_pdb_path, output_pdbqt_path, venv_bin_dir):
         "--default_altloc", "A",   # pick conformation 'A' where atoms have alternates
     ]
 
-    print(f"[Exec] Running command: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    def _run(command):
+        print(f"[Exec] Running command: {' '.join(command)}")
+        r = subprocess.run(command, capture_output=True, text=True)
+        return r, ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+
+    result, details = _run(cmd)
+    deleted = []
 
     if result.returncode != 0:
-        # Meeko prints its real error to stdout; show both streams so we can see it.
-        details = (result.stdout or "") + "\n" + (result.stderr or "")
-        details = details.strip()[-600:] or "(no output captured)"
+        bad = parse_untemplated_residues(details)
+        if bad:
+            # Meeko's own advice: skip what it cannot template. Usually the DNA
+            # or sugar chains of a complex, which are not the docking target.
+            print(f"[Prep] Meeko has no template for {len(bad)} residues "
+                  f"— retrying without them.")
+            retry = cmd + ["--delete_residues", ",".join(bad)]
+            result, details = _run(retry)
+            deleted = bad
+
+    if result.returncode != 0:
+        # Meeko prints its real error to stdout. Keep the HEAD as well as the
+        # tail: the explanation is at the front, and truncating to the last 600
+        # characters left users staring at a bare list of residue ids.
+        msg = details or "(no output captured)"
+        if len(msg) > 1200:
+            msg = msg[:700] + "\n  …\n" + msg[-400:]
         print("[Error] Receptor preparation failed!")
-        print(details)
-        raise RuntimeError(f"Receptor preparation failed: {details}")
-    
+        print(msg)
+        raise RuntimeError(f"Receptor preparation failed: {msg}")
+
     # Meeko writes output as <output_basename>.pdbqt
     expected_output = f"{output_basename}.pdbqt"
     if os.path.exists(expected_output):
@@ -144,6 +193,9 @@ def prepare_receptor(cleaned_pdb_path, output_pdbqt_path, venv_bin_dir):
         print(f"[Prep] Prepared receptor saved to: {output_pdbqt_path}")
     else:
         raise FileNotFoundError(f"Expected prepared receptor file not found: {expected_output}")
+    # Callers surface this: a receptor that quietly lost residues is worse than
+    # an error, because the result still looks perfectly valid.
+    return deleted
 
 def _mol_from_smiles_at_ph(smiles, ph=7.4):
     """

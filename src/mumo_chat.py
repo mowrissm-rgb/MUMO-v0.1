@@ -613,8 +613,8 @@ CONV_SYSTEM = (
     "• If a message is random/off-topic ('hi','ok','m'), reply warmly and gently steer "
     "back. NEVER invent values the user did not give.\n"
     "• NEVER use emojis. Keep a clean, professional tone in every reply.\n"
-    "• KNOW YOUR LIMITS. You can dock, rescore, profile ADMET, build STRING networks "
-    "and run BLAST. You CANNOT run molecular-dynamics simulations, quantum/DFT "
+    "• KNOW YOUR LIMITS. You can dock, rescore, profile ADMET, predict metabolism "
+    "(phase I/II), build STRING networks and run BLAST. You CANNOT run molecular-dynamics simulations, quantum/DFT "
     "calculations, retrosynthesis, or anything experimental or clinical. If asked for "
     "one of those, say plainly that it isn't available and what you can do instead — "
     "NEVER promise a run you cannot perform. Explaining these topics is always fine; "
@@ -625,6 +625,9 @@ CONV_SYSTEM = (
     "   - 'string'  : the user wants a protein–protein INTERACTION NETWORK / STRING analysis / "
     "functional partners / how targets connect into pathways. Put the protein(s) in 'target' — a "
     "single gene name, or a LIST of them for a family/set.\n"
+    "   - 'metabolism': the user wants PREDICTED METABOLISM / metabolites / "
+    "biotransformation / phase I or phase II fate of a compound. Put the compound in "
+    "'ligand'.\n"
     "   - 'blast'   : the user wants a BLAST SEQUENCE-SIMILARITY search — 'blast CFTR', 'find "
     "proteins similar to X', 'sequence search', or they pasted a protein sequence to search. Put "
     "the gene NAME or the raw SEQUENCE they gave in 'target'.\n"
@@ -654,7 +657,8 @@ CONV_SYSTEM = (
     "  Do NOT drop the later steps. Do NOT ask which one to do first — the order is the "
     "order they wrote. For a pure question or explanation, return [].\n\n"
     "Reply with ONLY a JSON object, nothing else:\n"
-    '{"actions": [<any of "dock","analyze","string","blast", in the order requested; '
+    '{"actions": [<any of "dock","analyze","metabolism","string","blast", in the order '
+    'requested; '
     '[] for a pure chat/teaching reply>], '
     '"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
     '"ligand": <drug name, SMILES, or a LIST of them|null>, '
@@ -775,6 +779,40 @@ ADMET_REPORT_SYSTEM = (
 )
 
 
+METABOLISM_REPORT_SYSTEM = (
+    "You are MUMO, explaining predicted drug metabolism to a pharmacy student who "
+    "understands basic chemistry but has never used a metabolite predictor. Make it "
+    "genuinely easy to follow while staying scientifically correct.\n\n"
+    "Write markdown with these headings:\n"
+    "## What this predicts\n(2-3 sentences: what happens to a drug in the body, and "
+    "what phase I and phase II actually mean — phase I adds or exposes a chemical "
+    "handle, usually by oxidation; phase II sticks a large water-soluble group onto "
+    "that handle so the kidneys can remove it.)\n"
+    "## The most likely metabolites\n(walk through the top few: what the change IS in "
+    "plain words, which enzyme family does it, and why it matters — e.g. an ester "
+    "being cleaved, a phenol being glucuronidated. Reference the routes given.)\n"
+    "## What this suggests about the compound\n(is it likely cleared fast or slowly? "
+    "does it form a reactive intermediate such as an epoxide, and is that trapped by "
+    "glutathione? does it depend on one route that could saturate or be blocked?)\n"
+    "## How to read these numbers\n(the score RANKS likelihood, it is NOT a predicted "
+    "amount; rules are literature-derived; this is a hypothesis to test, not a "
+    "measurement.)\n\n"
+    "Define every term the first time. Be honest about uncertainty. No emojis."
+)
+
+
+def _metabolism_narrative(data):
+    """Plain-language write-up of a metabolism prediction (same pattern as STRING)."""
+    try:
+        from agents.metabolism import summarize
+        prompt = (f"Compound: {data.get('lig_label', '')}\n"
+                  f"{summarize(data.get('prediction') or {})}\n\n"
+                  f"Write the metabolism report.")
+        return _llm.chat(METABOLISM_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1200)
+    except Exception:
+        return ""
+
+
 def _admet_narrative(data):
     """Ask MUMO's LLM to explain a drug-likeness/ADMET screen in plain, beginner-friendly terms."""
     if _llm is None:
@@ -850,6 +888,13 @@ def _results_context():
         hs = ", ".join(f"{h.get('accession', '')} ({h.get('identity', '?')}%)" for h in hits)
         return (f"Latest BLAST for {r.get('query_name', 'the query')} "
                 f"({r.get('seq_len', '?')} aa) vs {r.get('database', '')}. Top hits: {hs}.")
+    if r.get("kind") == "metabolism":
+        pred = r.get("prediction") or {}
+        mets = (pred.get("metabolites") or [])[:6]
+        top = "; ".join(f'{m["smiles"]} via {m["name"]}' for m in mets)
+        return (f"Latest metabolism prediction for {r.get('lig_label', 'the compound')}: "
+                f"{len(pred.get('metabolites') or [])} metabolites. Most likely: {top}. "
+                f"(Scores rank likelihood, they are not amounts.)")
     if r.get("kind") == "md":
         return (f"Latest stability simulation for {r.get('ligand', 'the ligand')}: "
                 f"ligand moved {r.get('lig_rmsd_min')} Å on minimisation, "
@@ -1053,6 +1098,31 @@ def _run_sync_action(action, c):
             tip = dispatch.next_step("admet", top_ligand=label)
             if tip:
                 say(tip)
+        return
+
+    # predicted phase I / phase II metabolism of a compound
+    if action == "metabolism" and c.get("ligand"):
+        from agents.metabolism import predict_metabolites
+        one = c["ligand"][0] if isinstance(c["ligand"], list) else c["ligand"]
+        smi, label = resolve_ligand(str(one))
+        if not smi:
+            say(f"I couldn't find a structure for **{one}** to predict its metabolism.")
+            return
+        with st.spinner(f"Predicting phase I and phase II metabolites of {label}…"):
+            pred = predict_metabolites(smi, depth=2)
+        if pred.get("_error"):
+            say(f"Metabolism prediction couldn't run: {pred['_error']}")
+            return
+        res = {"kind": "metabolism", "lig_label": label, "lig_smiles": smi,
+               "prediction": pred}
+        with st.spinner("Writing the metabolism report…"):
+            res["narrative"] = _metabolism_narrative(res)
+        ss.results = res
+        ss.panel_open = True
+        import dispatch
+        tip = dispatch.next_step("metabolism", top_ligand=label)
+        if tip:
+            say(tip)
         return
 
     # protein–protein interaction network → STRING
@@ -1480,6 +1550,7 @@ REPORT_TITLES = {
     "string": "Interaction network",
     "blast": "BLAST results",
     "md": "Stability simulation",
+    "metabolism": "Metabolism pathway",
     "alignment": "Sequence alignment",
     "phylogeny": "Phylogenetic tree",
 }
@@ -1868,6 +1939,74 @@ def _render_string_report(r):
 
 
 _REPORT_RENDERERS["string"] = _render_string_report
+
+
+def _render_metabolism_report(r):
+    """Predicted phase I / II metabolites, most likely first."""
+    pred = r.get("prediction") or {}
+    mets = pred.get("metabolites") or []
+    st.markdown(f"#### Predicted metabolism — {r.get('lig_label', 'compound')}")
+    if r.get("narrative"):
+        st.markdown(r["narrative"])
+        st.markdown("---")
+
+    n1 = sum(1 for m in mets if m["phase"] == "I")
+    n2 = sum(1 for m in mets if m["phase"] == "II")
+    a, b, c_ = st.columns(3)
+    a.metric("Metabolites shown", len(mets))
+    b.metric("Phase I", n1)
+    c_.metric("Phase II", n2)
+
+    if mets:
+        st.markdown("##### Most likely metabolites")
+        st.caption("Score RANKS likelihood — it is not a predicted amount. "
+                   "The route shows how each metabolite is reached from the parent.")
+        st.dataframe(pd.DataFrame([{
+            "Metabolite (SMILES)": m["smiles"],
+            "Transformation": m["name"],
+            "Phase": m["phase"],
+            "Score": m["score"],
+            "Route": " → ".join(m["pathway"]),
+        } for m in mets]), use_container_width=True,
+            height=min(35 * (len(mets) + 1) + 3, 420))
+
+        # The route DRAWN — parent, arrow, product — because a transformation
+        # name without the structure beside it is not checkable chemistry.
+        try:
+            from agents.metabolism import pathway_svg
+            svg = pathway_svg(pred, max_routes=6)
+            if svg:
+                st.markdown("##### Predicted routes")
+                st.markdown(
+                    f'<div style="background:#fff;border-radius:10px;padding:8px;'
+                    f'overflow-x:auto;">{svg}</div>', unsafe_allow_html=True)
+        except Exception:
+            pass   # the table is the substance; the drawing is the aid
+
+    st.caption(pred.get("citation", ""))
+    st.caption("Predictions are rule-based hypotheses for experimental testing, "
+               "not measurements.")
+
+    # Full .docx — rasterizing the route diagram via headless Chromium is too
+    # slow to redo on every rerun, so Generate → Download (same as docking/STRING).
+    import report_writer
+    doc_key = f"_docx_metab_{id(r)}"
+    gcol, dcol = st.columns(2)
+    with gcol:
+        if st.button("Generate report (.docx)", key=f"genm_{id(r)}"):
+            with st.spinner("Building report — drawing the metabolic routes…"):
+                ss[doc_key] = report_writer.build_metabolism_docx(r)
+    with dcol:
+        if ss.get(doc_key):
+            st.download_button(
+                "Download report (.docx)", ss[doc_key],
+                file_name=f"MUMO_metabolism_{r.get('lig_label', 'compound')}.docx",
+                mime="application/vnd.openxmlformats-officedocument"
+                     ".wordprocessingml.document",
+                key=f"dlm_{id(r)}")
+
+
+_REPORT_RENDERERS["metabolism"] = _render_metabolism_report
 
 
 def _render_blast_report(r):
