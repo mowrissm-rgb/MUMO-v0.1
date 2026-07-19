@@ -169,6 +169,14 @@ ss.setdefault("entered", False)  # has the visitor clicked past the intro landin
 ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the flower page reveals
 ss.setdefault("job_id", None)     # id of an in-flight background docking job (subprocess)
 ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in session
+ss.setdefault("pending_actions", [])   # steps queued behind a running dock
+ss.setdefault("asked_last_turn", False)  # did we just ask a clarifying question?
+
+# how to name each follow-up step when telling the user what happens next
+_ACTION_NAMES = {"analyze": "run the ADMET analysis",
+                 "string": "build the interaction network",
+                 "blast": "run the BLAST search",
+                 "dock": "run the docking"}
 _llm = get_llm()
 
 
@@ -613,15 +621,32 @@ CONV_SYSTEM = (
     "the gene NAME or the raw SEQUENCE they gave in 'target'.\n"
     "   - 'chat'    : everything else — answering, teaching, explaining results, or asking "
     "ONE clarifying question. When unsure, use 'chat'.\n"
-    "• CRITICAL: your 'reply' and your 'action' MUST match. If your reply says you are "
-    "running, docking, analyzing, blasting, or starting a simulation, you MUST set the "
-    "matching action (dock/analyze/string/blast) — NEVER say you are running something "
-    "while choosing action 'chat'. If you still need something (e.g. a target), do NOT "
-    "promise to run it; ASK for the missing piece in the reply and use action 'chat'. "
-    "The moment you have a target (or disease) and the user wants it docked, set action "
-    "'dock' — don't just acknowledge.\n\n"
+    "• CRITICAL: your 'reply' and your 'actions' MUST match. If your reply says you are "
+    "running, docking, analyzing, blasting, or starting a simulation, the matching action "
+    "MUST be in 'actions' — NEVER say you are running something while returning an empty "
+    "list. If you still need something (e.g. a target), do NOT promise to run it; ASK for "
+    "the missing piece and return [].\n"
+    "• NEVER RE-ASK. Before asking anything, check 'Known so far' and the conversation. If "
+    "the target (or disease) is already known and the user wants it docked, RUN IT — do not "
+    "ask them to confirm, do not ask again in different words, do not ask for optional "
+    "extras. Asking for something you have already been told is the single worst thing you "
+    "can do. Only ask when a REQUIRED piece is genuinely absent: docking needs a target or "
+    "a disease; ADMET needs a ligand; STRING and BLAST need a protein.\n"
+    "• A bare 'yes', 'ok', 'go ahead' or 'run it' means RUN what you were about to run — "
+    "never answer it with another question.\n"
+    "• MULTI-STEP REQUESTS: one message can ask for SEVERAL things. Put every step in "
+    "'actions', IN THE ORDER THE USER ASKED. Examples:\n"
+    "   'dock 1NFK with luteolin and then run the ADME prediction for the ligand'\n"
+    "       -> actions: [\"dock\", \"analyze\"], target 1NFK, ligand luteolin\n"
+    "   'check the admet of quercetin then dock it against EGFR'\n"
+    "       -> actions: [\"analyze\", \"dock\"]\n"
+    "   'dock CFTR with aspirin and show me its interaction network'\n"
+    "       -> actions: [\"dock\", \"string\"]\n"
+    "  Do NOT drop the later steps. Do NOT ask which one to do first — the order is the "
+    "order they wrote. For a pure question or explanation, return [].\n\n"
     "Reply with ONLY a JSON object, nothing else:\n"
-    '{"action": "chat"|"dock"|"analyze"|"string"|"blast", '
+    '{"actions": [<any of "dock","analyze","string","blast", in the order requested; '
+    '[] for a pure chat/teaching reply>], '
     '"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
     '"ligand": <drug name, SMILES, or a LIST of them|null>, '
     '"tier": <"Simple"|"Standard"|"Ambitious"|null>, '
@@ -866,7 +891,10 @@ def _personalization_context():
 def converse(msg):
     """One conversational turn — MUMO can teach, answer, explain results, or dock."""
     from brain import parse_intent  # lazy imports (heavy scientific stack)
-    from agents.admet import resolve_ligand, druglikeness, admet_ml
+    # NOTE: agents.admet (RDKit) is deliberately NOT imported here any more. It
+    # moved into _run_sync_action, which only runs when an ADMET step actually
+    # fires — so answering a question no longer drags the native chemistry
+    # stack into the main Streamlit process for nothing.
     ss.messages.append({"role": "user", "content": msg})
     _persist("user", msg)
     c = ss.convo
@@ -917,29 +945,42 @@ def converse(msg):
         c["ligand"] = data["ligand"]
     say(data.get("reply") or "Okay.")
 
-    action = (data.get("action") or "chat").lower()
+    # ── decide what actually runs ──────────────────────────────────────────
+    # The model proposes; `dispatch` disposes. It is a pure, unit-tested module
+    # that overrides the model in the two cases that used to stall the app: the
+    # model chatting when the user plainly asked to run something we already
+    # have every input for, and the model asking a reworded version of a
+    # question the conversation already answered. It also returns a PLAN — an
+    # ordered list — so "dock X then run ADMET on it" is one request, not two.
+    import dispatch
+    actions = dispatch.plan(data, c, msg,
+                            asked_last_turn=bool(ss.get("asked_last_turn")))
 
-    # Safety net: the model sometimes writes a "running it now" reply but leaves the
-    # action as "chat", so nothing actually runs — the user just sees an empty promise
-    # and repeating the request keeps stalling. When the reply clearly says it's
-    # running AND the inputs it would need are present, fire the matching action.
-    if action == "chat":
-        _rl = (data.get("reply") or "").lower()
-        _running = any(p in _rl for p in (
-            "running", "run the", "i will run", "i'll run", "let me run", "run it now",
-            "docking now", "starting", "simulation for", "kicking off", "on it now"))
-        if _running:
-            if any(w in _rl for w in ("admet", "drug-likeness", "druglikeness", "toxicity",
-                                       "pharmacokinet")) and c.get("ligand"):
-                action = "analyze"
-            elif any(w in _rl for w in ("blast", "sequence similar", "homolog",
-                                         "similar protein")) and c.get("target"):
-                action = "blast"
-            elif any(w in _rl for w in ("interaction network", "string", "functional partner",
-                                         "protein-protein", "protein–protein")) and c.get("target"):
-                action = "string"
-            elif c.get("target") or c.get("disease"):     # a running-intent reply defaults to docking
-                action = "dock"
+    if actions:
+        ss.asked_last_turn = False
+    else:
+        # The model committed to an action we cannot run yet — its reply has
+        # probably promised to run it. Say precisely what is missing, which is
+        # the thing the old vague re-ask never did. (When the model chose to
+        # chat it has already asked its own question; don't stack a second.)
+        wanted = dispatch.model_actions(data)
+        if wanted:
+            gap = dispatch.gap_prompt(wanted[0], c)
+            if gap:
+                say(gap)
+        ss.asked_last_turn = True
+
+    _run_plan(actions, c)
+
+
+def _run_sync_action(action, c):
+    """Run one action that finishes within this script run (everything but dock).
+
+    Split out of `converse` so a queued follow-up step can reuse it verbatim —
+    "dock X then run ADMET" resumes here once the background dock lands, and
+    gets exactly the same code path as if it had been asked on its own.
+    """
+    from agents.admet import resolve_ligand, druglikeness, admet_ml
 
     # analyze-only → drug-likeness + ADMET-AI predictions, no docking
     if action == "analyze" and c.get("ligand"):
@@ -990,8 +1031,26 @@ def converse(msg):
             say(f"BLAST couldn't run: {e}")
         return
 
-    if action == "dock":
-        # resolve the CURRENT ligand(s) fresh (supports a single name OR a comparison list)
+
+def _run_plan(actions, c):
+    """Execute a planned sequence of actions.
+
+    Docking is the only step that outlives this script run — it is a detached
+    subprocess — so it cannot simply be called in a loop with the others. When
+    the plan reaches a dock, the REMAINDER is parked in session state along with
+    a snapshot of the conversation slots it will need, and `_apply_result`
+    resumes it once the dock lands. Snapshotting matters because finishing a
+    dock clears `ss.convo`, which would otherwise take the ligand for the
+    queued ADMET step with it.
+    """
+    queue = list(actions or [])
+    while queue:
+        action = queue.pop(0)
+        if action != "dock":
+            _run_sync_action(action, c)
+            continue
+
+        # resolve the CURRENT ligand(s) fresh (a single name OR a comparison list)
         asked_for_ligands = bool(c.get("ligand"))
         c["ligand_objs"] = _resolve_ligands(c.get("ligand"))
         if asked_for_ligands and not c["ligand_objs"]:
@@ -1001,10 +1060,33 @@ def converse(msg):
             # asked about. Stop instead; _resolve_ligands has already said why.
             say("None of those ligands can be docked, so I've stopped here rather than "
                 "substituting different molecules. Give me one that works and I'll run it.")
+            ss.pending_actions = []
             return
         c["tier"] = c.get("tier") or "Standard"
+        # park the rest WITH the slots they need, then hand off to the dock
+        ss.pending_actions = [{"action": a, "convo": dict(c)} for a in queue]
+        if len(queue):
+            nice = " then ".join(_ACTION_NAMES.get(a, a) for a in queue)
+            say(f"Starting the docking run — I'll {nice} straight after it finishes.")
         ss.run_now = True
-    # action == "chat" → the reply IS the whole answer; nothing more to run
+        return
+
+    ss.pending_actions = []
+
+
+def _resume_pending():
+    """Run whatever was queued behind a docking run, now that it has finished.
+
+    Kept deliberately defensive: a follow-up step failing must never discard the
+    docking results the user was actually waiting for.
+    """
+    pend = ss.get("pending_actions") or []
+    ss.pending_actions = []
+    for step in pend:
+        try:
+            _run_sync_action(step.get("action"), dict(step.get("convo") or {}))
+        except Exception as e:
+            say(f"The follow-up {step.get('action')} step couldn't run: {e}")
 
 
 def build_target(c):
@@ -1068,6 +1150,10 @@ def _apply_result(result):
             pass
     say(result["say_text"])
     ss.convo = {}   # reset for the next, independent request
+    # A multi-step request ("dock X then run ADMET on it") parks its remaining
+    # steps here while the dock runs in its subprocess. They carry their own
+    # slot snapshot, which is why clearing ss.convo just above is safe.
+    _resume_pending()
 
 
 def run_pipeline(status_area):
@@ -1201,6 +1287,7 @@ with st.sidebar:
         ss.active_conversation_id = None
         ss.job_id = None
         ss.anon_job_id = None   # a new session gets a fresh job slot
+        ss.pending_actions = []
         st.rerun()
 
     st.markdown(
@@ -1240,6 +1327,7 @@ with st.sidebar:
                 # clear any job id from the previous conversation; the poller will
                 # re-discover a job for THIS conversation from its id if one is live.
                 ss.job_id = None
+                ss.pending_actions = []
                 ss.panel_open = bool(ss.results)
                 st.rerun()
     else:
@@ -1258,6 +1346,7 @@ with st.sidebar:
             ss.messages, ss.results, ss.active_conversation_id = [], None, None
             ss.job_id = None
             ss.anon_job_id = None
+            ss.pending_actions = []
             ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
             st.rerun()
 
