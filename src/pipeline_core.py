@@ -98,11 +98,23 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
             ligs = []
         ligands = [{"label": l["chembl_id"], "smiles": l["smiles"]} for l in ligs]
 
+    # Final gate before anything native touches these. The chat app already
+    # screens what the USER typed, but scouted ligands arrive straight from
+    # ChEMBL and have never been checked — and this function is also the entry
+    # point for the subprocess worker, so this is the one place guaranteed to
+    # run on every docking path.
+    import ligand_check as lc
+    ligands, rejected = lc.screen(ligands)
+    skipped_note = ("\n\n" + lc.rejection_message(rejected)) if rejected else ""
+
     if not ligands:
-        return {"ok": False, "tier": tier,
-                "say_text": (f"I couldn't find ligands to dock against **{tgt['gene']}**. "
-                             f"Scouting works for gene/protein targets, not raw PDB IDs — "
-                             f"tell me a specific ligand, e.g. *“dock {tgt['gene']} with aspirin”*.")}
+        base = (f"I couldn't find ligands to dock against **{tgt['gene']}**. "
+                f"Scouting works for gene/protein targets, not raw PDB IDs — "
+                f"tell me a specific ligand, e.g. *“dock {tgt['gene']} with aspirin”*.")
+        if rejected:
+            # Be precise: we DID have candidates, they were all undockable.
+            base = (f"None of the ligands could be docked against **{tgt['gene']}**.")
+        return {"ok": False, "tier": tier, "say_text": base + skipped_note}
 
     rows, viz, meta = dock_pipeline(tgt, ligands, vina, data_dir, venv, status=progress)
 
@@ -147,5 +159,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     else:
         say_text = "The docking didn't produce a valid pose — see the results below."
 
+    # a ligand that was screened out must be accounted for even on a good run,
+    # so the results table is never quietly shorter than what the user asked for
     return {"ok": True, "rows": sorted_rows, "meta": meta_store,
-            "viz": serialize_viz(viz), "say_text": say_text, "tier": tier}
+            "viz": serialize_viz(viz), "say_text": say_text + skipped_note, "tier": tier}

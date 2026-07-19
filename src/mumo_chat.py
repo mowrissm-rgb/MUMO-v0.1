@@ -168,6 +168,7 @@ ss.setdefault("active_conversation_id", None)  # Supabase conversation row, once
 ss.setdefault("entered", False)  # has the visitor clicked past the intro landing page?
 ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the flower page reveals
 ss.setdefault("job_id", None)     # id of an in-flight background docking job (subprocess)
+ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in session
 _llm = get_llm()
 
 
@@ -741,17 +742,38 @@ def _history_text(n=10):
     return "\n".join(f'{m["role"]}: {m["content"]}' for m in ss.messages[-n:])
 
 
-def _resolve_ligands(lig):
-    """Resolve a ligand (name/SMILES) OR a list of them into [{label, smiles}]."""
+def _resolve_ligands(lig, announce=True):
+    """Resolve a ligand (name/SMILES) OR a list of them into [{label, smiles}].
+
+    Each candidate is screened by ligand_check before AND after structure
+    lookup, so a silylated GC-MS entry or any silicon-bearing molecule is
+    turned away here — cheaply, with an explanation — instead of failing deep
+    inside ligand prep minutes later. Anything dropped is reported in the chat
+    rather than silently vanishing from the results table.
+    """
     from agents.admet import resolve_ligand  # lazy: pulls in RDKit
+    import ligand_check as lc
     if not lig:
         return []
     items = lig if isinstance(lig, list) else [lig]
-    out = []
+    out, rejected = [], []
     for x in items:
-        smi, label = resolve_ligand(str(x))
-        if smi:
-            out.append({"label": label, "smiles": smi})
+        verdict = lc.precheck_name(x)
+        if verdict:
+            rejected.append(verdict)
+            continue
+        name = lc.normalize_name(x)
+        smi, label = resolve_ligand(name)
+        if not smi:
+            rejected.append(lc.unresolved(x))
+            continue
+        verdict = lc.postcheck_structure(name, smi)
+        if verdict:
+            rejected.append(verdict)
+            continue
+        out.append({"label": label, "smiles": smi})
+    if rejected and announce:
+        say(lc.rejection_message(rejected))
     return out
 
 
@@ -835,7 +857,14 @@ def converse(msg):
             c.update({"target": intent["target"], "disease": intent["disease"], "tier": "Standard"})
             if intent["ligand"]:
                 c["ligand"] = intent["ligand"]
+            asked_for_ligands = bool(c.get("ligand"))
             c["ligand_objs"] = _resolve_ligands(c.get("ligand"))
+            if asked_for_ligands and not c["ligand_objs"]:
+                # same rule as the LLM path: never substitute scouted ligands for
+                # the specific ones the user asked for (see the dock branch below)
+                say("None of those ligands can be docked, so I've stopped here rather "
+                    "than substituting different molecules.")
+                return
             say("Running it now (basic mode — add an LLM key to unlock questions, "
                 "teaching and result explanations). Results below.")
             ss.run_now = True
@@ -942,7 +971,16 @@ def converse(msg):
 
     if action == "dock":
         # resolve the CURRENT ligand(s) fresh (supports a single name OR a comparison list)
+        asked_for_ligands = bool(c.get("ligand"))
         c["ligand_objs"] = _resolve_ligands(c.get("ligand"))
+        if asked_for_ligands and not c["ligand_objs"]:
+            # The user named specific molecules and none of them survived screening.
+            # Falling through would let the pipeline SCOUT substitutes from ChEMBL and
+            # present them as the answer — silently docking something the user never
+            # asked about. Stop instead; _resolve_ligands has already said why.
+            say("None of those ligands can be docked, so I've stopped here rather than "
+                "substituting different molecules. Give me one that works and I'll run it.")
+            return
         c["tier"] = c.get("tier") or "Standard"
         ss.run_now = True
     # action == "chat" → the reply IS the whole answer; nothing more to run
@@ -1033,13 +1071,25 @@ def _job_data_dir(job_id):
 
 def _start_background_job():
     """Launch the docking pipeline in a DETACHED subprocess so it keeps running
-    even if the user closes the tab / refreshes / minimises / quits the browser.
+    even if the user closes the tab / refreshes / minimises / quits the browser,
+    and — just as importantly — so a crash in native code cannot kill the app.
     Returns True if a background job is now in flight (→ switch to poll mode);
-    False if we should fall back to a foreground run (no conversation to key on)."""
+    False only if the subprocess could not be launched at all, in which case the
+    caller falls back to a foreground run as a genuine last resort."""
     import docking_jobs as jobs
-    job_id = ss.active_conversation_id
+    # A logged-in session keys the job on its conversation id, so the run can be
+    # reclaimed from any device by reopening that conversation. An ANONYMOUS
+    # session has no such id — but it must still get its own process: the whole
+    # point of the subprocess is that a native segfault (Vina/ProLIF/MDAnalysis)
+    # kills only the child. Running it in-process instead would take the entire
+    # app down for everyone, which is exactly the outage of 2026-07-19. So we
+    # mint a throwaway id and isolate the run regardless; the only thing an
+    # anonymous user gives up is reconnecting to it after closing the tab.
+    job_id = ss.active_conversation_id or ss.get("anon_job_id")
     if not job_id:
-        return False   # no persistent conversation id to track the job → foreground
+        import uuid
+        job_id = "anon-" + uuid.uuid4().hex[:16]
+        ss.anon_job_id = job_id
     if jobs.is_running(job_id):
         ss.job_id = job_id
         say("A docking run is already going for this session — it keeps running on the "
@@ -1072,7 +1122,7 @@ def _render_job_progress():
     makes a run survive a page reload: a reconnecting session finds the job by the
     conversation id and resumes watching it. Returns True if it handled a job."""
     import docking_jobs as jobs
-    job_id = ss.get("job_id") or ss.active_conversation_id
+    job_id = ss.get("job_id") or ss.active_conversation_id or ss.get("anon_job_id")
     if not job_id:
         return False
     st_ = jobs.read_status(job_id)
@@ -1129,6 +1179,7 @@ with st.sidebar:
         ss.messages, ss.stage, ss.convo, ss.results, ss.run_now, ss.panel_open = [], "start", {}, None, False, False
         ss.active_conversation_id = None
         ss.job_id = None
+        ss.anon_job_id = None   # a new session gets a fresh job slot
         st.rerun()
 
     st.markdown(
@@ -1185,6 +1236,7 @@ with st.sidebar:
             authdb.sign_out()
             ss.messages, ss.results, ss.active_conversation_id = [], None, None
             ss.job_id = None
+            ss.anon_job_id = None
             ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
             st.rerun()
 

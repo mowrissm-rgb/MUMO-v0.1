@@ -66,10 +66,25 @@ _GENE_RE = re.compile(r"\b([A-Z][A-Z0-9]{2,5})\b")
 
 
 def _looks_like_smiles(token):
-    """A token is SMILES-ish if it has chemistry punctuation or ring atoms + digits."""
+    """A token is SMILES-ish if it has chemistry punctuation or ring atoms + digits.
+
+    The cheap pattern alone is not enough: this function runs over whitespace-
+    split words, and chemical NAME fragments like 'Cholan-24-oic' satisfy it
+    (letters, a hyphen, digits) despite being nothing like a structure. Treating
+    one as a ligand means docking a molecule the user never named, so when RDKit
+    is available we let it settle the question — a string is SMILES only if it
+    actually parses into a molecule.
+    """
     if not _SMILES_RE.match(token):
         return False
-    return bool(re.search(r"[()=#\[\]]", token) or re.search(r"[cnoCNO].*\d", token))
+    if not (re.search(r"[()=#\[\]]", token) or re.search(r"[cnoCNO].*\d", token)):
+        return False
+    try:
+        from rdkit import Chem, RDLogger
+        RDLogger.DisableLog("rdApp.*")   # a failed parse is an ANSWER here, not an error
+        return Chem.MolFromSmiles(token) is not None
+    except Exception:
+        return True     # no RDKit — fall back to the heuristic verdict
 
 
 def _rule_parse(text):
