@@ -172,6 +172,26 @@ ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in sessi
 _llm = get_llm()
 
 
+def _trace(stage):
+    """Print a flushed breadcrumb marking a stage of the main process.
+
+    A native segfault (exit 139) kills the interpreter outright: no traceback,
+    no exception, nothing Python can catch or log after the fact. What DOES
+    survive is whatever already reached stdout, because Hugging Face keeps the
+    tail of it in the Space's error message. So the only way to learn where the
+    app died is to say where it is BEFORE it gets there — hence flush=True,
+    which matters more than the message: a buffered line is lost in the crash.
+
+    Placed at the boundaries where the main process enters native code (RDKit,
+    Playwright, the 3D viewer), since that is where every one of this app's
+    crashes has come from.
+    """
+    try:
+        print(f"[mumo] {stage}", flush=True)
+    except Exception:
+        pass
+
+
 def theme_bg():
     """3D background follows the app theme: dark → black, light → white."""
     try:
@@ -753,6 +773,7 @@ def _resolve_ligands(lig, announce=True):
     """
     from agents.admet import resolve_ligand  # lazy: pulls in RDKit
     import ligand_check as lc
+    _trace("resolve-ligands:enter (RDKit)")
     if not lig:
         return []
     items = lig if isinstance(lig, list) else [lig]
@@ -1369,6 +1390,7 @@ def _run_stability_md(r, status_cb=lambda m: None):
 
 def render_results():
     from viz import render_complex_html  # lazy: 3D viewer helper
+    _trace("render-results:enter")
     r = ss.results
     kind = _report_kind(r)
     _extra = _REPORT_RENDERERS.get(kind)
@@ -1393,6 +1415,7 @@ def render_results():
         elif adm and "_error" in adm:
             st.caption(f"ADMET-AI predictions unavailable — {adm['_error']}")
         import report_writer
+        _trace("report_writer:import+build (RDKit/Playwright)")
         st.download_button("Download report (.docx)", report_writer.build_admet_docx(r),
                            file_name=f"MUMO_ADMET_{r['lig_label']}.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
@@ -1461,6 +1484,7 @@ def render_results():
         # cached in session_state keyed by this results object (a fresh dock run gets a
         # fresh dict, so the cache naturally invalidates when new results land).
         import report_writer
+        _trace("report_writer:import+build (RDKit/Playwright)")
         doc_key = f"_docx_bytes_{id(r)}"
         gcol, dcol = st.columns(2)
         with gcol:
@@ -1598,8 +1622,10 @@ def render_results():
                         "pocket_only": pocket_only,
                         "background": background}   # white "figure panel" by default
                 try:
+                    _trace("3d-viewer:build-html")
                     components.html(render_complex_html(entry["complex"], entry["ia"],
                                     options=opts, height=520), height=540)
+                    _trace("3d-viewer:ok")
                 except Exception as e:
                     st.caption(f"(3D view unavailable: {e})")
 
