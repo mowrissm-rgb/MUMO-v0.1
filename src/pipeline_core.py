@@ -85,15 +85,28 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
         return {"ok": False, "tier": tier,
                 "say_text": "I couldn't pin down a target — tell me a gene, PDB ID, or disease."}
 
-    tgt = build_target(c, data_dir)
+    # One request can name SEVERAL targets ("dock luteolin against CFTR and
+    # EGFR"). Docking each in turn and merging the rows gives ONE ranked table
+    # across the whole set, which is the actual question a multi-target screen
+    # asks — running them as separate jobs would produce N reports the user then
+    # has to compare by hand.
+    targets = c["target"] if isinstance(c["target"], list) else [c["target"]]
+    targets = [str(t).strip() for t in targets if str(t or "").strip()]
+    multi = len(targets) > 1
+
+    # Ligands are scouted against the FIRST named target and then docked against
+    # all of them, so this only needs the target's name — building the structure
+    # happens inside the loop, where a failure is caught per target instead of
+    # taking the whole screen down.
+    primary = targets[0]
 
     if c.get("ligand_objs"):
         ligands = c["ligand_objs"]
     else:
         n = c.get("n_ligands") or 3
-        progress(f"Scouting {n} ligands for {tgt['gene']}…")
+        progress(f"Scouting {n} ligands for {primary}…")
         try:
-            _, ligs = find_ligands(tgt["gene"], limit=n)
+            _, ligs = find_ligands(primary, limit=n)
         except Exception:
             ligs = []
         ligands = [{"label": l["chembl_id"], "smiles": l["smiles"]} for l in ligs]
@@ -108,15 +121,54 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     skipped_note = ("\n\n" + lc.rejection_message(rejected)) if rejected else ""
 
     if not ligands:
-        base = (f"I couldn't find ligands to dock against **{tgt['gene']}**. "
+        base = (f"I couldn't find ligands to dock against **{primary}**. "
                 f"Scouting works for gene/protein targets, not raw PDB IDs — "
-                f"tell me a specific ligand, e.g. *“dock {tgt['gene']} with aspirin”*.")
+                f"tell me a specific ligand, e.g. *“dock {primary} with aspirin”*.")
         if rejected:
             # Be precise: we DID have candidates, they were all undockable.
-            base = (f"None of the ligands could be docked against **{tgt['gene']}**.")
+            base = (f"None of the ligands could be docked against **{primary}**.")
         return {"ok": False, "tier": tier, "say_text": base + skipped_note}
 
-    rows, viz, meta = dock_pipeline(tgt, ligands, vina, data_dir, venv, status=progress)
+    rows, viz, meta = [], {}, None
+    failed_targets = []
+    for n_t, name in enumerate(targets):
+        try:
+            if multi:
+                progress(f"Preparing target {name} ({n_t + 1} of {len(targets)})…")
+            t_obj = build_target(dict(c, target=name), data_dir)
+        except Exception as e:
+            # one unreachable target must not sink the whole screen
+            failed_targets.append(f"{name} ({e})")
+            continue
+        if multi:
+            progress(f"Docking against {t_obj['gene']} ({n_t + 1} of {len(targets)})…")
+        t_rows, t_viz, t_meta = dock_pipeline(t_obj, ligands, vina, data_dir, venv,
+                                              status=progress)
+        for r in t_rows:
+            # tag every row so a merged table stays readable, and key the viz by
+            # target+ligand so the same ligand docked twice doesn't collide
+            r["Target"] = t_obj["gene"]
+            rows.append(r)
+        for lab, entry in (t_viz or {}).items():
+            viz[f"{t_obj['gene']} · {lab}" if multi else lab] = entry
+        meta = meta or t_meta
+        if multi and t_meta:
+            meta = dict(meta)
+            meta.setdefault("per_target", {})[t_obj["gene"]] = {
+                k: t_meta.get(k) for k in ("pocket", "validation", "reliability_by")}
+
+    if not rows:
+        note = ("; ".join(failed_targets)) or "no poses were produced"
+        return {"ok": False, "tier": tier,
+                "say_text": f"The docking didn't produce any results — {note}." + skipped_note}
+
+    meta = dict(meta or {})
+    if multi:
+        meta["gene"] = " + ".join(t for t in
+                                  dict.fromkeys(r["Target"] for r in rows))
+        meta["targets"] = list(dict.fromkeys(r["Target"] for r in rows))
+    if failed_targets:
+        skipped_note += ("\n\nCouldn't prepare: " + "; ".join(failed_targets) + ".")
 
     rdf = pd.DataFrame(rows)
     num = pd.to_numeric(rdf["Best affinity (kcal/mol)"], errors="coerce")
@@ -124,7 +176,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     sorted_rows = rdf.to_dict(orient="records")
 
     meta_store = {k: meta.get(k) for k in
-                  ("gene", "pocket", "exhaustiveness", "replicas", "validation", "reliability_by")}
+                  ("gene", "pocket", "exhaustiveness", "replicas", "validation",
+                   "reliability_by", "targets", "per_target") if k in meta}
 
     # narrative report on the best hit
     top = rdf.iloc[0]
@@ -132,7 +185,10 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
         def _sp(v):
             return [x for x in str(v).split("; ") if x and x != "-"]
         _rel = (meta.get("reliability_by") or {}).get(top["Ligand"], {})
-        rep = write_report({"target": meta["gene"], "ligand": top["Ligand"],
+        # on a multi-target screen the write-up is about the winning PAIR, so
+        # name the target that hit actually came from, not the joined label
+        rep = write_report({"target": top.get("Target") or meta.get("gene"),
+                            "ligand": top["Ligand"],
                             "affinity": float(top["Best affinity (kcal/mol)"]),
                             "estimated_ki": top.get("Est. Ki"),
                             "ligand_efficiency": top.get("Ligand efficiency"),

@@ -230,6 +230,164 @@ def _dedupe(seq):
     return out
 
 
+# Phrases that mean "drop what you have", not "here is a new value". Without
+# these a slot can only ever be overwritten, never removed.
+_CLEAR_RE = {
+    "ligand": (r"\b(forget|drop|remove|clear|ignore|without)\b[^.]{0,30}\b(ligand|compound|molecule|drug)s?\b",
+               r"\b(no|any|whatever)\s+(specific\s+)?(ligand|compound|molecule|drug)s?\b",
+               r"\b(scout|find|suggest|pick|choose)\b[^.]{0,24}\b(ligand|compound|molecule|drug|candidate)s?\b",
+               r"\bnew (ligand|compound|molecule|drug)s?\b"),
+    "target":  (r"\b(forget|drop|remove|clear|ignore)\b[^.]{0,30}\b(target|protein|gene)s?\b",
+                r"\bdifferent (target|protein|gene)\b"),
+    "disease": (r"\b(forget|drop|remove|clear|ignore)\b[^.]{0,30}\bdisease\b",),
+}
+
+
+def slots_to_clear(text):
+    """Slots the user is asking to ABANDON in this message.
+
+    Merging was previously `if value: slot = value`, so a slot could be
+    overwritten but never emptied — "forget the ligand, just scout candidates"
+    left the old ligand in place and docked it anyway. A model returning null
+    is ambiguous (it usually just means "not mentioned this turn"), so the
+    intent has to be read from the user's own words instead.
+    """
+    s = _norm(text).lower()
+    if not s:
+        return set()
+    return {slot for slot, pats in _CLEAR_RE.items()
+            if any(re.search(p, s) for p in pats)}
+
+
+# References to a previous result rather than a named molecule.
+_BEST_HIT_RE = (r"\b(the )?(best|top|strongest|highest|first|winning|leading)\b"
+                r"[^.]{0,20}\b(hit|ligand|compound|molecule|result|one|binder|pose)\b",
+                r"\bthat (ligand|compound|molecule|one|hit)\b",
+                r"\bit\b")
+
+_ALL_HITS_RE = (r"\b(all|each|every)\b[^.]{0,20}\b(hit|ligand|compound|molecule|result)s?\b",
+                r"\ball of (them|those)\b")
+
+
+def references_result(text):
+    """How the message refers back to the last results, if at all.
+
+    Returns "best", "all", or None. This is what makes "run ADMET on the top
+    hit" work: without it the follow-up has no ligand, because the winner's
+    name only ever existed inside the results table.
+
+    'it' counts as a best-hit reference deliberately — after a docking run
+    "run ADMET on it" is overwhelmingly about the hit, and the caller only
+    consults this when a ligand is otherwise missing.
+    """
+    s = _norm(text).lower()
+    if not s:
+        return None
+    if any(re.search(p, s) for p in _ALL_HITS_RE):
+        return "all"
+    if any(re.search(p, s) for p in _BEST_HIT_RE):
+        return "best"
+    return None
+
+
+def resolve_from_results(text, rows, limit=8):
+    """Turn a back-reference into real ligand name(s) from the results table.
+
+    `rows` is the results table, already sorted best-first. Returns a ligand
+    value shaped the way the convo slot expects (a string for one, a list for
+    several), or None when the message isn't referring back or there is
+    nothing to refer to.
+    """
+    ref = references_result(text)
+    if not ref or not rows:
+        return None
+    names = [r.get("Ligand") for r in rows if r.get("Ligand")]
+    if not names:
+        return None
+    return names[0] if ref == "best" else names[:limit]
+
+
+def next_step(kind, top_ligand=None, target=None, already_done=()):
+    """The obvious thing to offer after a run finishes.
+
+    MUMO is for people new to this workflow, so going silent after a result
+    leaves them guessing what is even possible next. One concrete, clickable-
+    sounding suggestion naming the actual molecule beats a generic menu — and
+    it is a suggestion, never an action taken on their behalf.
+
+    Returns a sentence, or "" when there is nothing worth suggesting.
+    """
+    done = set(already_done or ())
+    if kind == "docking" and "analyze" not in done and top_ligand:
+        return (f"Next, I can run the ADMET and drug-likeness profile for "
+                f"**{top_ligand}** — say the word and I'll do it.")
+    if kind == "admet" and "dock" not in done and top_ligand:
+        return (f"If you want to see how **{top_ligand}** actually binds, give me a "
+                f"target and I'll dock it.")
+    if kind == "string" and "blast" not in done and target:
+        return (f"I can also run a BLAST search on **{target}** to find related "
+                f"proteins across species.")
+    if kind == "blast" and "string" not in done and target:
+        return (f"I can also map **{target}**'s interaction network to see which "
+                f"proteins it works with.")
+    return ""
+
+
+# Things users reasonably ask for that MUMO genuinely cannot do right now.
+# Saying so plainly is a feature: the alternative is the model inventing a
+# capability, promising a run, and leaving the user waiting for output that was
+# never going to arrive.
+UNSUPPORTED = (
+    (("molecular dynamics", "md simulation", "run md", "gromacs", "amber",
+      "trajectory", "nanosecond", "ns simulation", "mm-gbsa", "mmgbsa",
+      "free energy perturbation", "fep"),
+     "Full molecular-dynamics simulation isn't available yet. Real trajectory MD "
+     "needs a GPU — on this free CPU tier a meaningful run would take hours, so it "
+     "is deliberately switched off rather than left to time out. Docking, pose "
+     "clustering and consensus rescoring all still run."),
+    (("quantum", "dft", "qm/mm", "ab initio", "gaussian"),
+     "Quantum-mechanical calculations (DFT, QM/MM) aren't part of MUMO — it is a "
+     "docking and cheminformatics platform."),
+    # NB: "crystal structure" alone is NOT a cue — "dock against the crystal
+    # structure of CFTR" is an ordinary, supported request. Only DETERMINING
+    # one is out of scope, so the verb has to be present.
+    (("crystallograph", "solve the structure", "solve the crystal",
+      "determine the structure", "cryo-em", "x-ray structure determination"),
+     "MUMO can't determine experimental structures. It uses existing ones from the "
+     "PDB, or AlphaFold models when no experimental structure exists."),
+    (("synthesi", "retrosynthesis", "how to make", "synthetic route"),
+     "Synthesis planning and retrosynthesis aren't supported. MUMO can tell you a "
+     "compound's synthetic accessibility score, but not how to make it."),
+    (("clinical trial", "in vivo", "animal study", "patient"),
+     "MUMO is an in-silico tool — it can't run or interpret clinical or in-vivo "
+     "studies. Everything it reports is a computational prediction."),
+)
+
+
+# "md" is too short for substring matching (it hits "admet", "amd", …) and a
+# simulation length is a giveaway on its own — "do a 100 ns run" is asking for
+# molecular dynamics whether or not the letters MD appear.
+_MD_RE = (r"\bmd\b(?=[^.]{0,24}\b(run|simulat|traject|production|equilibrat)\b)",
+          r"\b(run|do|perform|start)\b[^.]{0,24}\bmd\b",
+          r"\b\d+\s*(ns|ps|μs|us|microsecond|nanosecond)\b")
+
+
+def unsupported_request(text):
+    """A plain explanation if the user asked for something MUMO cannot do.
+
+    Returns the explanation, or "" when the request is in scope.
+    """
+    s = _norm(text).lower()
+    if not s:
+        return ""
+    if any(re.search(p, s) for p in _MD_RE):
+        return UNSUPPORTED[0][1]
+    for cues, message in UNSUPPORTED:
+        if any(cue in s for cue in cues):
+            return message
+    return ""
+
+
 def gap_prompt(action, convo):
     """A specific question for what's missing — never a generic re-ask.
 

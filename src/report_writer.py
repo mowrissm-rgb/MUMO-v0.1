@@ -572,8 +572,16 @@ def build_structure_zip(r):
     rank_by = {}
     if rdf is not None:
         for idx, row in rdf.iterrows():
-            smiles_by[row.get("Ligand")] = row.get("SMILES")
-            rank_by[row.get("Ligand")] = idx      # rdf is already sorted best→worst
+            # A multi-target run keys its viz by "TARGET · ligand" so the same
+            # ligand docked against two proteins doesn't overwrite itself, so
+            # register BOTH forms — the plain name for a single-target run and
+            # the composite for a screen.
+            keys = [row.get("Ligand")]
+            if row.get("Target"):
+                keys.append(f'{row["Target"]} · {row.get("Ligand")}')
+            for k in keys:
+                smiles_by[k] = row.get("SMILES")
+                rank_by[k] = idx                  # rdf is already sorted best→worst
 
     used_stems = set()
 

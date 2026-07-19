@@ -605,11 +605,20 @@ CONV_SYSTEM = (
     "Remember what the user already told you; never re-ask it.\n"
     "• Understand messy, vague or multi-part requests. For a comparison "
     "('compare aspirin and ibuprofen on EGFR') return ligand as a LIST.\n"
+    "• SEVERAL TARGETS are allowed too: 'dock luteolin against CFTR, EGFR and HDAC6' or "
+    "'screen this compound against these 8 targets' → return target as a LIST. Every "
+    "ligand is docked against every target and ranked in ONE table.\n"
     "• Fix obvious gene typos (CTRF→CFTR, EGRF→EGFR); map plain descriptions to genes "
     "('lung mucus protein'→MUC5B).\n"
     "• If a message is random/off-topic ('hi','ok','m'), reply warmly and gently steer "
     "back. NEVER invent values the user did not give.\n"
     "• NEVER use emojis. Keep a clean, professional tone in every reply.\n"
+    "• KNOW YOUR LIMITS. You can dock, rescore, profile ADMET, build STRING networks "
+    "and run BLAST. You CANNOT run molecular-dynamics simulations, quantum/DFT "
+    "calculations, retrosynthesis, or anything experimental or clinical. If asked for "
+    "one of those, say plainly that it isn't available and what you can do instead — "
+    "NEVER promise a run you cannot perform. Explaining these topics is always fine; "
+    "it is only claiming to RUN them that is wrong.\n"
     "• Choose ACTION each turn:\n"
     "   - 'dock'    : you have a target OR disease and the user wants to run it.\n"
     "   - 'analyze' : the user only wants a molecule's drug-likeness / ADMET / toxicity, no docking.\n"
@@ -906,21 +915,37 @@ def converse(msg):
             c.update({"target": intent["target"], "disease": intent["disease"], "tier": "Standard"})
             if intent["ligand"]:
                 c["ligand"] = intent["ligand"]
-            asked_for_ligands = bool(c.get("ligand"))
-            c["ligand_objs"] = _resolve_ligands(c.get("ligand"))
-            if asked_for_ligands and not c["ligand_objs"]:
-                # same rule as the LLM path: never substitute scouted ligands for
-                # the specific ones the user asked for (see the dock branch below)
-                say("None of those ligands can be docked, so I've stopped here rather "
-                    "than substituting different molecules.")
+            # Route through the same planner as the LLM path: without a key MUMO
+            # used to treat EVERY message as a docking request, so "what is
+            # ADMET" started a run. Now the plan decides, and an unrunnable
+            # request says what is missing.
+            import dispatch
+            plan = dispatch.plan(intent, c, msg) or (
+                ["dock"] if dispatch.is_ready("dock", c) else [])
+            if not plan:
+                gap = dispatch.gap_prompt("dock", c)
+                say(gap or "Tell me a target and a ligand, e.g. *“dock 6LU7 with aspirin”*.")
                 return
             say("Running it now (basic mode — add an LLM key to unlock questions, "
                 "teaching and result explanations). Results below.")
-            ss.run_now = True
+            _run_plan(plan, c)
+            return
         else:
             say("Tell me a target and a ligand, e.g. *“dock 6LU7 with aspirin”*. "
                 "(Add an LLM key in secrets to unlock questions, teaching and smart chat.)")
         return
+
+    # ── things MUMO genuinely cannot do ────────────────────────────────────
+    # Answered before the model gets a turn, because the failure mode here is
+    # the model inventing the capability and promising a run that will never
+    # produce output. A QUESTION about one of these is still a teaching moment,
+    # so only a request is short-circuited.
+    import dispatch
+    if not dispatch.looks_like_question(msg):
+        _no = dispatch.unsupported_request(msg)
+        if _no:
+            say(_no)
+            return
 
     # ── LLM-driven turn (full context: known slots + latest results + history) ──
     known = {k: c.get(k) for k in ("disease", "target", "ligand", "tier")}
@@ -938,11 +963,40 @@ def converse(msg):
         say("Sorry — my brain hiccupped just now. Could you say that again?")
         return
 
+    import dispatch
+    # A slot the user asked to abandon must actually go. A model returning null
+    # is ambiguous — it usually just means "not mentioned this turn" — so the
+    # intent to CLEAR is read from the user's own words. Without this,
+    # "forget the ligand, just scout candidates" kept docking the old ligand.
+    for slot in dispatch.slots_to_clear(msg):
+        c.pop(slot, None)
+        if slot == "ligand":
+            c.pop("ligand_objs", None)   # the resolved structures go with it
+
     for k in ("disease", "target", "tier"):
         if data.get(k):
             c[k] = data[k]
     if data.get("ligand"):
         c["ligand"] = data["ligand"]
+
+    # "run ADMET on the top hit" / "re-dock the best one" — the winner's name
+    # only ever existed inside the results table, so a back-reference has to be
+    # resolved into a real ligand before any step can use it. Only fills a slot
+    # that is otherwise EMPTY, so it can never override a molecule the user
+    # actually named.
+    if not c.get("ligand"):
+        _rows = []
+        _res = ss.results or {}
+        if _res.get("kind") == "docking" and _res.get("rdf") is not None:
+            try:
+                _rows = _res["rdf"].to_dict(orient="records")
+            except Exception:
+                _rows = []
+        _ref = dispatch.resolve_from_results(msg, _rows)
+        if _ref:
+            c["ligand"] = _ref
+            c.pop("ligand_objs", None)
+
     say(data.get("reply") or "Okay.")
 
     # ── decide what actually runs ──────────────────────────────────────────
@@ -995,6 +1049,10 @@ def _run_sync_action(action, c):
                 res["narrative"] = _admet_narrative(res)
             ss.results = res
             ss.panel_open = True
+            import dispatch
+            tip = dispatch.next_step("admet", top_ligand=label)
+            if tip:
+                say(tip)
         return
 
     # protein–protein interaction network → STRING
@@ -1009,6 +1067,10 @@ def _run_sync_action(action, c):
                 data_str["narrative"] = _string_narrative(data_str)
             ss.results = {"kind": "string", **data_str}
             ss.panel_open = True
+            import dispatch
+            tip = dispatch.next_step("string", target=label)
+            if tip:
+                say(tip)
         except Exception as e:
             say(f"STRING analysis couldn't run: {e}")
         return
@@ -1027,6 +1089,10 @@ def _run_sync_action(action, c):
                 data_bl["narrative"] = _blast_narrative(data_bl)
             ss.results = {"kind": "blast", **data_bl}
             ss.panel_open = True
+            import dispatch
+            tip = dispatch.next_step("blast", target=str(q))
+            if tip:
+                say(tip)
         except Exception as e:
             say(f"BLAST couldn't run: {e}")
         return
@@ -1153,7 +1219,15 @@ def _apply_result(result):
     # A multi-step request ("dock X then run ADMET on it") parks its remaining
     # steps here while the dock runs in its subprocess. They carry their own
     # slot snapshot, which is why clearing ss.convo just above is safe.
+    queued = [s.get("action") for s in (ss.get("pending_actions") or [])]
     _resume_pending()
+    # Offer the obvious follow-up — but never one the user already asked for in
+    # the same breath, which is what `queued` guards against.
+    import dispatch
+    top = str(rdf.iloc[0]["Ligand"]) if len(rdf) else None
+    tip = dispatch.next_step("docking", top_ligand=top, already_done=queued)
+    if tip:
+        say(tip)
 
 
 def run_pipeline(status_area):

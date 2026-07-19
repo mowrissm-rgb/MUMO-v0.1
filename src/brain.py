@@ -87,8 +87,18 @@ def _looks_like_smiles(token):
         return True     # no RDKit — fall back to the heuristic verdict
 
 
+# Words that follow "with"/"using" but are not molecules.
+_NOT_A_LIGAND = {"the", "a", "an", "it", "this", "that", "them", "these", "those",
+                 "high", "low", "more", "less", "default", "standard", "simple",
+                 "ambitious", "vina", "mumo", "docking", "adme", "admet"}
+
+
 def _rule_parse(text):
-    """Keyword/pattern fallback when there is no LLM key."""
+    """Keyword/pattern fallback when there is no LLM key.
+
+    Also returns `actions`, so the no-key path routes through the same planner
+    the LLM path uses instead of assuming every message means "dock".
+    """
     disease = target = ligand = None
     low = text.lower()
 
@@ -97,6 +107,14 @@ def _rule_parse(text):
         if _looks_like_smiles(tok):
             ligand = tok
             break
+
+    # 1b) a NAMED ligand: "dock 1NFK with luteolin", "screen using quercetin".
+    # Without this the fallback saw only SMILES, so an ordinary request like
+    # "dock CFTR with aspirin" silently lost its ligand and scouted instead.
+    if not ligand:
+        m = re.search(r"\b(?:with|using|for)\s+([A-Za-z][A-Za-z0-9\-]{2,40})", text, re.I)
+        if m and m.group(1).lower() not in _NOT_A_LIGAND:
+            ligand = m.group(1)
 
     # 2) a PDB ID (1abc style) → target
     pid = _PDBID_RE.search(text)
@@ -126,7 +144,17 @@ def _rule_parse(text):
 
     want_admet = ("admet" in low or "adme" in low or "toxic" in low
                   or "absorption" in low or True)  # default on
-    return {"disease": disease, "target": target, "ligand": ligand, "want_admet": want_admet}
+
+    # Route through the same planner the LLM path uses, so without a key MUMO
+    # still answers questions instead of docking them, and still honours a
+    # multi-step request.
+    try:
+        import dispatch
+        actions = dispatch.requested_actions(text)
+    except Exception:
+        actions = []
+    return {"disease": disease, "target": target, "ligand": ligand,
+            "want_admet": want_admet, "actions": actions}
 
 
 def parse_intent(text, llm=None):
