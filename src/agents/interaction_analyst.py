@@ -91,17 +91,39 @@ def _empty_result(note):
     }
 
 
+def _keep_best_conformer(mol):
+    """Reduce a multi-pose molecule to its single best pose.
+
+    A docked PDBQT holds EVERY mode Vina found, and meeko faithfully returns
+    them as multiple conformers on one molecule. Left alone they all travel
+    downstream together: RDKit's PDB writer emits one MODEL per conformer, and
+    since the complex builder keeps only ATOM/HETATM lines the MODEL separators
+    are stripped — so all six poses land in the complex as one flat atom list
+    and the 3D viewer draws them superimposed, bonding between poses. Vina ranks
+    its output, so conformer 0 is the best pose; keeping only that is what makes
+    the 3D view, the 2D diagram, the metrics and the structure export describe
+    the SAME pose.
+    """
+    if mol is None or mol.GetNumConformers() <= 1:
+        return mol
+    best = Chem.Conformer(mol.GetConformer(0))
+    mol.RemoveAllConformers()
+    mol.AddConformer(best, assignId=True)
+    return mol
+
+
 def _ligand_mol_from_pose(ligand_pdbqt, smiles=None):
     """Read the best docked pose (Vina PDBQT) into an RDKit mol with correct bond
     orders — via meeko (permissive), which reconstructs the molecule meeko itself
     wrote during ligand prep. Falls back to reading the raw coordinates and
-    assigning bond orders from `smiles`. Returns an RDKit mol (no explicit Hs)."""
+    assigning bond orders from `smiles`. Returns an RDKit mol (no explicit Hs)
+    carrying exactly ONE conformer: the top-ranked pose."""
     try:
         from meeko import PDBQTMolecule, RDKitMolCreate
         pmol = PDBQTMolecule.from_file(ligand_pdbqt, skip_typing=True)
         mols = RDKitMolCreate.from_pdbqt_mol(pmol)
         if mols and mols[0] is not None:
-            return mols[0]
+            return _keep_best_conformer(mols[0])
     except Exception:
         pass
     # fallback: raw atoms from the PDBQT text + bond orders from the known SMILES
@@ -131,8 +153,16 @@ def _ligand_pdb_block(lig_mol):
         heavy = Chem.RemoveHs(lig_mol)
     except Exception:
         heavy = lig_mol
+    # confId is explicit on purpose: the default (-1) makes RDKit write EVERY
+    # conformer as its own MODEL, and the ATOM/HETATM filter below would strip
+    # the MODEL separators and silently fuse the poses into one blob. Read the
+    # real id of the first conformer rather than assuming it is 0.
+    try:
+        conf_id = heavy.GetConformer().GetId()
+    except Exception:
+        conf_id = 0
     fixed = []
-    for line in Chem.MolToPDBBlock(heavy).splitlines():
+    for line in Chem.MolToPDBBlock(heavy, confId=conf_id).splitlines():
         if line.startswith(("ATOM", "HETATM")):
             line = "HETATM" + line[6:]            # force HETATM
             line = line[:17] + "LIG" + line[20:]  # residue name -> LIG
