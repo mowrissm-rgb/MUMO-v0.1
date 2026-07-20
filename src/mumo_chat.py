@@ -39,6 +39,61 @@ st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
 ACCENT = "#6fb8ec"   # light blue — matches the React landing/login pages' accent
 ACCENT2 = "#2f7fc4"  # gradient end stop (used on buttons/bubbles for the same look)
 
+# ── themes ────────────────────────────────────────────────────────────────
+# Every surface colour is a token so the two modes differ ONLY in these values
+# and the stylesheet below is written once against var(--…). The light mode is
+# a designed set, not an inversion: the accent darkens (#6fb8ec is too pale to
+# read as text on white), borders switch from white-alpha to black-alpha, and
+# the text on the accent gradient flips to white so the button stays legible
+# against its darker end stop.
+THEMES = {
+    "dark": {
+        "bg": "#0a0d0f", "sidebar": "#0d1114",
+        "ink": "#eef5fa", "ink_strong": "#f2f7fa", "ink_2": "#cdd8df",
+        "muted": "#93a0aa",
+        "glass": "rgba(255,255,255,0.03)",
+        "border": "rgba(255,255,255,0.08)",
+        "border_2": "rgba(255,255,255,0.10)",
+        "border_3": "rgba(255,255,255,0.12)",
+        "input_bg": "rgba(255,255,255,0.04)",
+        "scroll": "rgba(255,255,255,0.14)",
+        "accent": ACCENT,
+        "accent_wash": "rgba(111,184,236,0.10)",
+        "select": "rgba(111,184,236,0.28)",
+        "on_accent": "#051520",
+        "viewer_bg": "#0b0d12",
+        "shadow": "rgba(0,0,0,0.30)", "shadow_panel": "rgba(0,0,0,0.60)",
+    },
+    "light": {
+        "bg": "#f6f8fa", "sidebar": "#eceff3",
+        "ink": "#16212b", "ink_strong": "#0d1720", "ink_2": "#35424e",
+        "muted": "#5d6b78",
+        "glass": "rgba(0,0,0,0.025)",
+        "border": "rgba(0,0,0,0.10)",
+        "border_2": "rgba(0,0,0,0.12)",
+        "border_3": "rgba(0,0,0,0.16)",
+        "input_bg": "rgba(0,0,0,0.03)",
+        "scroll": "rgba(0,0,0,0.18)",
+        # Darker than ACCENT2: #2f7fc4 is only 3.98:1 on this background, which
+        # fails AA for the 11px label it styles. #2569a6 gives 5.40:1.
+        "accent": "#2569a6",
+        "accent_wash": "rgba(47,127,196,0.10)",
+        "select": "rgba(47,127,196,0.22)",
+        # The user bubble's gradient is the SAME in both themes, so its text
+        # must be too. White measures 2.16:1 against the gradient's light end
+        # (#6fb8ec) — unreadable. The dark ink is 4.37:1 at worst.
+        "on_accent": "#051520",
+        "viewer_bg": "#ffffff",
+        "shadow": "rgba(0,0,0,0.10)", "shadow_panel": "rgba(0,0,0,0.18)",
+    },
+}
+
+# Resolved before any CSS is written, and before `ss` is aliased further down —
+# st.session_state is usable immediately.
+if st.session_state.get("theme") not in THEMES:
+    st.session_state["theme"] = "dark"
+T = THEMES[st.session_state["theme"]]
+
 # Looping background videos for the cinematic intro landing page. Single
 # constants so a MUMO-specific clip can be swapped in with one edit each.
 INTRO_HERO_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
@@ -62,48 +117,56 @@ st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root {{ --accent: {ACCENT}; --accent2: {ACCENT2}; }}
-html, body {{ background: #0a0d0f; }}
-.stApp {{ background: #0a0d0f !important; }}
+:root {{ --accent: {T['accent']}; --accent2: {ACCENT2};
+  --bg: {T['bg']}; --sidebar: {T['sidebar']};
+  --ink: {T['ink']}; --ink-strong: {T['ink_strong']}; --ink-2: {T['ink_2']};
+  --muted: {T['muted']}; --glass: {T['glass']};
+  --border: {T['border']}; --border-2: {T['border_2']}; --border-3: {T['border_3']};
+  --input-bg: {T['input_bg']}; --scroll: {T['scroll']};
+  --accent-wash: {T['accent_wash']}; --select: {T['select']};
+  --on-accent: {T['on_accent']}; --shadow: {T['shadow']};
+  --shadow-panel: {T['shadow_panel']}; }}
+html, body {{ background: var(--bg); }}
+.stApp {{ background: var(--bg) !important; }}
 .block-container {{ padding-top: 1.6rem; max-width: 900px; }}
-html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: #eef5fa;
+html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: var(--ink);
     -webkit-font-smoothing: antialiased; }}
-::selection {{ background: rgba(111,184,236,0.28); }}
+::selection {{ background: var(--select); }}
 ::-webkit-scrollbar {{ width:9px; }}
-::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.14); border-radius:6px; }}
+::-webkit-scrollbar-thumb {{ background: var(--scroll); border-radius:6px; }}
 ::-webkit-scrollbar-track {{ background:transparent; }}
 /* soft glass surface — same liquid-glass treatment as the React cards */
-.liquid {{ background: rgba(255,255,255,0.03); backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.10);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.3); }}
+.liquid {{ background: var(--glass); backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); border:1px solid var(--border-2);
+    box-shadow: 0 1px 2px var(--shadow); }}
 /* Sidebar — dark glass */
 [data-testid="stSidebar"] {{
-    background: #0d1114 !important; border-right: 1px solid rgba(255,255,255,0.08);
+    background: var(--sidebar) !important; border-right: 1px solid var(--border);
 }}
 [data-testid="stSidebar"] .stButton button {{
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    color: #cdd8df; border-radius: 12px;
+    background: var(--glass);
+    border: 1px solid var(--border);
+    color: var(--ink-2); border-radius: 12px;
     text-align: left; justify-content: flex-start; font-weight: 600; font-size: 13px;
 }}
 [data-testid="stSidebar"] .stButton button:hover {{
-    border-color: var(--accent); color: #ffffff;
-    background: rgba(111,184,236,0.10);
+    border-color: var(--accent); color: var(--ink-strong);
+    background: var(--accent-wash);
 }}
 .mumo-brand {{ display:flex; align-items:center; gap:.5rem; margin:.2rem 0 1rem .1rem; }}
 .mumo-brand .wm {{
     font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
-    font-size:1.35rem; color: #f2f7fa;
+    font-size:1.35rem; color: var(--ink-strong);
 }}
 .mumo-hero-logo {{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:.2rem; }}
 .mumo-session {{
-    padding:11px 12px; border-radius:11px; border-left:2px solid rgba(255,255,255,0.10);
-    color: #93a0aa; font-size:11px; margin:2px 0 8px;
+    padding:11px 12px; border-radius:11px; border-left:2px solid var(--border-2);
+    color: var(--muted); font-size:11px; margin:2px 0 8px;
 }}
 /* Chat bubbles */
 .mumo-msg-user {{ display:flex; justify-content:flex-end; margin:10px 0; }}
 .mumo-msg-user .bubble {{
-    max-width:78%; background-image: linear-gradient(90deg, {ACCENT} 0%, {ACCENT2} 100%); color: #051520;
+    max-width:78%; background-image: linear-gradient(90deg, {ACCENT} 0%, {ACCENT2} 100%); color: var(--on-accent);
     border-radius:18px 18px 4px 18px; padding:13px 18px;
     font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(47,127,196,.45);
 }}
@@ -113,20 +176,20 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     margin-bottom:6px; text-transform:uppercase;
 }}
 .mumo-msg-assistant .body {{
-    font:17px/1.65 'IBM Plex Serif',serif; color: #eef5fa;
+    font:17px/1.65 'IBM Plex Serif',serif; color: var(--ink);
 }}
 .mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
 [data-testid="stChatInput"] {{
-    border: 1px solid rgba(255,255,255,0.12) !important;
-    border-radius: 14px !important; background: rgba(255,255,255,0.04) !important;
+    border: 1px solid var(--border-3) !important;
+    border-radius: 14px !important; background: var(--input-bg) !important;
 }}
 [data-testid="stChatInput"] [data-baseweb="textarea"],
 [data-testid="stChatInput"] [data-baseweb="base-input"],
 [data-testid="stChatInput"] div {{
-    background: transparent !important; color: #eef5fa !important;
+    background: transparent !important; color: var(--ink) !important;
 }}
-[data-testid="stChatInput"] textarea {{ color: #eef5fa !important; }}
-[data-testid="stChatInput"] textarea::placeholder {{ color: #93a0aa !important; }}
+[data-testid="stChatInput"] textarea {{ color: var(--ink) !important; }}
+[data-testid="stChatInput"] textarea::placeholder {{ color: var(--muted) !important; }}
 [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
 [data-testid="stBottom"] > div {{ background: transparent !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
@@ -139,18 +202,18 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
 }}
 .mumo-hero-title {{
     font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
-    font-size: 3.2rem; line-height:1; color: #f2f7fa;
+    font-size: 3.2rem; line-height:1; color: var(--ink-strong);
 }}
 .mumo-hero-sub {{
     margin: 0 auto; max-width: 460px;
-    font-size: 1.05rem; font-weight:400; color: #93a0aa; line-height:1.6;
+    font-size: 1.05rem; font-weight:400; color: var(--muted); line-height:1.6;
 }}
 /* Results panel */
 .mumo-panel-header {{
     font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
-    font-size:19px; color: #f2f7fa;
+    font-size:19px; color: var(--ink-strong);
 }}
-.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: #93a0aa; margin-bottom:14px; }}
+.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: var(--muted); margin-bottom:14px; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -203,6 +266,15 @@ def _trace(stage):
 
 
 def theme_bg():
+    """Background for the 3D pose viewer — follows MUMO's OWN theme toggle.
+
+    It used to read Streamlit's theme, which the user's switch doesn't change,
+    so a light-mode app kept rendering a black viewer panel.
+    """
+    return THEMES[st.session_state.get("theme", "dark")]["viewer_bg"]
+
+
+def _theme_bg_legacy():
     """3D background follows the app theme: dark → black, light → white."""
     try:
         return "#0b0d12" if st.context.theme.type == "dark" else "#ffffff"
@@ -1508,6 +1580,21 @@ _user = authdb.current_user()
 with st.sidebar:
     st.markdown(f"<div class='mumo-brand'>{mol_logo(20, 26, 'mgSide')}<span class='wm'>mumo</span></div>",
                 unsafe_allow_html=True)
+    # ── light / dark ──────────────────────────────────────────────────────
+    # A plain two-button row rather than a toggle widget: the current mode is
+    # visible at a glance instead of having to work out which way the switch
+    # points, and each button says what it does.
+    _is_dark = ss.get("theme", "dark") == "dark"
+    _tc = st.columns(2)
+    if _tc[0].button("Dark", use_container_width=True, disabled=_is_dark,
+                     key="theme_dark", help="Use the dark theme"):
+        ss.theme = "dark"
+        st.rerun()
+    if _tc[1].button("Light", use_container_width=True, disabled=not _is_dark,
+                     key="theme_light", help="Use the light theme"):
+        ss.theme = "light"
+        st.rerun()
+
     if st.button("+ New session", use_container_width=True):
         if not _user and ss.messages:
             title = next((m["content"] for m in ss.messages if m["role"] == "user"), "Chat")
@@ -2281,9 +2368,9 @@ if panel_showing:
 <style>
 .st-key-mumo_panel {{
     position: fixed; top: 0; right: 0; width: {PANEL_WIDTH}px; height: 100vh;
-    overflow-y: auto; z-index: 999; background: #0d1114;
-    border-left: 1px solid rgba(255,255,255,0.08);
-    box-shadow: -14px 0 34px -18px rgba(0,0,0,0.6);
+    overflow-y: auto; z-index: 999; background: var(--sidebar);
+    border-left: 1px solid var(--border);
+    box-shadow: -14px 0 34px -18px var(--shadow-panel);
     padding: 22px 24px 40px;
     transition: width .25s ease;
 }}
