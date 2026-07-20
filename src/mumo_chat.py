@@ -214,6 +214,46 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     font-size:19px; color: var(--ink-strong);
 }}
 .mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: var(--muted); margin-bottom:14px; }}
+/* Native Streamlit content (report narratives, tables, metrics, buttons) is
+   colored by .streamlit/config.toml's [theme] block, which is fixed to dark
+   and has NO connection to MUMO's own light/dark toggle above. Left alone,
+   a plain st.markdown() heading or st.caption() stays near-white regardless
+   of the toggle — invisible the moment the panel behind it turns light. Every
+   rule below re-points that native text at MUMO's OWN theme tokens instead.
+   (One exception CSS cannot reach: st.dataframe draws its cells on a single
+   <canvas> via a JS grid library that reads Streamlit's native theme directly
+   — no DOM text exists there for a stylesheet to color. Report tables render
+   through st.dataframe, so their cell text stays dark-theme-colored in light
+   mode; only this widget is affected, not the headings/captions around it.) */
+[data-testid="stHeadingWithActionElements"] h1,
+[data-testid="stHeadingWithActionElements"] h2,
+[data-testid="stHeadingWithActionElements"] h3,
+[data-testid="stHeadingWithActionElements"] h4,
+[data-testid="stHeadingWithActionElements"] h5,
+[data-testid="stHeadingWithActionElements"] h6 {{ color: var(--ink-strong) !important; }}
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] strong,
+[data-testid="stMarkdownContainer"] em {{ color: var(--ink) !important; }}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {{
+    color: var(--muted) !important;
+}}
+[data-testid="stMetricLabel"] {{ color: var(--muted) !important; }}
+[data-testid="stMetricValue"] {{ color: var(--ink-strong) !important; }}
+/* Buttons OUTSIDE the sidebar (Generate/Download report, expand/collapse
+   panel, run picker) — the sidebar already has its own, more specific rule
+   above and is unaffected by this. */
+.stButton button, .stDownloadButton button {{
+    background: var(--glass) !important; color: var(--ink-strong) !important;
+    border: 1px solid var(--border-2) !important;
+}}
+.stButton button:hover, .stDownloadButton button:hover {{
+    border-color: var(--accent) !important; background: var(--accent-wash) !important;
+}}
+[data-testid="stSelectbox"] div[data-baseweb="select"] {{
+    background: var(--input-bg) !important; border-color: var(--border-2) !important;
+}}
+[data-testid="stSelectbox"] div[data-baseweb="select"] * {{ color: var(--ink) !important; }}
 </style>
 """, unsafe_allow_html=True)
 
