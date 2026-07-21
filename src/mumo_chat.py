@@ -1378,8 +1378,14 @@ def _run_to_results(run):
         rdf.index = range(1, len(rdf) + 1)     # Rank starts at 1, as for a fresh run
         meta = dict(run.get("meta") or {})
         meta.setdefault("gene", run.get("gene"))
+        # A fresh directory every call (see _fresh_scratch_dir) — this is what
+        # the run picker and the sidebar history loader both call, so without
+        # this, switching between two stored runs whose first ligand shares a
+        # name (e.g. "lupeol" docked against two different targets, or two
+        # separate single-ligand docks of the same compound) would silently
+        # overwrite one run's exported structure with the other's.
         return {"kind": "docking", "rdf": rdf,
-                "viz": rehydrate_viz(run.get("viz") or {}, DATA),
+                "viz": rehydrate_viz(run.get("viz") or {}, _fresh_scratch_dir(os.path.join(DATA, "viz"))),
                 "meta": meta, "tier": run.get("tier") or "Standard"}
     except Exception:
         return None
@@ -1418,8 +1424,13 @@ def _apply_result(result):
     from viz import rehydrate_viz
     # result["viz"] is already in serialize_viz form (self-contained 2D SVG +
     # cropped complex text); rehydrate writes the complex back to disk for the
-    # 3D viewer/report — identical to the history-reload path.
-    viz = rehydrate_viz(result.get("viz") or {}, DATA)
+    # 3D viewer/report — identical to the history-reload path. A FRESH
+    # directory every time (see _fresh_scratch_dir) — this used to write to
+    # the bare DATA folder, so a later dock (or reloading a different past
+    # conversation) whose first ligand happened to share a name could
+    # overwrite THIS run's exported file on disk without anything on screen
+    # changing to say so.
+    viz = rehydrate_viz(result.get("viz") or {}, _fresh_scratch_dir(os.path.join(DATA, "viz")))
     rdf = pd.DataFrame(result["rows"])         # already sorted best→worst by the core
     rdf.index = range(1, len(rdf) + 1)         # Rank starts at 1
     meta = result.get("meta") or {}
@@ -1464,18 +1475,49 @@ def run_pipeline(status_area):
     anonymous session with no persistent conversation to track the job against).
     The heavy scientific stack loads lazily inside pipeline_core."""
     from pipeline_core import run_job
-    result = run_job(ss.convo, VINA, DATA, VENV, llm=_llm,
-                     progress=lambda m: status_area.write(m))
+    # A fresh directory per call — see _fresh_scratch_dir's docstring. The bare
+    # DATA folder used here previously meant a second foreground-fallback dock
+    # in the same session (or even a different session, on a shared host)
+    # could overwrite the first one's exported files mid-flight.
+    result = run_job(ss.convo, VINA, _fresh_scratch_dir(os.path.join(DATA, "fg")), VENV,
+                     llm=_llm, progress=lambda m: status_area.write(m))
     _apply_result(result)
 
 
-def _job_data_dir(job_id):
-    """A private working directory per background job, so concurrent/next runs
-    never clash over the fixed c_lig_*/c_complex_* filenames dock_pipeline uses."""
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(job_id))[:60] or "job"
-    d = os.path.join(DATA, "jobs", safe, "work")
+def _fresh_scratch_dir(parent):
+    """A brand-new, never-reused directory under `parent`.
+
+    dock_pipeline writes fixed filenames (c_complex_0.pdb, c_lig_0.pdbqt, …)
+    and viz.rehydrate_viz writes reload_{i}_{label}.pdb — both keyed only by a
+    ligand's position and name, never by anything that changes between
+    separate runs. Two docks that land on the same directory with the same
+    ligand at the same position (trivially true for "lupeol vs target A" then
+    later "lupeol vs target B" in one conversation, or simply reloading an
+    older conversation whose first ligand has the same name) silently
+    overwrite each other's file on disk.
+
+    That overwrite is invisible in the worst possible way: MUMO's own 2D
+    interaction diagram is a pre-rendered SVG baked in at dock time and never
+    re-read, so it keeps showing the run it was actually generated from — but
+    the exported 3D pose and the structure zip re-read the file fresh at
+    export time, so they silently show whichever run wrote to that shared
+    path LAST. The report text and the exported structure quietly stop
+    describing the same molecule, with nothing anywhere to say so. A fresh
+    directory per call makes the collision structurally impossible instead of
+    relying on names or positions never coinciding.
+    """
+    import uuid
+    d = os.path.join(parent, uuid.uuid4().hex[:12])
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def _job_data_dir(job_id):
+    """A private working directory for ONE docking run, nested under the job
+    so it's still easy to find/clean alongside that job's other files, but
+    never reused by a later run in the same conversation."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(job_id))[:60] or "job"
+    return _fresh_scratch_dir(os.path.join(DATA, "jobs", safe, "work"))
 
 
 def _start_background_job():
@@ -1786,19 +1828,26 @@ def _run_stability_md(r, status_cb=lambda m: None):
     from rdkit import Chem
     from rdkit.Chem import AllChem
 
+    from viz import find_entry
     rdf, viz, meta = r.get("rdf"), r.get("viz") or {}, r.get("meta") or {}
-    label, smiles = None, None
+    label, smiles, entry = None, None, None
     if rdf is not None:
         for _, row in rdf.iterrows():
             lab = row.get("Ligand")
-            if str(row.get("Best affinity (kcal/mol)")) != "FAILED" and lab in viz:
-                label, smiles = lab, row.get("SMILES")
+            if str(row.get("Best affinity (kcal/mol)")) == "FAILED":
+                continue
+            # multi-target runs key viz "TARGET · ligand"; a plain `lab in viz`
+            # check never matches that, so the run always fell through to "No
+            # docked pose is available" even though every ligand had one.
+            e = find_entry(viz, lab, row.get("Target"))
+            if e is not None:
+                label, smiles, entry = lab, row.get("SMILES"), e
                 break
     if label is None:
         return {"_error": "No docked pose is available to simulate."}
 
     try:
-        with open(viz[label]["complex"]) as f:
+        with open(entry["complex"]) as f:
             complex_pdb = f.read()
     except Exception as e:
         return {"_error": f"Couldn't read the docked complex: {e}"}
@@ -1895,6 +1944,12 @@ def render_results():
         # ── best-hit summary (clean, presentation-ready) ──
         top = rdf.iloc[0]
         if str(top["Best affinity (kcal/mol)"]) != "FAILED":
+            # On a multi-target screen the header above says only the JOINED
+            # label ("PLA2 + 2PE4") — accurate as an overview, but it doesn't
+            # say which of them THIS winning ligand actually came from. State
+            # it explicitly rather than leaving the reader to guess.
+            if top.get("Target"):
+                st.caption(f"Best hit is against **{top['Target']}**.")
             # Custom compact metrics instead of st.metric — st.metric's fixed
             # 36px value font doesn't fit this panel's width at normal window
             # sizes (it truncated no matter how the st.columns were split).

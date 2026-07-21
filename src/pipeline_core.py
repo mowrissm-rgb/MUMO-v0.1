@@ -184,10 +184,21 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     if str(top["Best affinity (kcal/mol)"]) != "FAILED":
         def _sp(v):
             return [x for x in str(v).split("; ") if x and x != "-"]
-        _rel = (meta.get("reliability_by") or {}).get(top["Ligand"], {})
+        # reliability_by is rebuilt fresh per target and keyed by plain ligand
+        # label, so the SAME ligand name has a different entry under each
+        # target. meta["reliability_by"] only ever holds the FIRST target's
+        # dict (see below) — using it for a winner from any OTHER target would
+        # silently attach that other target's reliability data to this one, not
+        # just omit it. per_target keeps every target's dict separately.
+        top_target = top.get("Target")
+        if top_target:
+            _rel = (meta.get("per_target", {}).get(top_target, {})
+                   .get("reliability_by") or {}).get(top["Ligand"], {})
+        else:
+            _rel = (meta.get("reliability_by") or {}).get(top["Ligand"], {})
         # on a multi-target screen the write-up is about the winning PAIR, so
         # name the target that hit actually came from, not the joined label
-        rep = write_report({"target": top.get("Target") or meta.get("gene"),
+        rep = write_report({"target": top_target or meta.get("gene"),
                             "ligand": top["Ligand"],
                             "affinity": float(top["Best affinity (kcal/mol)"]),
                             "estimated_ki": top.get("Est. Ki"),

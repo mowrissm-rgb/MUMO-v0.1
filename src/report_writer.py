@@ -145,6 +145,7 @@ def build_docking_docx(r, llm=None):
     from docx import Document
     from docx.shared import Inches
     from brain import write_report
+    from viz import find_entry
 
     rdf, viz, meta = r["rdf"], r.get("viz", {}), r.get("meta", {})
     doc = Document()
@@ -165,12 +166,37 @@ def build_docking_docx(r, llm=None):
         doc.add_paragraph("Method: " + " · ".join(bits))
 
     doc.add_heading("Summary — all docked ligands", level=1)
-    summary_cols = ["Ligand", "Best affinity (kcal/mol)", "Est. Ki", "Ligand efficiency",
+    # "Target" only exists on a multi-target screen's rows, and is skipped by
+    # the `in rdf.columns` filter below for an ordinary single-target report —
+    # so this list is safe to extend without changing anything for the common
+    # case. Its absence is exactly what left a multi-target report with no way
+    # to tell which row was docked against which protein. Residue NAMES
+    # (as opposed to bare counts) are what an industrial report needs to be
+    # checkable without opening every per-ligand section.
+    summary_cols = ["Target", "Ligand", "Best affinity (kcal/mol)", "Est. Ki", "Ligand efficiency",
                      "Vinardo (kcal/mol)", "Consensus", "Pose consistency", "Confidence",
-                     "Reliability", "Total interactions", "H-bonds"]
+                     "Reliability", "Total interactions", "H-bonds",
+                     "H-bond residues", "All interacting residues"]
     cols = [c for c in summary_cols if c in rdf.columns]
     summary = rdf[cols].reset_index().rename(columns={"index": "Rank"})
     _add_df_table(doc, summary)
+
+    # On a multi-target screen, "Method:" above describes only the FIRST
+    # target it happened to build — misleadingly implying a single pocket
+    # for the whole screen. State each target's own pocket/validation
+    # explicitly instead of leaving the rest silently unstated.
+    per_target = meta.get("per_target") or {}
+    if len(per_target) > 1:
+        doc.add_heading("Targets in this screen", level=2)
+        for name, tm in per_target.items():
+            bits2 = []
+            if tm.get("pocket"):
+                bits2.append(tm["pocket"])
+            tval = tm.get("validation")
+            if tval:
+                bits2.append(f"native redock RMSD {tval['rmsd']} Å "
+                            f"({'validated' if tval['passed'] else '>2 Å'})")
+            doc.add_paragraph(f"{name}: " + (" · ".join(bits2) if bits2 else "—"))
 
     # One shared headless browser for all the screenshots. Rendering many WebGL
     # (3D) scenes in one browser can exhaust memory on a small host and crash it
@@ -214,10 +240,10 @@ def build_docking_docx(r, llm=None):
     try:
         import charts
         chart_rows = rdf.reset_index(drop=True).to_dict(orient="records")
-        figures = [("Binding affinity", charts.affinity_chart_svg(chart_rows)),
-                   ("Residue contact frequency", charts.residue_frequency_svg(chart_rows)),
-                   ("Ligand × residue contact map", charts.contact_heatmap_svg(chart_rows))]
-        drawn = [(cap, svg) for cap, svg in figures if svg]
+        # build_figures scopes the residue/contact-map figures to ONE target at
+        # a time on a multi-target screen — pooling two proteins' residues into
+        # one ranking would state a shared pocket that does not exist.
+        drawn = charts.build_figures(chart_rows)
         if drawn:
             doc.add_heading("Figures", level=1)
             for cap, svg in drawn:
@@ -247,9 +273,27 @@ def build_docking_docx(r, llm=None):
             def _sp(v):
                 return [x for x in str(v).split("; ") if x and x != "-"]
 
-            _rel = (meta.get("reliability_by") or {}).get(label, {})
+            # On a multi-target screen meta["gene"] is the JOINED label
+            # ("PLA2 + 2PE4") — using it here produced sentences like "the
+            # docking result of lupeol against the PLA2 + 2PE4 target", as if
+            # that were one protein. Each row carries its OWN target; use that.
+            row_target = row.get("Target") or meta.get("gene")
+            # reliability_by is keyed by plain LIGAND LABEL, rebuilt fresh per
+            # target — so the SAME ligand ("lupeol") has a different entry in
+            # each target's own dict. meta["reliability_by"] only ever holds
+            # the FIRST target's dict (see pipeline_core.run_job), so using it
+            # for a row from any OTHER target would show that other target's
+            # reliability data mislabelled as this one's — wrong, not just
+            # missing. per_target keeps every target's dict separately; use
+            # THAT source whenever the row actually names a target.
+            if row.get("Target"):
+                _rel_src = (meta.get("per_target", {}).get(row_target, {})
+                           .get("reliability_by") or {})
+            else:
+                _rel_src = meta.get("reliability_by") or {}
+            _rel = _rel_src.get(label, {})
             writeup = write_report({
-                "target": meta.get("gene"), "ligand": label,
+                "target": row_target, "ligand": label,
                 "affinity": float(row["Best affinity (kcal/mol)"]),
                 "estimated_ki": row.get("Est. Ki"),
                 "ligand_efficiency": row.get("Ligand efficiency"),
@@ -264,7 +308,7 @@ def build_docking_docx(r, llm=None):
             doc.add_heading("Interpretation", level=2)
             _add_markdown(doc, writeup)
 
-            entry = viz.get(label)
+            entry = find_entry(viz, label, row.get("Target"))
             if not entry:
                 doc.add_paragraph("(No pose/interaction data available for this ligand.)")
             elif bh["browser"] is None:
@@ -658,6 +702,21 @@ def build_structure_zip(r):
                 smiles_by[k] = row.get("SMILES")
                 rank_by[k] = idx                  # rdf is already sorted best→worst
 
+    def _label_parts(label):
+        """(target_or_None, ligand_name) from a viz key.
+
+        A single-target run keys viz by plain ligand name. A multi-target run
+        keys it "TARGET · ligand" instead (see pipeline_core.run_job) — parsing
+        that same key back apart is what lets every use below (filenames, the
+        receptor file, the README) name the correct target per ligand, instead
+        of just inheriting whatever the raw dict key happened to look like.
+        """
+        s = str(label)
+        if " · " in s:
+            t, _, lig = s.partition(" · ")
+            return t, lig
+        return None, s
+
     used_stems = set()
 
     def _stem(label, fallback_rank):
@@ -669,8 +728,16 @@ def build_structure_zip(r):
         written twice means the second silently replaces the first on extraction,
         losing a ligand's structures. The rank prefix makes the name unique AND
         lets a file be matched to its row in the results table.
+
+        A multi-target run's ligand name is prefixed with ITS target
+        ("PLA2-lupeol") rather than sanitizing the raw "PLA2 · lupeol" key
+        verbatim — the raw key's middle dot and spaces would otherwise turn
+        into a run of underscores ("PLA2___lupeol") that is valid but reads as
+        a rendering glitch, not a deliberate name.
         """
-        base = re.sub(r"[^A-Za-z0-9_.-]", "_", str(label))[:40] or "ligand"
+        target, lig = _label_parts(label)
+        base_src = f"{target}-{lig}" if target else lig
+        base = re.sub(r"[^A-Za-z0-9_.-]", "_", str(base_src))[:40] or "ligand"
         stem = f"{rank_by.get(label, fallback_rank):02d}_{base}"
         if stem in used_stems:                    # belt and braces
             n = 2
@@ -681,23 +748,27 @@ def build_structure_zip(r):
         return stem
 
     buf = io.BytesIO()
-    receptor_written = False
+    receptors_written = set()   # per TARGET, not once per zip — see below
     wrote_any = False
+    targets_list = meta.get("targets") or ([meta["gene"]] if meta.get("gene") else [])
     readme = ["MUMO — docked structures", "=" * 25, "",
-              f"Target: {meta.get('gene', '?')}",
+              f"Target(s): {', '.join(targets_list) or meta.get('gene', '?')}",
               f"Pocket: {meta.get('pocket', 'n/a')}", "",
               "Files per ligand:",
               "  *_complex.pdb  — receptor + docked ligand pose (open this to see the pose)",
               "  *_ligand.pdb   — docked ligand only",
               "  *_ligand.sdf   — docked ligand with correct bond orders",
               "  *_ligand.mol2  — docked ligand (if available)",
-              f"  {gene}_receptor.pdb — target protein only", "",
+              "  <target>_receptor.pdb — that target's protein only "
+              "(one per target — do NOT mix a receptor with a ligand docked "
+              "against a DIFFERENT target)", "",
               "Open in Discovery Studio, Maestro/BIOLuminate, BIOVIA, PyMOL, ChimeraX, etc.",
               "Note: structures reflect the exact docked pose from this run.", "",
               "Ligands:"]
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for i, (label, entry) in enumerate(viz.items(), 1):
+            target, lig_name = _label_parts(label)
             safe = _stem(label, i)
             try:
                 with open(entry["complex"]) as f:
@@ -709,7 +780,14 @@ def build_structure_zip(r):
             # correct-bond ligand mol → used to add CONECT records so viewers show
             # the ligand with real bonds (not distance-guessed tangles)
             lig_mol = _corrected_ligand_mol(lig_pdb, smi) if lig_pdb else None
-            z.writestr(f"{gene}_{safe}_complex.pdb", _add_ligand_conect(complex_pdb, lig_mol))
+            # `gene` (the whole screen's joined label) prefixes the filename on
+            # a single-target run, same as always. On a multi-target run it
+            # would ONLY duplicate what `safe` already says — "PLA2-lupeol"
+            # under an outer "PLA2___2PE4_" prefix reads like a rendering
+            # glitch, not a name — so skip it there; `safe` alone already
+            # names the target unambiguously.
+            complex_name = f"{safe}_complex.pdb" if target else f"{gene}_{safe}_complex.pdb"
+            z.writestr(complex_name, _add_ligand_conect(complex_pdb, lig_mol))
             wrote_any = True
             if lig_pdb:
                 # ligand.pdb from the corrected mol (RDKit writes CONECT records) so
@@ -728,10 +806,17 @@ def build_structure_zip(r):
                 mol2 = _ligand_mol2(lig_pdb, smi)
                 if mol2:
                     z.writestr(f"{safe}_ligand.mol2", mol2)
-            if not receptor_written and rec_pdb:
-                z.writestr(f"{gene}_receptor.pdb", rec_pdb)
-                receptor_written = True
-            readme.append(f"  - [{safe.split('_')[0]}] {label}")
+            # ONE receptor file per TARGET, not once for the whole zip. The old
+            # "write it only the first time" guard meant a multi-target screen
+            # silently exported only the FIRST target's receptor — pairing a
+            # second-target ligand with that leftover file in an external
+            # viewer would show wrong, mismatched interactions with no error
+            # anywhere to explain why.
+            target_slug = re.sub(r"[^A-Za-z0-9_.-]", "_", str(target or gene)) or "target"
+            if rec_pdb and target_slug not in receptors_written:
+                z.writestr(f"{target_slug}_receptor.pdb", rec_pdb)
+                receptors_written.add(target_slug)
+            readme.append(f"  - {lig_name} — vs {target}" if target else f"  - {lig_name}")
         z.writestr("README.txt", "\n".join(readme) + "\n")
 
     return buf.getvalue() if wrote_any else None

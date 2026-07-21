@@ -85,6 +85,24 @@ def _crop_to_pocket(pdb_text, cutoff=14.0):
     return "\n".join(kept + ["TER"] + hetatm) + "\n"
 
 
+def find_entry(viz, label, target=None):
+    """Look up a ligand's viz entry regardless of how it was keyed.
+
+    A single-target dock keys viz by plain ligand label ("lupeol"). A
+    multi-target dock keys it "TARGET · lupeol" instead, because the same
+    ligand can appear once per target and a plain label would collide. Every
+    reader of viz needs to try the composite key FIRST when it knows the
+    target, falling back to the plain key — this is that one, canonical
+    lookup, so the two forms don't have to be reimplemented (and re-missed)
+    at every call site.
+    """
+    if target:
+        entry = viz.get(f"{target} · {label}")
+        if entry is not None:
+            return entry
+    return viz.get(label)
+
+
 # ── persistence: the in-memory `viz` dict points at complex PDB files on disk,
 #    which don't survive a page reload / container restart. serialize_viz turns
 #    it into a self-contained, JSON-storable form (2D SVG + interaction data +

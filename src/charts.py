@@ -181,6 +181,13 @@ def affinity_chart_svg(rows, width=900):
 
     Returns an SVG string, or None when there is nothing worth plotting.
     """
+    # A multi-target screen docks the SAME ligand against several proteins, so
+    # "lupeol" alone would label two different bars identically. Qualify the
+    # label with its target whenever more than one appears in this data;
+    # single-target reports (the overwhelming majority) see no change at all.
+    targets = {r.get("Target") for r in (rows or []) if r.get("Target")}
+    multi_target = len(targets) > 1
+
     pairs = []
     for r in rows or []:
         try:
@@ -188,7 +195,9 @@ def affinity_chart_svg(rows, width=900):
         except (TypeError, ValueError):
             continue            # "FAILED" and blanks simply aren't plottable
         if v < 0:
-            pairs.append((str(r.get("Ligand", "?")), v))
+            lig = str(r.get("Ligand", "?"))
+            label = f"{lig} ({r['Target']})" if multi_target and r.get("Target") else lig
+            pairs.append((label, v))
     if len(pairs) < 2:
         return None             # one bar is not a chart — the table says it
 
@@ -224,7 +233,7 @@ def affinity_chart_svg(rows, width=900):
     return "\n".join(out)
 
 
-def contact_heatmap_svg(rows, width=960, top_n=14):
+def contact_heatmap_svg(rows, width=960, top_n=14, target_name=None):
     """Ligand × residue contact matrix — which ligands touch which residues.
 
     This is the figure a multi-ligand docking study is actually about: the two
@@ -242,6 +251,11 @@ def contact_heatmap_svg(rows, width=960, top_n=14):
 
     Rows are ordered by affinity and columns by contact frequency, matching the
     two bar charts, so a reader moving between figures keeps their bearings.
+
+    `rows` must all belong to ONE pocket, for the same reason as
+    `residue_frequency_svg` — `build_figures` enforces this by calling this
+    function once per target on a multi-target screen; `target_name` only
+    changes the printed title.
 
     Returns an SVG string, or None when the data can't support a matrix.
     """
@@ -281,8 +295,8 @@ def contact_heatmap_svg(rows, width=960, top_n=14):
     grid_h = len(ligands) * CELL_H
     height = y_top + grid_h + 74                               # + legend + caption
 
-    out = _frame(width, height,
-                 "Ligand × residue contact map",
+    title = "Ligand × residue contact map" + (f" — {target_name}" if target_name else "")
+    out = _frame(width, height, title,
                  f"Which of the {len(ligands)} ligands contact which binding-site "
                  f"residues, and where those contacts are hydrogen bonds")
 
@@ -328,13 +342,57 @@ def contact_heatmap_svg(rows, width=960, top_n=14):
     return "\n".join(out)
 
 
-def residue_frequency_svg(rows, width=900, top_n=14):
+def build_figures(rows):
+    """Every figure for a docking report, correctly scoped to what the data
+    actually supports.
+
+    A single-target report gets exactly the three figures this module has
+    always produced (affinity, residue frequency, contact map) — untouched.
+
+    A MULTI-target screen is different: pooling residues from two unrelated
+    proteins into one "contact frequency" ranking states a shared pocket that
+    does not exist, and a heatmap would show the same ligand name twice with
+    no way to tell which run is which. So on a multi-target screen the residue
+    and contact-map figures are drawn ONCE PER TARGET instead of once overall;
+    only the affinity chart still spans every target (with the label patched
+    to say which target each bar belongs to), because ranking every ligand
+    against every target IS the point of a screen.
+
+    Returns a list of (title, svg) pairs, skipping any figure the data can't
+    support (e.g. a target with only one ligand gets no frequency chart) —
+    never a figure with a placeholder or empty plot.
+    """
+    rows = rows or []
+    figures = [("Binding affinity", affinity_chart_svg(rows))]
+
+    targets = sorted({r.get("Target") for r in rows if r.get("Target")})
+    if len(targets) <= 1:
+        figures.append(("Residue contact frequency", residue_frequency_svg(rows)))
+        figures.append(("Ligand × residue contact map", contact_heatmap_svg(rows)))
+    else:
+        for t in targets:
+            sub = [r for r in rows if r.get("Target") == t]
+            figures.append((f"Residue contact frequency — {t}",
+                            residue_frequency_svg(sub, target_name=t)))
+            figures.append((f"Ligand × residue contact map — {t}",
+                            contact_heatmap_svg(sub, target_name=t)))
+    return [(title, svg) for title, svg in figures if svg]
+
+
+def residue_frequency_svg(rows, width=900, top_n=14, target_name=None):
     """How many ligands contact each binding-site residue.
 
     A residue touched by most of the series is the pocket's real anchor point,
     which is exactly what a reader wants from a multi-ligand run and what a
     per-ligand table buries. H-bond counts are tallied separately so the
     subtitle can say how many of the contacts are hydrogen bonds.
+
+    `rows` must all belong to ONE pocket. Pooling residues from two different
+    proteins' binding sites into one ranking is not a display nicety to skip —
+    residue 27 in one protein has no relationship to residue 27 in another, so
+    a mixed chart implies a shared pocket that does not exist. `build_figures`
+    is what enforces this, calling this function once per target on a
+    multi-target screen; `target_name` only changes the printed title.
 
     Returns an SVG string, or None when there is nothing worth plotting.
     """
@@ -365,8 +423,8 @@ def residue_frequency_svg(rows, width=900, top_n=14):
 
     shown = f"top {len(ranked)} of {len(contacts)}" if len(contacts) > len(ranked) \
         else f"all {len(contacts)}"
-    out = _frame(width, height,
-                 "Binding-site residue contact frequency",
+    title = ("Binding-site residue contact frequency" + (f" — {target_name}" if target_name else ""))
+    out = _frame(width, height, title,
                  f"How many of the {n_lig} docked ligands contact each residue "
                  f"({shown} residues)")
     _axis(out, pad_l, plot_w, y_top, y_bot, ticks, top)
