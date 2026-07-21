@@ -241,7 +241,17 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     return f"""<div id="mumoview" style="width:100%;height:{height}px;position:relative;
          border-radius:14px;border:1px solid rgba(0,0,0,0.10);overflow:hidden;
          box-shadow:0 4px 14px rgba(0,0,0,0.18);"></div>
-<script src="https://3dmol.org/build/3Dmol-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+<!-- 3dmol.org's own CDN measured as a hard connection timeout (>10s, never
+     responds) from this network path — every 3D screenshot in a report was
+     polling for window.$3Dmol every 60ms with nothing ever arriving, so
+     page.wait_for_function's 20s timeout ran out, _shot restarted the whole
+     browser and retried, and THAT run into the same dead host again — 40+
+     wasted seconds per ligand before the render was finally abandoned. cdnjs
+     serves the identical build (verified: same createViewer API) and answered
+     in ~0.3-0.4s on repeated checks. This same HTML also drives the live
+     in-app 3D viewer, so the dead CDN was costing time there too, not just in
+     exported reports. -->
 <script>
 (function(){{
   function go(){{

@@ -256,6 +256,69 @@ def build_docking_docx(r, llm=None):
         # a figure is a nice-to-have; never lose the whole report over one
         doc.add_paragraph(f"[Charts unavailable: {type(e).__name__}: {e}]")
 
+    def _sp(v):
+        return [x for x in str(v).split("; ") if x and x != "-"]
+
+    def _narrative_job(rank, row):
+        """Everything write_report() needs for one row, resolved and called.
+        Runs in a worker thread — see the pool below for why."""
+        label = row["Ligand"]
+        # On a multi-target screen meta["gene"] is the JOINED label
+        # ("PLA2 + 2PE4") — using it here produced sentences like "the
+        # docking result of lupeol against the PLA2 + 2PE4 target", as if
+        # that were one protein. Each row carries its OWN target; use that.
+        row_target = row.get("Target") or meta.get("gene")
+        # reliability_by is keyed by plain LIGAND LABEL, rebuilt fresh per
+        # target — so the SAME ligand ("lupeol") has a different entry in
+        # each target's own dict. meta["reliability_by"] only ever holds
+        # the FIRST target's dict (see pipeline_core.run_job), so using it
+        # for a row from any OTHER target would show that other target's
+        # reliability data mislabelled as this one's — wrong, not just
+        # missing. per_target keeps every target's dict separately; use
+        # THAT source whenever the row actually names a target.
+        if row.get("Target"):
+            _rel_src = (meta.get("per_target", {}).get(row_target, {})
+                       .get("reliability_by") or {})
+        else:
+            _rel_src = meta.get("reliability_by") or {}
+        _rel = _rel_src.get(label, {})
+        try:
+            return rank, write_report({
+                "target": row_target, "ligand": label,
+                "affinity": float(row["Best affinity (kcal/mol)"]),
+                "estimated_ki": row.get("Est. Ki"),
+                "ligand_efficiency": row.get("Ligand efficiency"),
+                "reliability": row.get("Reliability"),
+                "reliability_reason": _rel.get("reason"),
+                "total_interactions": row.get("Total interactions"),
+                "n_hbonds": int(row.get("H-bonds", 0) or 0),
+                "hbond_residues": _sp(row.get("H-bond residues", "")),
+                "n_hydrophobic": int(row.get("Hydrophobic", 0) or 0),
+                "interacting_residues": _sp(row.get("All interacting residues", "")),
+            }, llm, r.get("tier", "Standard"))
+        except Exception as e:
+            # never let one ligand's narrative failure blank out the rest
+            return rank, f"(Interpretation unavailable: {type(e).__name__}: {e})"
+
+    # write_report() is one network round-trip to the LLM per ligand, and
+    # ligands' narratives don't depend on each other at all — calling them one
+    # at a time inside the loop below meant an 8-ligand report paid 8 FULL,
+    # sequential round-trips before a single screenshot even started. Fetching
+    # them concurrently overlaps that wait instead of paying it N times.
+    # The (browser-bound) 2D/3D screenshots stay sequential in the loop below —
+    # Playwright's sync API isn't meant to be driven from several threads
+    # against one shared browser, so that part is left exactly as it was.
+    from concurrent.futures import ThreadPoolExecutor
+    ok_rows = [(rank, row) for rank, row in rdf.iterrows()
+              if str(row["Best affinity (kcal/mol)"]) != "FAILED"]
+    writeups = {}
+    if ok_rows:
+        with ThreadPoolExecutor(max_workers=min(6, len(ok_rows))) as pool:
+            futures = [pool.submit(_narrative_job, rank, row) for rank, row in ok_rows]
+            for fut in futures:
+                rank, writeup = fut.result()
+                writeups[rank] = writeup
+
     try:
         for pos, (rank, row) in enumerate(rdf.iterrows()):
             label = row["Ligand"]
@@ -270,43 +333,8 @@ def build_docking_docx(r, llm=None):
 
             _add_kv_table(doc, [(c, row[c]) for c in cols if c != "Ligand"])
 
-            def _sp(v):
-                return [x for x in str(v).split("; ") if x and x != "-"]
-
-            # On a multi-target screen meta["gene"] is the JOINED label
-            # ("PLA2 + 2PE4") — using it here produced sentences like "the
-            # docking result of lupeol against the PLA2 + 2PE4 target", as if
-            # that were one protein. Each row carries its OWN target; use that.
-            row_target = row.get("Target") or meta.get("gene")
-            # reliability_by is keyed by plain LIGAND LABEL, rebuilt fresh per
-            # target — so the SAME ligand ("lupeol") has a different entry in
-            # each target's own dict. meta["reliability_by"] only ever holds
-            # the FIRST target's dict (see pipeline_core.run_job), so using it
-            # for a row from any OTHER target would show that other target's
-            # reliability data mislabelled as this one's — wrong, not just
-            # missing. per_target keeps every target's dict separately; use
-            # THAT source whenever the row actually names a target.
-            if row.get("Target"):
-                _rel_src = (meta.get("per_target", {}).get(row_target, {})
-                           .get("reliability_by") or {})
-            else:
-                _rel_src = meta.get("reliability_by") or {}
-            _rel = _rel_src.get(label, {})
-            writeup = write_report({
-                "target": row_target, "ligand": label,
-                "affinity": float(row["Best affinity (kcal/mol)"]),
-                "estimated_ki": row.get("Est. Ki"),
-                "ligand_efficiency": row.get("Ligand efficiency"),
-                "reliability": row.get("Reliability"),
-                "reliability_reason": _rel.get("reason"),
-                "total_interactions": row.get("Total interactions"),
-                "n_hbonds": int(row.get("H-bonds", 0) or 0),
-                "hbond_residues": _sp(row.get("H-bond residues", "")),
-                "n_hydrophobic": int(row.get("Hydrophobic", 0) or 0),
-                "interacting_residues": _sp(row.get("All interacting residues", "")),
-            }, llm, r.get("tier", "Standard"))
             doc.add_heading("Interpretation", level=2)
-            _add_markdown(doc, writeup)
+            _add_markdown(doc, writeups.get(rank) or "")
 
             entry = find_entry(viz, label, row.get("Target"))
             if not entry:
