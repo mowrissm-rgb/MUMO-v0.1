@@ -273,6 +273,61 @@ def find_for_conversations(conversation_ids, jobs_dir=None):
     return out
 
 
+def prune(jobs_dir=None, keep_recent=8, max_age_hours=48):
+    """Remove finished job directories that nobody is coming back for.
+
+    A job directory holds spec/status/worker.log plus result.json — and
+    result.json carries the serialized viz (cropped complex PDBs), so these
+    are not trivially small. `clear()` existed but was never called from
+    anywhere, so they accumulated for the life of the container.
+
+    Three guards, because deleting the wrong one loses a user's result:
+      * never touch a job that is still RUNNING
+      * never touch one that has finished but has NOT been consumed — that is
+        precisely the "closed the tab, came back later" case that
+        find_for_conversations() exists to rescue
+      * always keep the `keep_recent` newest, and only then apply the age cut
+
+    Returns the number of directories removed.
+    """
+    import shutil
+    jobs_dir = jobs_dir or default_jobs_dir()
+    try:
+        names = os.listdir(jobs_dir)
+    except OSError:
+        return 0
+
+    entries = []
+    for name in names:
+        jd = os.path.join(jobs_dir, name)
+        if not os.path.isdir(jd):
+            continue
+        st = _read_json(os.path.join(jd, "status.json")) or {}
+        entries.append((jd, st))
+
+    # newest first, by whatever timestamp the status carries
+    entries.sort(key=lambda e: (e[1].get("updated") or e[1].get("started") or 0),
+                 reverse=True)
+
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    for jd, st in entries[keep_recent:]:
+        status = st.get("status")
+        if status == "running" and _pid_alive(st.get("pid")):
+            continue                                  # live work — leave alone
+        if status in ("done", "error") and not st.get("consumed"):
+            continue                                  # unseen result — leave alone
+        when = st.get("updated") or st.get("started") or 0
+        if when and when > cutoff:
+            continue                                  # too recent to be stale
+        try:
+            shutil.rmtree(jd, ignore_errors=True)
+            removed += 1
+        except Exception:
+            pass
+    return removed
+
+
 def clear(job_id, jobs_dir=None):
     """Remove all files for a job (best-effort)."""
     import shutil

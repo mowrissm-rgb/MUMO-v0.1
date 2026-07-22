@@ -426,23 +426,40 @@ def _extract_top_pose(multi_pdbqt, out_pdbqt):
 
 def score_pose(vina_path, receptor_pdbqt, pose_pdbqt, scoring="vinardo"):
     """Rescore ONE docked pose with a chosen scoring function (Vina --score_only).
-    Used for CONSENSUS scoring — an independent second opinion on the top pose from a
-    different scoring function. Returns the affinity (kcal/mol) float, or None."""
+
+    Returns (affinity_or_None, error_or_None).
+
+    The error is returned rather than swallowed because of exactly how this
+    failed before: Vina 1.1.2 does not support `--scoring vinardo` or
+    `--autobox` (both landed in 1.2.0), so on a 1.1.2 container every call
+    errored, the exception was discarded, and every report showed a bare "—"
+    in the Vinardo and Consensus columns with nothing anywhere explaining
+    why. A whole feature was dead for months and looked like missing data.
+    """
     if not os.path.exists(vina_path):
         vina_path = _resolve_executable("vina") or vina_path
+    cmd = [vina_path, "--receptor", receptor_pdbqt, "--ligand", pose_pdbqt,
+           "--scoring", scoring, "--score_only", "--autobox"]
     try:
-        result = subprocess.run(
-            [vina_path, "--receptor", receptor_pdbqt, "--ligand", pose_pdbqt,
-             "--scoring", scoring, "--score_only", "--autobox"],
-            capture_output=True, text=True, timeout=120)
-        for ln in result.stdout.splitlines():
-            if "Estimated Free Energy of Binding" in ln:
-                m = re.search(r":\s*(-?\d+\.\d+)", ln)
-                if m:
-                    return round(float(m.group(1)), 3)
-    except Exception:
-        pass
-    return None
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
+    for ln in (result.stdout or "").splitlines():
+        if "Estimated Free Energy of Binding" in ln:
+            m = re.search(r":\s*(-?\d+\.\d+)", ln)
+            if m:
+                return round(float(m.group(1)), 3), None
+    # Ran, but produced no score — surface Vina's own words, which is what
+    # names an unsupported flag on a too-old build. Vina prints a large
+    # citation banner (rows of '#') before anything useful, so pull out the
+    # line that actually says something rather than shipping 200 characters
+    # of decoration into a report cell.
+    raw = ((result.stderr or "") + "\n" + (result.stdout or "")).splitlines()
+    meaningful = [re.sub(r"\s+", " ", ln).strip() for ln in raw
+                  if ln.strip() and not set(ln.strip()) <= {"#"}]
+    detail = next((ln for ln in meaningful if "error" in ln.lower()),
+                  meaningful[0] if meaningful else "")
+    return None, (detail[:180] or f"exit {result.returncode}")
 
 
 def consensus_rescore(vina_path, receptor_pdbqt, best_out_pdbqt, vina_best,
@@ -450,15 +467,20 @@ def consensus_rescore(vina_path, receptor_pdbqt, best_out_pdbqt, vina_best,
     """Consensus second opinion on the reported best pose. Rescore the top pose with a
     different scoring function and judge agreement. Returns
     {"vinardo": float|None, "consensus": str}."""
-    vinardo = None
+    vinardo, err = None, None
     try:
         top = _extract_top_pose(best_out_pdbqt,
                                 best_out_pdbqt.replace(".pdbqt", "_top.pdbqt"))
-        vinardo = score_pose(vina_path, receptor_pdbqt, top, scoring=second)
-    except Exception:
-        pass
+        vinardo, err = score_pose(vina_path, receptor_pdbqt, top, scoring=second)
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
     if vinardo is None:
-        return {"vinardo": None, "consensus": "—"}
+        if err:
+            print(f"[consensus] {second} rescoring unavailable: {err}")
+        # Say WHY in the cell itself, so an empty column is never mistaken for
+        # "this structure had nothing to report".
+        return {"vinardo": None,
+                "consensus": f"unavailable ({err})" if err else "—"}
     # Vinardo runs weaker in magnitude than Vina; treat both-favourable as agreement.
     agree = (vina_best <= -5.0 and vinardo <= -3.5) or (vina_best > -5.0 and vinardo > -3.5)
     return {"vinardo": vinardo,

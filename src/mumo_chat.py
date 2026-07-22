@@ -1565,6 +1565,48 @@ def run_pipeline(status_area):
     _apply_result(result)
 
 
+def _prune_scratch(parent, keep_recent=6, max_age_hours=24):
+    """Delete stale scratch directories under `parent`.
+
+    _fresh_scratch_dir never reuses a directory, which is what makes the
+    exported structures correct — but it also means they accumulate forever,
+    and a docking run's working files (PDBQTs, complex PDBs) are not small.
+    On a free-tier container that is a slow leak with a real ceiling.
+
+    Deliberately conservative, because deleting a directory still in use would
+    break a live result rather than merely waste space:
+      * the `keep_recent` newest are ALWAYS kept, whatever their age — the
+        run happening right now is the newest, so it can never be the victim
+      * everything else must ALSO be older than `max_age_hours`
+
+    Both conditions have to hold, so a burst of runs inside a day is untouched
+    and only genuinely abandoned directories go.
+    """
+    import shutil
+    import time as _t
+    try:
+        entries = [os.path.join(parent, d) for d in os.listdir(parent)]
+    except OSError:
+        return 0
+    dirs = [d for d in entries if os.path.isdir(d)]
+    if len(dirs) <= keep_recent:
+        return 0
+    try:
+        dirs.sort(key=os.path.getmtime, reverse=True)      # newest first
+    except OSError:
+        return 0
+    cutoff = _t.time() - max_age_hours * 3600
+    removed = 0
+    for d in dirs[keep_recent:]:
+        try:
+            if os.path.getmtime(d) < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def _fresh_scratch_dir(parent):
     """A brand-new, never-reused directory under `parent`.
 
@@ -1588,6 +1630,14 @@ def _fresh_scratch_dir(parent):
     relying on names or positions never coinciding.
     """
     import uuid
+    os.makedirs(parent, exist_ok=True)
+    # Prune BEFORE creating, so the new directory is never a pruning
+    # candidate, and so cleanup happens exactly when new space is consumed —
+    # no scheduler, no startup hook, nothing to forget to run.
+    try:
+        _prune_scratch(parent)
+    except Exception:
+        pass          # housekeeping must never block an actual docking run
     d = os.path.join(parent, uuid.uuid4().hex[:12])
     os.makedirs(d, exist_ok=True)
     return d
@@ -1622,6 +1672,12 @@ def _start_background_job():
         import uuid
         job_id = "anon-" + uuid.uuid4().hex[:16]
         ss.anon_job_id = job_id
+    # Housekeeping at the one moment we know a new run is about to consume
+    # disk. Guarded so a cleanup problem can never stop a dock from starting.
+    try:
+        jobs.prune()
+    except Exception:
+        pass
     if jobs.is_running(job_id):
         ss.job_id = job_id
         say("A docking run is already going for this session — it keeps running on the "
