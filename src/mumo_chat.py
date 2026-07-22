@@ -728,7 +728,8 @@ CONV_SYSTEM = (
     "back. NEVER invent values the user did not give.\n"
     "• NEVER use emojis. Keep a clean, professional tone in every reply.\n"
     "• KNOW YOUR LIMITS. You can dock, rescore, profile ADMET, predict metabolism "
-    "(phase I/II), build STRING networks and run BLAST. You CANNOT run molecular-dynamics simulations, quantum/DFT "
+    "(phase I/II), validate backbone geometry (Ramachandran), build STRING networks "
+    "and run BLAST. You CANNOT run molecular-dynamics simulations, quantum/DFT "
     "calculations, retrosynthesis, or anything experimental or clinical. If asked for "
     "one of those, say plainly that it isn't available and what you can do instead — "
     "NEVER promise a run you cannot perform. Explaining these topics is always fine; "
@@ -739,6 +740,9 @@ CONV_SYSTEM = (
     "   - 'string'  : the user wants a protein–protein INTERACTION NETWORK / STRING analysis / "
     "functional partners / how targets connect into pathways. Put the protein(s) in 'target' — a "
     "single gene name, or a LIST of them for a family/set.\n"
+    "   - 'ramachandran': the user wants BACKBONE-GEOMETRY / STRUCTURE VALIDATION of a "
+    "protein - a Ramachandran plot, phi/psi angles, or 'is this structure any good'. Put "
+    "the protein in 'target'.\n"
     "   - 'metabolism': the user wants PREDICTED METABOLISM / metabolites / "
     "biotransformation / phase I or phase II fate of a compound. Put the compound in "
     "'ligand'.\n"
@@ -771,7 +775,8 @@ CONV_SYSTEM = (
     "  Do NOT drop the later steps. Do NOT ask which one to do first — the order is the "
     "order they wrote. For a pure question or explanation, return [].\n\n"
     "Reply with ONLY a JSON object, nothing else:\n"
-    '{"actions": [<any of "dock","analyze","metabolism","string","blast", in the order '
+    '{"actions": [<any of "dock","analyze","metabolism","ramachandran","string","blast", '
+    'in the order '
     'requested; '
     '[] for a pure chat/teaching reply>], '
     '"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
@@ -893,6 +898,48 @@ ADMET_REPORT_SYSTEM = (
 )
 
 
+RAMACHANDRAN_REPORT_SYSTEM = (
+    "You are MUMO, explaining a Ramachandran plot to a pharmacy student who has "
+    "never seen one. Make it genuinely easy to follow while staying correct.\n\n"
+    "Write markdown with these headings:\n"
+    "## What this plot shows\n(2-3 sentences: a protein backbone can only fold "
+    "into certain shapes because atoms bump into each other; phi and psi are the "
+    "two rotation angles at each amino acid, and plotting them shows whether each "
+    "residue sits in a physically sensible position.)\n"
+    "## What this structure looks like\n(read the ACTUAL numbers given: how many "
+    "residues, how many favoured, how many outliers. Say plainly whether the "
+    "structure looks well built. Mention that the clusters correspond to the two "
+    "common shapes — alpha helix and beta sheet.)\n"
+    "## Why this matters for docking\n(a docking score is only as good as the "
+    "structure it was computed in; a distorted backbone near the binding site "
+    "means the pocket shape may be wrong, so the affinities would be unreliable. "
+    "If there are outliers, say they are worth checking against the pocket.)\n"
+    "## How to read these numbers honestly\n(the regions used here are "
+    "approximations, so the favoured percentage is a LOWER bound and the outlier "
+    "count is the more reliable signal; for a publication, validate the structure "
+    "in MolProbity and cite that.)\n\n"
+    "Define every term the first time. No emojis."
+)
+
+
+def _ramachandran_narrative(data):
+    """Plain-language write-up of a structure validation (same pattern as STRING)."""
+    try:
+        res = data.get("result") or {}
+        prompt = (f"Structure: {data.get('target', '')}\n"
+                  f"Source: {res.get('source', 'unknown')}\n"
+                  f"Residues scored: {res.get('n_scored')} of {res.get('n_residues')}\n"
+                  f"Favoured: {res['pct']['favoured']}% ({res['counts']['favoured']})\n"
+                  f"Allowed: {res['pct']['allowed']}% ({res['counts']['allowed']})\n"
+                  f"Outliers: {res['pct']['outlier']}% ({res['counts']['outlier']})\n"
+                  f"Outlier residues: {', '.join((res.get('outliers') or [])[:25]) or 'none'}\n"
+                  f"\nWrite the structure-validation report.")
+        return _llm.chat(RAMACHANDRAN_REPORT_SYSTEM, prompt,
+                         temperature=0.4, max_tokens=1100)
+    except Exception:
+        return ""
+
+
 METABOLISM_REPORT_SYSTEM = (
     "You are MUMO, explaining predicted drug metabolism to a pharmacy student who "
     "understands basic chemistry but has never used a metabolite predictor. Make it "
@@ -1002,6 +1049,13 @@ def _results_context():
         hs = ", ".join(f"{h.get('accession', '')} ({h.get('identity', '?')}%)" for h in hits)
         return (f"Latest BLAST for {r.get('query_name', 'the query')} "
                 f"({r.get('seq_len', '?')} aa) vs {r.get('database', '')}. Top hits: {hs}.")
+    if r.get("kind") == "ramachandran":
+        _rr = r.get("result") or {}
+        _p = _rr.get("pct", {})
+        return (f"Latest structure validation for {r.get('target', 'the target')}: "
+                f"{_rr.get('n_scored', '?')} residues scored, {_p.get('favoured', '?')}% "
+                f"favoured, {_p.get('outlier', '?')}% outliers. "
+                f"Outliers: {', '.join((_rr.get('outliers') or [])[:8]) or 'none'}.")
     if r.get("kind") == "metabolism":
         pred = r.get("prediction") or {}
         mets = (pred.get("metabolites") or [])[:6]
@@ -1235,6 +1289,33 @@ def _run_sync_action(action, c):
         ss.panel_open = True
         import dispatch
         tip = dispatch.next_step("metabolism", top_ligand=label)
+        if tip:
+            say(tip)
+        return
+
+    # backbone-geometry (Ramachandran) validation of a target structure
+    if action == "ramachandran" and c.get("target"):
+        from pipeline_core import structure_validation
+        tgt = c["target"]
+        name = tgt[0] if isinstance(tgt, list) else tgt
+        try:
+            with st.status(f"Validating the {name} structure…", expanded=True) as stt:
+                res = structure_validation(str(name), DATA,
+                                           progress=lambda m: stt.write(m))
+                stt.update(label="Structure validation complete", state="complete")
+        except Exception as e:
+            say(f"Structure validation couldn't run: {e}")
+            return
+        if res.get("_error"):
+            say(f"Structure validation couldn't run: {res['_error']}")
+            return
+        result = {"kind": "ramachandran", "target": str(name), "result": res}
+        with st.spinner("Writing the validation report…"):
+            result["narrative"] = _ramachandran_narrative(result)
+        ss.results = result
+        ss.panel_open = True
+        import dispatch
+        tip = dispatch.next_step("ramachandran", target=str(name))
         if tip:
             say(tip)
         return
@@ -1800,6 +1881,7 @@ REPORT_TITLES = {
     "blast": "BLAST results",
     "md": "Stability simulation",
     "metabolism": "Metabolism pathway",
+    "ramachandran": "Structure validation",
     "alignment": "Sequence alignment",
     "phylogeny": "Phylogenetic tree",
 }
@@ -2295,6 +2377,65 @@ def _render_metabolism_report(r):
 
 
 _REPORT_RENDERERS["metabolism"] = _render_metabolism_report
+
+
+def _render_ramachandran_report(r):
+    """Backbone-geometry validation: verdict, plot, outliers."""
+    import ramachandran as ram
+    res = r.get("result") or {}
+    gene = res.get("gene") or r.get("target", "target")
+    st.markdown(f"#### Structure validation — {gene}")
+    if res.get("source"):
+        st.caption(f"Structure source: {res['source']}")
+    if res.get("_error"):
+        st.warning(res["_error"])
+        return
+
+    st.markdown(f"**{ram.verdict(res)}**")
+    if r.get("narrative"):
+        st.markdown(r["narrative"])
+        st.markdown("---")
+
+    a, b, c_, d = st.columns(4)
+    a.metric("Residues scored", res["n_scored"])
+    b.metric("Favoured", f'{res["pct"]["favoured"]}%')
+    c_.metric("Allowed", f'{res["pct"]["allowed"]}%')
+    d.metric("Outliers", f'{res["pct"]["outlier"]}%')
+
+    svg = ram.plot_svg(res, title=f"Ramachandran plot — {gene}")
+    if svg:
+        st.markdown(
+            f'<div style="background:#fff;border-radius:10px;padding:8px;'
+            f'overflow-x:auto;">{svg}</div>', unsafe_allow_html=True)
+
+    outs = res.get("outliers") or []
+    if outs:
+        st.markdown("##### Outlier residues")
+        st.caption("Backbone angles outside the regions normally accessible to that "
+                   "residue type. Worth checking whether any lie in the binding site.")
+        st.dataframe(pd.DataFrame({"Residue": outs}), use_container_width=True,
+                     height=min(35 * (len(outs) + 1) + 3, 240))
+
+    st.caption(res.get("note", ""))
+
+    import report_writer
+    doc_key = f"_docx_rama_{id(r)}"
+    gcol, dcol = st.columns(2)
+    with gcol:
+        if st.button("Generate report (.docx)", key=f"genr_{id(r)}"):
+            with st.spinner("Building report — drawing the plot…"):
+                ss[doc_key] = report_writer.build_ramachandran_docx(r)
+    with dcol:
+        if ss.get(doc_key):
+            st.download_button(
+                "Download report (.docx)", ss[doc_key],
+                file_name=f"MUMO_structure_validation_{gene}.docx",
+                mime="application/vnd.openxmlformats-officedocument"
+                     ".wordprocessingml.document",
+                key=f"dlr_{id(r)}")
+
+
+_REPORT_RENDERERS["ramachandran"] = _render_ramachandran_report
 
 
 def _render_blast_report(r):

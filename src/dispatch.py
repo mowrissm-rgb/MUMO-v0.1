@@ -42,6 +42,7 @@ ACTION_SLOTS = {
     "dock":    (("target", "disease"),),
     "analyze": (("ligand",),),
     "metabolism": (("ligand",),),
+    "ramachandran": (("target",),),
     "string":  (("target",),),
     "blast":   (("target",),),
 }
@@ -52,6 +53,14 @@ REAL_ACTIONS = tuple(ACTION_SLOTS)
 # position is what lets "dock X and then run ADME" produce [dock, analyze]
 # rather than a single guess.
 ACTION_CUES = {
+    # Bare "validat*" counts: nothing else in MUMO's action set claims that
+    # word, and "validate 1NFK" plainly means "check this structure". Over-
+    # triggering is cheap here — it is a read-only geometry check that needs a
+    # target it already has — whereas missing it strands an obvious request.
+    "ramachandran": (r"ramachandran", r"\bbackbone geometry\b",
+                     r"\bphi[/ -]?psi\b", r"\btorsion angle", r"\bvalidat",
+                     r"\bstructure quality\b", r"\bstereochemistr",
+                     r"\bbackbone quality\b"),
     "metabolism": (r"\bmetaboli", r"\bmetabolite", r"\bbiotransform",
                    r"\bphase (i|ii|1|2)\b", r"\bglucuronid",
                    r"\bfirst[- ]pass\b", r"\bconjugat"),
@@ -76,7 +85,14 @@ RUN_VERBS = (r"\bdock\b", r"\brun\b", r"\banaly[sz]e\b", r"\bpredict\b", r"\bche
              # reads as having no imperative at all and silently stalls
              r"\bbuild\b", r"\bshow\b", r"\bgenerate\b", r"\bmake\b", r"\bget\b",
              r"\bgive\b", r"\bfind\b", r"\bfetch\b", r"\bmap\b", r"\bsearch\b",
-             r"\bplot\b", r"\bdraw\b", r"\bneed\b", r"\bwant\b")
+             r"\bplot\b", r"\bdraw\b", r"\bneed\b", r"\bwant\b",
+             r"\bvalidat", r"\bverify\b", r"\bassess\b", r"\bevaluate\b",
+             # Some action NAMES are themselves imperatives — "dock CFTR" was
+             # already handled because "dock" is above, but "blast CFTR" and
+             # "ramachandran 1NFK" stalled: real requests with no other verb
+             # in them. (Pre-existing gap for blast, found while adding
+             # ramachandran.)
+             r"\bblast\b", r"\bramachandran\b")
 
 # Bare confirmations: the user is not naming an action, they are saying "yes, the
 # thing we were just discussing". These are the replies that used to stall.
@@ -333,6 +349,9 @@ def next_step(kind, top_ligand=None, target=None, already_done=()):
                 f"metabolism is one part of that picture.")
     if kind == "admet" and "metabolism" not in done and top_ligand:
         pass
+    if kind == "ramachandran" and "dock" not in done and target:
+        return (f"If **{target}**'s geometry looks acceptable, I can dock ligands "
+                f"against it — just name them.")
     if kind == "string" and "blast" not in done and target:
         return (f"I can also run a BLAST search on **{target}** to find related "
                 f"proteins across species.")
@@ -414,5 +433,6 @@ def gap_prompt(action, convo):
     need = human.get(gaps[0], gaps[0])
     verb = {"dock": "dock", "analyze": "run the ADMET analysis",
             "metabolism": "predict the metabolism",
+            "ramachandran": "validate the structure's backbone geometry",
             "string": "build the interaction network", "blast": "run BLAST"}.get(action, action)
     return f"To {verb} I still need {need}."

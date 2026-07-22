@@ -44,6 +44,23 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     cleaned = os.path.join(data_dir, "c_cleaned.pdb")
     receptor = os.path.join(data_dir, "c_receptor.pdbqt")
     clean_protein_pdb(pdb_path, cleaned)
+
+    # Backbone-geometry (Ramachandran) validation of the receptor we are about
+    # to dock into. Computed HERE because this is the only point where the full
+    # protein exists on disk — the report later only has pocket-cropped
+    # complexes, which can't give whole-structure statistics. It is pure
+    # geometry on coordinates already read, so it costs effectively nothing,
+    # and it answers the question every affinity in this run depends on: is
+    # this structure trustworthy enough to dock into at all?
+    rama = None
+    try:
+        import ramachandran as _rama
+        with open(cleaned) as _f:
+            rama = _rama.compute(_f.read())
+        if rama.get("_error"):
+            rama = None          # never let a validation aid break a docking run
+    except Exception:
+        rama = None
     dropped = prepare_receptor(cleaned, receptor, venv_dir) or []
     if dropped:
         # Say it out loud. Meeko has no templates for nucleotides/sugars, so a
@@ -140,4 +157,5 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                          "Total interactions": str(le)[:40], "SMILES": lig["smiles"]})
     return rows, viz, {"gene": tgt["gene"], "center": center, "pocket": pocket,
                        "exhaustiveness": eff_exh, "replicas": eff_rep,
-                       "validation": validation, "reliability_by": reliability_by}
+                       "validation": validation, "reliability_by": reliability_by,
+                       "ramachandran": rama}

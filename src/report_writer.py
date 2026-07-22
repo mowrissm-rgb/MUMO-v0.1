@@ -256,6 +256,47 @@ def build_docking_docx(r, llm=None):
         # a figure is a nice-to-have; never lose the whole report over one
         doc.add_paragraph(f"[Charts unavailable: {type(e).__name__}: {e}]")
 
+    # ── Structure validation: is the receptor we docked into trustworthy? ──
+    # Every affinity above is conditional on the receptor's geometry being
+    # sane, so this belongs in the report rather than as a separate thing the
+    # reader has to go and check. On a multi-target screen each target is
+    # validated separately — they are different structures with different
+    # provenance and can differ wildly in quality.
+    try:
+        _rama_by_target = {}
+        _per_t = meta.get("per_target") or {}
+        if _per_t:
+            for _t, _tm in _per_t.items():
+                if (_tm or {}).get("ramachandran"):
+                    _rama_by_target[_t] = _tm["ramachandran"]
+        elif meta.get("ramachandran"):
+            _rama_by_target[meta.get("gene", "target")] = meta["ramachandran"]
+
+        if _rama_by_target:
+            import ramachandran as _ram
+            doc.add_heading("Structure validation (backbone geometry)", level=1)
+            for _t, _res in _rama_by_target.items():
+                doc.add_heading(_t, level=2)
+                doc.add_paragraph(_ram.verdict(_res))
+                _svg = _ram.plot_svg(_res, title=f"Ramachandran plot — {_t}")
+                if _svg:
+                    _png, _err = _shot("2d", _svg)
+                    if _png:
+                        doc.add_picture(io.BytesIO(_png), width=Inches(4.9))
+                    else:
+                        doc.add_paragraph(f"(Ramachandran plot could not be rendered: {_err})")
+                _outs = _res.get("outliers") or []
+                if _outs:
+                    shown = ", ".join(_outs[:20]) + (" …" if len(_outs) > 20 else "")
+                    doc.add_paragraph(f"Outlier residues ({len(_outs)}): {shown}")
+                    doc.add_paragraph(
+                        "Check whether any outlier sits in or near the binding site — "
+                        "a distorted residue lining the pocket undermines the poses "
+                        "above far more than one out on a surface loop.")
+                doc.add_paragraph(_res.get("note", ""))
+    except Exception as e:
+        doc.add_paragraph(f"[Structure validation unavailable: {type(e).__name__}: {e}]")
+
     def _sp(v):
         return [x for x in str(v).split("; ") if x and x != "-"]
 
@@ -423,6 +464,84 @@ def build_string_docx(r):
         rows = [{"Category": e.get("category", ""), "Term": e.get("description", ""),
                  "FDR": "{:.1e}".format(e.get("fdr", 1.0))} for e in top]
         _add_df_table(doc, pd.DataFrame(rows))
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def build_ramachandran_docx(r):
+    """Standalone backbone-geometry validation report for one structure."""
+    from docx import Document
+    from docx.shared import Inches
+    import pandas as pd
+    import ramachandran as ram
+
+    res = r.get("result") or {}
+    gene = res.get("gene") or r.get("target") or "target"
+
+    doc = Document()
+    doc.add_heading(f"MUMO Structure Validation — {gene}", level=0)
+    if res.get("source"):
+        doc.add_paragraph(f"Structure source: {res['source']}")
+    if res.get("_error"):
+        doc.add_paragraph(f"Validation could not run: {res['_error']}")
+        buf = io.BytesIO()
+        doc.save(buf)
+        return buf.getvalue()
+
+    doc.add_paragraph(ram.verdict(res))
+    doc.add_paragraph(f"{res['n_scored']} of {res['n_residues']} residues scored "
+                      f"(a chain's first and last residue have no phi/psi pair).")
+
+    if r.get("narrative"):
+        doc.add_heading("Report", level=1)
+        _add_markdown(doc, r["narrative"])
+
+    doc.add_heading("Ramachandran plot", level=1)
+    svg = ram.plot_svg(res, title=f"Ramachandran plot — {gene}")
+    if svg:
+        pw = browser = None
+        try:
+            pw, browser = new_browser()
+            png = svg_to_png(svg, browser, width=760, height=860)
+            doc.add_picture(io.BytesIO(png), width=Inches(5.6))
+        except Exception as e:
+            doc.add_paragraph(f"(Plot could not be rendered: {type(e).__name__}: {e})")
+        finally:
+            try:
+                if browser:
+                    browser.close()
+                if pw:
+                    pw.stop()
+            except Exception:
+                pass
+
+    doc.add_heading("Summary", level=1)
+    _add_kv_table(doc, [
+        ("Residues scored", res["n_scored"]),
+        ("Favoured", f'{res["counts"]["favoured"]} ({res["pct"]["favoured"]}%)'),
+        ("Allowed", f'{res["counts"]["allowed"]} ({res["pct"]["allowed"]}%)'),
+        ("Outliers", f'{res["counts"]["outlier"]} ({res["pct"]["outlier"]}%)'),
+    ])
+
+    outs = res.get("outliers") or []
+    if outs:
+        doc.add_heading("Outlier residues", level=1)
+        doc.add_paragraph(
+            "These residues have backbone angles outside the regions normally "
+            "accessible to their residue type. Check whether any lie in or near "
+            "a binding site before trusting docking results for this structure.")
+        _add_df_table(doc, pd.DataFrame({"Residue": outs}))
+
+    doc.add_heading("Method and limitations", level=1)
+    doc.add_paragraph(
+        "Phi/psi torsion angles are computed directly from backbone N, CA and C "
+        "coordinates using standard IUPAC geometry. Residues are scored against "
+        "region definitions specific to their type — glycine reaches mirror "
+        "regions no side-chain-bearing residue can, and proline's ring "
+        "restricts phi. Torsions are not computed across chain breaks.")
+    doc.add_paragraph(res.get("note", ""))
 
     buf = io.BytesIO()
     doc.save(buf)

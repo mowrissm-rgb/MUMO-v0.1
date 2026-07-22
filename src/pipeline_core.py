@@ -58,6 +58,45 @@ def build_target(c, data_dir):
     return {"gene": t, "pdb_path": None, "center": None, "size": None, "source": "gene (AlphaFold)"}
 
 
+def structure_validation(target, data_dir, progress=lambda m: None):
+    """Fetch a target's structure and run backbone-geometry validation on it.
+
+    Deliberately reuses docking's OWN structure path — build_target then
+    resolve_receptor then clean_protein_pdb — so the geometry reported is for
+    exactly the structure that would be docked, not a separately-fetched copy
+    that might differ (a different AlphaFold version, say). Validating a
+    different structure than the one you dock would be worse than not
+    validating at all.
+
+    Returns the ramachandran.compute() result with a "gene"/"source" added,
+    or {"_error": ...}.
+    """
+    import os as _os
+    import ramachandran
+    from pipeline import resolve_receptor
+    from docking_engine import clean_protein_pdb
+
+    name = target[0] if isinstance(target, list) else target
+    name = str(name or "").strip()
+    if not name:
+        return {"_error": "No target given."}
+
+    progress(f"Fetching the {name} structure…")
+    tgt = build_target({"target": name}, data_dir)
+    pdb_path, _c, _s, pocket = resolve_receptor(tgt, data_dir)
+    cleaned = _os.path.join(data_dir, "rama_cleaned.pdb")
+    clean_protein_pdb(pdb_path, cleaned)
+
+    progress("Measuring backbone torsion angles…")
+    with open(cleaned) as f:
+        res = ramachandran.compute(f.read())
+    if res.get("_error"):
+        return res
+    res["gene"] = tgt.get("gene", name)
+    res["source"] = tgt.get("source") or pocket
+    return res
+
+
 def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     """Run the whole docking pipeline for one chat request. See module docstring
     for the return contract. `convo` is the chat's conversation dict (disease /
@@ -155,7 +194,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
         if multi and t_meta:
             meta = dict(meta)
             meta.setdefault("per_target", {})[t_obj["gene"]] = {
-                k: t_meta.get(k) for k in ("pocket", "validation", "reliability_by")}
+                k: t_meta.get(k) for k in ("pocket", "validation", "reliability_by",
+                                           "ramachandran")}
 
     if not rows:
         note = ("; ".join(failed_targets)) or "no poses were produced"
@@ -177,7 +217,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
 
     meta_store = {k: meta.get(k) for k in
                   ("gene", "pocket", "exhaustiveness", "replicas", "validation",
-                   "reliability_by", "targets", "per_target") if k in meta}
+                   "reliability_by", "targets", "per_target", "ramachandran")
+                  if k in meta}
 
     # narrative report on the best hit
     top = rdf.iloc[0]
