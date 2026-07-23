@@ -150,11 +150,9 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
             ligs = []
         ligands = [{"label": l["chembl_id"], "smiles": l["smiles"]} for l in ligs]
 
-    # Final gate before anything native touches these. The chat app already
-    # screens what the USER typed, but scouted ligands arrive straight from
-    # ChEMBL and have never been checked — and this function is also the entry
-    # point for the subprocess worker, so this is the one place guaranteed to
-    # run on every docking path.
+    # Drop only empty entries — NO chemistry filtering (see ligand_check's
+    # module docstring). Every real ligand is attempted; anything Vina can't
+    # handle surfaces as a FAILED row below, not as a pre-rejection.
     import ligand_check as lc
     ligands, rejected = lc.screen(ligands)
     skipped_note = ("\n\n" + lc.rejection_message(rejected)) if rejected else ""

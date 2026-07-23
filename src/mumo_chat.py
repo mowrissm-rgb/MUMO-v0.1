@@ -998,11 +998,11 @@ def _history_text(n=10):
 def _resolve_ligands(lig, announce=True):
     """Resolve a ligand (name/SMILES) OR a list of them into [{label, smiles}].
 
-    Each candidate is screened by ligand_check before AND after structure
-    lookup, so a silylated GC-MS entry or any silicon-bearing molecule is
-    turned away here — cheaply, with an explanation — instead of failing deep
-    inside ligand prep minutes later. Anything dropped is reported in the chat
-    rather than silently vanishing from the results table.
+    MUMO attempts ANY ligand the user gives — no chemistry filtering (see
+    ligand_check's module docstring). The only things dropped here are genuine
+    dead ends: an empty entry, or a name that resolves to no structure at all.
+    A raw SMILES the user types is accepted directly. Whatever is dropped is
+    reported in the chat rather than vanishing silently.
     """
     from agents.admet import resolve_ligand  # lazy: pulls in RDKit
     import ligand_check as lc

@@ -153,8 +153,21 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                           "ia": {"lines": ia["lines"], "residue_numbers": ia["residue_numbers"],
                                  "residues": ia.get("residues", []), "svg_2d": ia.get("svg_2d", "")}}
         except Exception as le:
+            # MUMO attempts every ligand rather than pre-filtering, so a
+            # molecule Vina genuinely cannot handle lands HERE. Name the real
+            # reason where we can — an unsupported element is the common one —
+            # so a FAILED row is informative instead of an opaque parse error.
+            reason = str(le)[:60]
+            try:
+                import ligand_check as _lc
+                bad = _lc.unsupported_elements(lig.get("smiles"))
+                if bad:
+                    names = ", ".join(_lc.UNSUPPORTED_ELEMENTS[b] for b in bad)
+                    reason = f"contains {names} — AutoDock Vina has no parameters for it"
+            except Exception:
+                pass
             rows.append({"Ligand": label, "Best affinity (kcal/mol)": "FAILED",
-                         "Total interactions": str(le)[:40], "SMILES": lig["smiles"]})
+                         "Total interactions": reason, "SMILES": lig["smiles"]})
     return rows, viz, {"gene": tgt["gene"], "center": center, "pocket": pocket,
                        "exhaustiveness": eff_exh, "replicas": eff_rep,
                        "validation": validation, "reliability_by": reliability_by,
