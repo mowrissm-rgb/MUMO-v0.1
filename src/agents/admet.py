@@ -33,17 +33,65 @@ def is_valid_smiles(s):
     return bool(s) and Chem.MolFromSmiles(s) is not None
 
 
+import re as _re
+
+
+def _name_candidates(name):
+    """A short, ordered list of name spellings to try against PubChem.
+
+    A hand-typed CAS name almost resolves but for punctuation PubChem is strict
+    about: "cholan-24-oic acid,3,12-dioxo-,5 beta-" fails, while the exact
+    "Cholan-24-oic acid, 3,12-dioxo-, (5.beta.)-" resolves. Two fixes cover the
+    common cases:
+      * stereo descriptors: "5 beta" / "5beta" / "(5beta)" -> "(5.beta.)"
+      * a space after a comma that ENDS A WORD, while leaving locant lists like
+        "3,12" (comma between two digits) untouched
+
+    Every candidate is still an EXACT name lookup — so a match is always the
+    compound with that name. PubChem autocomplete is deliberately NOT used: it
+    returned "3-oxo" for a "3,12-dioxo" query in testing, i.e. a plausible but
+    WRONG molecule, and silently docking the wrong compound is worse than
+    saying "not found".
+    """
+    seen, out = set(), []
+
+    def add(s):
+        s = (s or "").strip()
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+
+    add(name)
+    stereo = _re.sub(r"\(?\b(\d+)\s*(alpha|beta|gamma|delta)\b\.?\)?",
+                     r"(\1.\2.)", name, flags=_re.I)
+    add(stereo)
+    add(_re.sub(r"(?<=[^\d\s]),(?=\S)", ", ", stereo))
+    add(_re.sub(r"(?<=[^\d\s]),(?=\S)", ", ", name))
+    return out
+
+
 def name_to_smiles(name):
-    """Resolve a drug/compound NAME to a SMILES via PubChem. Returns None if not found."""
-    url = (f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
-           f"{quote(name)}/property/SMILES,IsomericSMILES/JSON")
-    try:
-        r = requests.get(url, timeout=20)
-        if r.status_code == 200:
-            props = r.json()["PropertyTable"]["Properties"][0]
-            return props.get("SMILES") or props.get("IsomericSMILES") or props.get("CanonicalSMILES")
-    except Exception:
-        pass
+    """Resolve a drug/compound NAME to a SMILES via PubChem. Returns None if not found.
+
+    Tries the name as given first, then a few careful re-spellings (see
+    _name_candidates) so a hand-typed CAS name with slightly-off punctuation
+    still resolves instead of being reported as "not found". The extra lookups
+    only happen when the first attempt fails, so a clean name still costs one
+    request.
+    """
+    for candidate in _name_candidates(name):
+        url = (f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
+               f"{quote(candidate)}/property/SMILES,IsomericSMILES/JSON")
+        try:
+            r = requests.get(url, timeout=20)
+            if r.status_code == 200:
+                props = r.json()["PropertyTable"]["Properties"][0]
+                smi = (props.get("SMILES") or props.get("IsomericSMILES")
+                       or props.get("CanonicalSMILES"))
+                if smi:
+                    return smi
+        except Exception:
+            pass
     return None
 
 
