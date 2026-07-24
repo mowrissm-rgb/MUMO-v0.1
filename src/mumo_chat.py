@@ -190,6 +190,19 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
 }}
 [data-testid="stChatInput"] textarea {{ color: var(--ink) !important; }}
 [data-testid="stChatInput"] textarea::placeholder {{ color: var(--muted) !important; }}
+/* The native file-attach control, restyled to the "+" the user asked for:
+   hide Streamlit's paperclip glyph and draw a plus in the accent colour. The
+   button keeps its real behaviour (it's still the file input) — only the icon
+   changes. Verified against the live DOM: selector is stChatInputFileUploadButton. */
+[data-testid="stChatInputFileUploadButton"] svg {{ display: none !important; }}
+[data-testid="stChatInputFileUploadButton"] {{ position: relative; }}
+[data-testid="stChatInputFileUploadButton"]::after {{
+    content: "+"; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font: 400 24px/1 'Inter', system-ui, sans-serif; color: var(--accent);
+    pointer-events: none;
+}}
+[data-testid="stChatInputFileUploadButton"]:hover::after {{ filter: brightness(1.25); }}
 [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
 [data-testid="stBottom"] > div {{ background: transparent !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
@@ -272,6 +285,7 @@ ss.setdefault("entered", False)  # has the visitor clicked past the intro landin
 ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the flower page reveals
 ss.setdefault("job_id", None)     # id of an in-flight background docking job (subprocess)
 ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in session
+ss.setdefault("upload_pending", None)  # in-flight file-upload choice flow
 ss.setdefault("pending_actions", [])   # steps queued behind a running dock
 ss.setdefault("stored_runs", [])       # every docking run in this conversation
 ss.setdefault("run_index", 0)          # which stored run the panel is showing
@@ -729,7 +743,10 @@ CONV_SYSTEM = (
     "• NEVER use emojis. Keep a clean, professional tone in every reply.\n"
     "• KNOW YOUR LIMITS. You can dock, rescore, profile ADMET, predict metabolism "
     "(phase I/II), validate backbone geometry (Ramachandran), build STRING networks "
-    "and run BLAST. You CANNOT run molecular-dynamics simulations, quantum/DFT "
+    "and run BLAST. Users can also ATTACH FILES with the + button next to the message "
+    "box — structure files (PDB, SDF, MOL, MOL2), spreadsheets (CSV/Excel), or GC-MS "
+    "reports (PDF/Word); if someone asks how to give you a structure a name won't "
+    "resolve, or how to load a compound list, point them at that + button. You CANNOT run molecular-dynamics simulations, quantum/DFT "
     "calculations, retrosynthesis, or anything experimental or clinical. If asked for "
     "one of those, say plainly that it isn't available and what you can do instead — "
     "NEVER promise a run you cannot perform. Explaining these topics is always fine; "
@@ -1899,10 +1916,242 @@ with st.sidebar:
             "- Built with Llama (Llama-3.3, via Groq)\n"
         )
 
-# ── read chat input (pinned at bottom) ──
-user_input = st.chat_input("Message MUMO…  e.g. “find a drug for cystic fibrosis”")
-if user_input and user_input.strip():
-    converse(user_input.strip())
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024   # 15 MB — a report/structure, not a dataset dump
+
+
+def _handle_upload(files, text=""):
+    """Read uploaded file(s) into chemical entities and set up the choice flow.
+
+    One file at a time is the norm; if several are dropped we read each and
+    concatenate whatever compounds come out. Everything is guarded — a bad file
+    reports an error in chat, never crashes the app — and the raw bytes are
+    never written to disk (only the extracted names/SMILES live on).
+    """
+    import uploads
+    all_compounds, target, notes = [], None, []
+    for f in files:
+        name = getattr(f, "name", "upload")
+        try:
+            data = f.getvalue() if hasattr(f, "getvalue") else f.read()
+        except Exception as e:
+            notes.append(f"Couldn't read {name}: {e}")
+            continue
+        if data and len(data) > MAX_UPLOAD_BYTES:
+            notes.append(f"{name} is too large ({len(data) // (1024*1024)} MB); "
+                         f"the limit is {MAX_UPLOAD_BYTES // (1024*1024)} MB.")
+            continue
+
+        res = uploads.read_upload(name, data)
+        if res["kind"] == "error":
+            notes.append(res["error"])
+            continue
+        if res.get("needs_llm"):        # a PDF/Word document → LLM extracts compounds
+            with st.spinner(f"Reading the compounds out of {name}…"):
+                res = uploads.extract_compounds_from_text(res["text"], _llm, source=name)
+            if res.get("error"):
+                notes.append(res["error"])
+                continue
+        if res["kind"] == "target" and res.get("target"):
+            target = dict(res["target"], filename=name)
+            notes.append(res["summary"])
+        else:
+            for c in res.get("compounds", []):
+                all_compounds.append(dict(c, _file=name))
+            if res.get("summary"):
+                notes.append(res["summary"])
+
+    for n in notes:
+        if n:
+            say(n)
+
+    # ── a protein structure → a target, inferred, confirm before use ──
+    if target and not all_compounds:
+        ss.upload_pending = {"stage": "confirm_target", "target": target}
+        return
+
+    if not all_compounds:
+        if not target:
+            say("I couldn't find any compounds or a structure in that file. "
+                "Supported: SDF, MOL, MOL2, PDB, CSV/Excel (with a SMILES or "
+                "name column), and text-based PDF/Word reports.")
+        return
+
+    # ── a SINGLE structure to fix a name → infer ligand, confirm ──
+    if len(all_compounds) == 1 and all_compounds[0].get("smiles"):
+        ss.upload_pending = {"stage": "confirm_ligand", "compound": all_compounds[0]}
+        return
+
+    # ── a LIST of compounds → show them, then let the user choose ──
+    preview = ", ".join(c["name"] for c in all_compounds[:12])
+    more = f" (+{len(all_compounds) - 12} more)" if len(all_compounds) > 12 else ""
+    say(f"I read **{len(all_compounds)} compound(s)**: {preview}{more}.\n\n"
+        "What would you like to do with them?")
+    ss.upload_pending = {"stage": "choose", "compounds": all_compounds}
+
+
+def _upload_ligand_objs(compounds):
+    """Turn chosen upload compounds into dock-ready ligand_objs.
+
+    A compound that already carries a SMILES (from an SDF/CSV) is used as-is;
+    a name-only one (from a document or a name column) goes through the same
+    name→structure resolver typed names use — including the CAS-name fixes —
+    so an uploaded GC-MS list and a typed request resolve identically.
+    """
+    ready = [{"label": c["name"], "smiles": c["smiles"]}
+             for c in compounds if c.get("smiles")]
+    name_only = [c["name"] for c in compounds if not c.get("smiles")]
+    if name_only:
+        ready += _resolve_ligands(name_only, announce=True)
+    return ready
+
+
+def _render_upload_pending():
+    """The interactive step after an upload: the choice buttons, the pick list,
+    or the ligand/target confirmation. One small state machine on
+    ss.upload_pending; every branch either advances the state or clears it."""
+    pend = ss.get("upload_pending")
+    if not pend:
+        return
+    stage = pend.get("stage")
+
+    if stage == "confirm_target":
+        tgt = pend["target"]
+        st.info(f"This looks like a **protein structure** ({tgt['filename']}). "
+                f"Use it as the docking target?")
+        a, b = st.columns(2)
+        if a.button("Use as target", key="up_use_target", use_container_width=True):
+            # persist the uploaded PDB and point the conversation's target at it
+            path = os.path.join(_fresh_scratch_dir(os.path.join(DATA, "uploads")),
+                                f"{tgt['name']}.pdb")
+            with open(path, "w") as f:
+                f.write(tgt["pdb_text"])
+            ss.convo["target"] = tgt["name"]
+            ss.convo["uploaded_target_pdb"] = path
+            ss.convo["uploaded_target_name"] = tgt["name"]
+            ss.upload_pending = None
+            say(f"Got it — using your uploaded **{tgt['name']}** as the target. "
+                f"Name a ligand (or attach one) and I'll dock it.")
+            st.rerun()
+        if b.button("Cancel", key="up_cancel_target", use_container_width=True):
+            ss.upload_pending = None
+            st.rerun()
+        return
+
+    if stage == "confirm_ligand":
+        c = pend["compound"]
+        st.info(f"This looks like a **ligand**: {c['name']}. Use it as the ligand?")
+        a, b = st.columns(2)
+        if a.button("Use as ligand", key="up_use_ligand", use_container_width=True):
+            ss.convo["ligand"] = c["name"]
+            ss.convo["ligand_objs"] = [{"label": c["name"], "smiles": c["smiles"]}]
+            ss.upload_pending = None
+            say(f"Got it — **{c['name']}** is the ligand. Give me a target "
+                f"(a gene, a PDB ID, or attach one) and I'll dock it.")
+            st.rerun()
+        if b.button("Cancel", key="up_cancel_ligand", use_container_width=True):
+            ss.upload_pending = None
+            st.rerun()
+        return
+
+    if stage == "choose":
+        a, b = st.columns(2)
+        if a.button("Let me pick which ones", key="up_pick", use_container_width=True):
+            pend["stage"] = "picking"
+            st.rerun()
+        if b.button("Just show structures / details", key="up_show",
+                    use_container_width=True):
+            pend["stage"] = "showing"
+            st.rerun()
+        return
+
+    if stage == "picking":
+        compounds = pend["compounds"]
+        names = [c["name"] for c in compounds]
+        st.markdown("##### Pick the compounds to dock")
+        chosen = st.multiselect("Compounds", names, default=names,
+                                key="up_multiselect", label_visibility="collapsed")
+        tgt_default = ss.convo.get("target") or ""
+        if isinstance(tgt_default, list):
+            tgt_default = ", ".join(tgt_default)
+        tcol, gcol = st.columns([3, 1])
+        tgt = tcol.text_input("Target (gene, PDB ID, or several comma-separated)",
+                              value=tgt_default, key="up_target")
+        if gcol.button("Dock", key="up_dock", use_container_width=True):
+            picked = [c for c in compounds if c["name"] in set(chosen)]
+            if not picked:
+                st.warning("Select at least one compound.")
+                return
+            if not tgt.strip():
+                st.warning("Enter a target to dock against.")
+                return
+            targets = [t.strip() for t in tgt.split(",") if t.strip()]
+            ss.convo["target"] = targets if len(targets) > 1 else targets[0]
+            with st.spinner("Resolving the selected compounds…"):
+                ss.convo["ligand_objs"] = _upload_ligand_objs(picked)
+            if not ss.convo["ligand_objs"]:
+                st.warning("None of the selected compounds could be resolved to a "
+                           "structure. Try a SMILES, or fewer compounds.")
+                return
+            ss.convo["tier"] = ss.convo.get("tier") or "Standard"
+            ss.upload_pending = None
+            say(f"Docking {len(ss.convo['ligand_objs'])} compound(s) against "
+                f"{', '.join(targets)}.")
+            ss.run_now = True
+            st.rerun()
+        return
+
+    if stage == "showing":
+        compounds = pend["compounds"]
+        with st.spinner("Resolving structures…"):
+            objs = _upload_ligand_objs(compounds)
+        st.markdown(f"##### {len(objs)} resolved compound(s)")
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import Draw
+            mols, caps = [], []
+            for o in objs[:12]:
+                m = Chem.MolFromSmiles(o["smiles"])
+                if m is not None:
+                    mols.append(m)
+                    caps.append(o["label"][:28])
+            if mols:
+                st.image(Draw.MolsToGridImage(mols, molsPerRow=3,
+                         subImgSize=(230, 190), legends=caps))
+        except Exception:
+            pass
+        st.dataframe(pd.DataFrame([{"Compound": o["label"], "SMILES": o["smiles"]}
+                                   for o in objs]), use_container_width=True,
+                     height=min(35 * (len(objs) + 1) + 3, 300))
+        if objs:
+            st.download_button(
+                "Download as CSV",
+                pd.DataFrame([{"name": o["label"], "smiles": o["smiles"]} for o in objs])
+                .to_csv(index=False).encode("utf-8"),
+                file_name="mumo_compounds.csv", mime="text/csv", key="up_csv")
+        if st.button("Done", key="up_done"):
+            ss.upload_pending = None
+            st.rerun()
+        return
+
+
+# ── read chat input (pinned at bottom), with the "+" file attach ──
+# accept_file puts a native attach control at the edge of the input; the CSS
+# block above restyles its icon to a "+". Returns a value with .text + .files.
+_UPLOAD_TYPES = ["pdb", "sdf", "mol", "mol2", "csv", "tsv", "xlsx", "xls", "pdf", "docx"]
+user_input = st.chat_input(
+    "Message MUMO…  e.g. “find a drug for cystic fibrosis”  ·  or attach a file with +",
+    accept_file=True, file_type=_UPLOAD_TYPES, max_chars=4000)
+
+if user_input is not None:
+    _files = getattr(user_input, "files", None) or []
+    _text = (getattr(user_input, "text", None) or "").strip()
+    if _files:
+        _handle_upload(_files, _text)
+    elif _text:
+        converse(_text)
+
+# render any in-flight upload choice (pick compounds / confirm ligand-or-target)
+_render_upload_pending()
 
 # ── run the pipeline. Preferred path: a DETACHED SUBPROCESS that survives the
 #    user leaving (tab close / refresh / minimise). Fallback: a foreground run

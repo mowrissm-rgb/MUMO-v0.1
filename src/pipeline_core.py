@@ -37,6 +37,15 @@ def build_target(c, data_dir):
     import requests
     from agents.target_analyst import auto_grid_from_pdb  # lazy: pulls in gemmi
     t = c["target"]
+
+    # A user-uploaded target PDB takes priority for the target it belongs to —
+    # this is the "upload the structure when the name won't resolve" path.
+    up_pdb = c.get("uploaded_target_pdb")
+    if up_pdb and c.get("uploaded_target_name") == t and os.path.exists(up_pdb):
+        center, size, pocket = auto_grid_from_pdb(up_pdb)
+        return {"gene": t, "pdb_path": up_pdb, "center": center, "size": size,
+                "source": f"uploaded structure · {pocket}"}
+
     if re.match(r"^[1-9][A-Za-z0-9]{3}$", t):       # PDB ID — fetch from RCSB
         content = None
         for _ in range(3):
