@@ -190,19 +190,25 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
 }}
 [data-testid="stChatInput"] textarea {{ color: var(--ink) !important; }}
 [data-testid="stChatInput"] textarea::placeholder {{ color: var(--muted) !important; }}
-/* The native file-attach control, restyled to the "+" the user asked for:
-   hide Streamlit's paperclip glyph and draw a plus in the accent colour. The
-   button keeps its real behaviour (it's still the file input) — only the icon
-   changes. Verified against the live DOM: selector is stChatInputFileUploadButton. */
-[data-testid="stChatInputFileUploadButton"] svg {{ display: none !important; }}
-[data-testid="stChatInputFileUploadButton"] {{ position: relative; }}
-[data-testid="stChatInputFileUploadButton"]::after {{
+/* The native file-attach control, restyled to the "+" the user asked for.
+   The clickable element is the inner <button aria-label="Upload a file">, and
+   its icon is what gives it its size — so the glyph is hidden with
+   visibility:hidden (which KEEPS its layout box) rather than display:none
+   (which collapsed the button to 0x0, making it invisible AND unclickable).
+   A min-size floor guarantees a real hit target regardless, and the "+" is
+   drawn over the button. Verified in a real browser: the button has non-zero
+   size and clicking it opens the file picker. */
+[data-testid="stChatInputFileUploadButton"] button {{
+    position: relative; min-width: 2rem; min-height: 2rem;
+}}
+[data-testid="stChatInputFileUploadButton"] button svg {{ visibility: hidden; }}
+[data-testid="stChatInputFileUploadButton"] button::after {{
     content: "+"; position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     font: 400 24px/1 'Inter', system-ui, sans-serif; color: var(--accent);
     pointer-events: none;
 }}
-[data-testid="stChatInputFileUploadButton"]:hover::after {{ filter: brightness(1.25); }}
+[data-testid="stChatInputFileUploadButton"] button:hover::after {{ filter: brightness(1.3); }}
 [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
 [data-testid="stBottom"] > div {{ background: transparent !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
