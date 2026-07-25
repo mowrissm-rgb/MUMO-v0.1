@@ -1983,6 +1983,8 @@ with st.sidebar:
             "- ChEMBL — bioactive compounds (CC-BY-SA 3.0)\n"
             "- AlphaFold DB — predicted structures (CC-BY 4.0)\n"
             "- RCSB PDB — experimental structures (public domain)\n"
+            "- MolProbity Top8000 Ramachandran contours, Richardson Lab, Duke "
+            "(CC-BY 4.0) — Williams et al., *Protein Sci.* 27:293–315 (2018)\n"
             "- Therapeutics Data Commons — ADMET training data\n\n"
             "**Tools**\n"
             "- AutoDock Vina, RDKit, ProLIF, meeko, dimorphite-dl, "

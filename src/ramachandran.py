@@ -20,102 +20,121 @@ and nothing else. MUMO has twice been taken down by adding heavy native
 packages to the shared conda env, so avoiding a new dependency (Biopython,
 MDAnalysis) for ~100 lines of vector maths is worth the effort.
 
-HONEST LIMITS — READ BEFORE PUTTING THIS IN A PAPER
----------------------------------------------------
-The phi/psi ANGLES computed here are exact: standard IUPAC torsion geometry,
-unit-tested against hand-computed values.
+HOW IT IS SCORED
+----------------
+The phi/psi ANGLES are exact: standard IUPAC torsion geometry, unit-tested
+against hand-computed values.
 
-The favoured/allowed REGIONS are box approximations of the standard basins,
-not MolProbity's Top8000 density contours. Measured against three independent
-well-refined crystal structures (1UBQ 1.8 A, 1CRN 0.945 A, 3PTB 1.7 A) this
-model reports:
+The REGIONS are no longer approximations. Residues are scored against the
+MolProbity Top8000 percentile contour grids — the same six reference
+distributions MolProbity, Phenix and the wwPDB use for backbone validation —
+bilinearly interpolated, with MolProbity's own cutoffs (favoured >= 0.02;
+allowed >= 0.0005 general, >= 0.0020 cis-proline, >= 0.0010 for the rest).
 
-    favoured 90-97%   allowed 3-10%   outliers 0-0.5%
+Each residue is routed to the right distribution the way MolProbity routes it:
+glycine, cis- and trans-proline (split on the measured omega), pre-proline,
+Ile/Val, and everything else. Scoring all residues against one general set is
+the most common way these plots are got wrong, and the pre-proline case in
+particular is not a small correction.
 
-i.e. it runs a few points CONSERVATIVE on "favoured" versus MolProbity (which
-would call all three ~96-98%), because a box union clips the smooth edges of
-each basin and demotes borderline residues to "allowed".
-
-The practical consequence, and the reason this is still worth having: the
-OUTLIER count is the reliable signal and it is clean — good structures come
-out at essentially zero, so a structure that reports real outliers genuinely
-has something wrong with it. Read "favoured" as a lower bound, not a
-MolProbity-equivalent figure. For a number that goes in a paper, validate
-that structure in MolProbity and cite THAT; this is a screening aid, and the
-report says so wherever these numbers appear.
+REFERENCE DATA + ATTRIBUTION
+----------------------------
+Grids in src/refdata/rama8000.npz are packed from the Richardson Lab's
+reference_data repository (github.com/rlabduke/reference_data), released under
+CC-BY-4.0 — see src/refdata/LICENSE-Top8000.txt. Attribution is required and
+is carried in NOTICE.md and the app's "Data sources & credits" panel.
+Cite: Williams et al., "MolProbity: More and better reference data for
+improved all-atom structure validation", Protein Sci. 27:293-315 (2018).
 """
 
 import math
+import os
 
-# ── region model ───────────────────────────────────────────────────────────
-# Each region is a list of (phi_min, phi_max, psi_min, psi_max) boxes. Boxes
-# rather than smooth contours keeps the membership test, the drawn shading and
-# the statistics all derived from ONE definition — a plot whose shading and
-# whose percentages came from different models would be quietly inconsistent.
-# Glycine has no side chain so it reaches mirror-image regions no other residue
-# can; proline's ring locks phi near -60. Scoring all three against one general
-# region set is the single most common way these plots are got wrong, so they
-# are kept separate here.
+# ── reference distributions ────────────────────────────────────────────────
+# Six Top8000 percentile grids, 180x180 bins of 2 degrees, wrapping in both
+# axes, each normalised so its densest bin is 1.0. Loaded once, lazily: the
+# file is ~217KB and most MUMO runs never open a Ramachandran plot.
 
-_GENERAL_FAVOURED = [
-    (-180, -45, 90, 180),     # beta sheet / polyproline II
-    (-180, -45, -180, -160),  # beta, wrapped across the psi = +-180 seam
-    (-160, -45, -70, -5),     # right-handed alpha helix
-    (-125, -45, -10, 45),     # bridge region connecting the beta and alpha
-                              # basins — genuinely populated in real proteins,
-                              # and omitting it wrongly demoted real residues
-                              # to merely "allowed"
-    (40, 75, 15, 70),         # left-handed alpha helix
-]
-_GENERAL_ALLOWED = [
-    (-180, -35, 60, 180),
-    (-180, -35, -180, -140),
-    (-180, -25, -90, 30),
-    (30, 95, 0, 95),
-]
+_GRID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "refdata", "rama8000.npz")
+_GRIDS = None
+_NBINS = 180
+_STEP = 360.0 / _NBINS
 
-_GLY_FAVOURED = _GENERAL_FAVOURED + [
-    (45, 180, 90, 180),       # glycine's mirror-image regions
-    (45, 180, -180, -160),
-    (45, 180, 150, 180),
-    (-180, -45, 150, 180),
-]
-_GLY_ALLOWED = _GENERAL_ALLOWED + [
-    (30, 180, 60, 180),
-    (30, 180, -180, -140),
-    (-100, 180, -60, 100),
-]
-
-_PRO_FAVOURED = [
-    (-100, -45, 110, 180),    # polyproline II
-    (-100, -45, -50, 10),     # alpha
-]
-_PRO_ALLOWED = [
-    (-110, -35, 90, 180),
-    (-110, -35, -60, 30),
-    (-110, -35, -180, -160),
-]
+# MolProbity's cutoffs (cctbx mmtbx/validation/ramalyze.py, evalScore).
+# Favoured is >= 0.02 for every class; only the allowed floor differs.
+_FAVOURED_MIN = 0.02
+_ALLOWED_MIN = {
+    "general": 0.0005,
+    "cispro": 0.0020,
+    "gly": 0.0010,
+    "transpro": 0.0010,
+    "prepro": 0.0010,
+    "ileval": 0.0010,
+}
+_CLASS_LABEL = {
+    "general": "General", "gly": "Glycine", "transpro": "trans-Proline",
+    "cispro": "cis-Proline", "prepro": "pre-Proline", "ileval": "Ile/Val",
+}
 
 
-def _in_boxes(phi, psi, boxes):
-    return any(lo_x <= phi <= hi_x and lo_y <= psi <= hi_y
-               for lo_x, hi_x, lo_y, hi_y in boxes)
+def _grids():
+    global _GRIDS
+    if _GRIDS is None:
+        import numpy as np
+        with np.load(_GRID_FILE) as z:
+            _GRIDS = {k: z[k] for k in z.files}
+    return _GRIDS
 
 
-def classify(phi, psi, resname):
-    """'favoured' | 'allowed' | 'outlier' for one residue's torsion pair."""
+def density(kind, phi, psi):
+    """Interpolated Top8000 density at (phi, psi) for one residue class.
+
+    Bilinear, and wrapping at +-180 — the basins run across that seam, so a
+    clamped lookup would invent a cliff along the edge of the plot.
+    """
+    g = _grids()[kind]
+    # bin centres sit at -179, -177, ... so shift by half a bin before flooring
+    x = (phi + 180.0) / _STEP - 0.5
+    y = (psi + 180.0) / _STEP - 0.5
+    i0, j0 = math.floor(x), math.floor(y)
+    tx, ty = x - i0, y - j0
+    i0, j0 = int(i0) % _NBINS, int(j0) % _NBINS
+    i1, j1 = (i0 + 1) % _NBINS, (j0 + 1) % _NBINS
+    return float(g[i0, j0] * (1 - tx) * (1 - ty) + g[i1, j0] * tx * (1 - ty)
+                 + g[i0, j1] * (1 - tx) * ty + g[i1, j1] * tx * ty)
+
+
+def rama_class(resname, next_resname=None, omega=None):
+    """Which of the six distributions scores this residue.
+
+    Order matters and mirrors MolProbity's: the grids are cut to be mutually
+    exclusive (general excludes G/P/I/V/pre-P; ileval excludes pre-P; prepro
+    excludes G/P), so testing in any other order double-counts residues into
+    the wrong distribution.
+    """
     rn = (resname or "").upper()
+    nn = (next_resname or "").upper()
     if rn == "GLY":
-        fav, allow = _GLY_FAVOURED, _GLY_ALLOWED
-    elif rn == "PRO":
-        fav, allow = _PRO_FAVOURED, _PRO_ALLOWED
-    else:
-        fav, allow = _GENERAL_FAVOURED, _GENERAL_ALLOWED
-    if _in_boxes(phi, psi, fav):
+        return "gly"
+    if rn == "PRO":
+        # omega is the peptide bond into this proline; cis prolines are real
+        # and common enough that scoring them as trans invents outliers.
+        return "cispro" if (omega is not None and abs(omega) < 30.0) else "transpro"
+    if nn == "PRO":
+        return "prepro"
+    if rn in ("ILE", "VAL"):
+        return "ileval"
+    return "general"
+
+
+def classify(phi, psi, resname, next_resname=None, omega=None):
+    """'favoured' | 'allowed' | 'outlier' for one residue's torsion pair."""
+    kind = rama_class(resname, next_resname, omega)
+    v = density(kind, phi, psi)
+    if v >= _FAVOURED_MIN:
         return "favoured"
-    if _in_boxes(phi, psi, allow):
-        return "allowed"
-    return "outlier"
+    return "allowed" if v >= _ALLOWED_MIN[kind] else "outlier"
 
 
 # ── geometry ───────────────────────────────────────────────────────────────
@@ -238,11 +257,22 @@ def compute(pdb_text):
         psi = dihedral(a["N"], a["CA"], a["C"], next_r["atoms"]["N"])
         if phi is None or psi is None:
             continue
+        # omega of the bond INTO this residue, so a proline can be told cis
+        # from trans. Missing prev CA just leaves it None -> treated as trans,
+        # which is the overwhelmingly common case.
+        pa = prev_r["atoms"]
+        omega = (dihedral(pa["CA"], pa["C"], a["N"], a["CA"])
+                 if ("CA" in pa and "C" in pa) else None)
+        kind = rama_class(res["resname"], next_r["resname"], omega)
         label = f'{res["resname"]}{res["resseq"]}{res["icode"]}({res["chain"]})'
         points.append({"phi": round(phi, 2), "psi": round(psi, 2),
                        "resname": res["resname"], "chain": res["chain"],
-                       "resseq": res["resseq"], "label": label,
-                       "region": classify(phi, psi, res["resname"])})
+                       "resseq": res["resseq"], "icode": res["icode"],
+                       "label": label,
+                       "rama_class": kind,
+                       "density": round(density(kind, phi, psi), 6),
+                       "region": classify(phi, psi, res["resname"],
+                                          next_r["resname"], omega)})
 
     if not points:
         return {"_error": "Backbone found, but no residue had a complete "
@@ -253,13 +283,73 @@ def compute(pdb_text):
     n = len(points)
     pct = {k: round(100.0 * v / n, 1) for k, v in counts.items()}
     outliers = [p["label"] for p in points if p["region"] == "outlier"]
+    by_class = {}
+    for p in points:
+        by_class[p["rama_class"]] = by_class.get(p["rama_class"], 0) + 1
     return {"points": points, "counts": counts, "pct": pct,
             "n_residues": len(residues), "n_scored": n,
-            "outliers": outliers,
-            "note": ("Regions are box approximations of the standard basins, not "
-                     "MolProbity density contours, so 'favoured' reads a few points "
-                     "low (a lower bound); the outlier count is the reliable signal. "
-                     "Screen with this, and validate in MolProbity for publication.")}
+            "outliers": outliers, "by_class": by_class,
+            "note": ("Scored against the MolProbity Top8000 percentile contours "
+                     "(the same reference data MolProbity, Phenix and the wwPDB "
+                     "use), with each residue routed to its own distribution — "
+                     "general, glycine, cis/trans-proline, pre-proline, Ile/Val — "
+                     "and MolProbity's own favoured/allowed cutoffs.")}
+
+
+def _png_bytes(pixels, w, h):
+    """Minimal RGB PNG encoder — zlib and struct are stdlib, so shading the
+    plot from real contour data costs no new dependency (this codebase has
+    twice been taken down by adding one)."""
+    import struct, zlib
+    raw = b"".join(b"\x00" + bytes(pixels[y * w * 3:(y + 1) * w * 3])
+                   for y in range(h))
+
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 9))
+            + chunk(b"IEND", b""))
+
+
+def _hex_rgb(h):
+    h = h.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _bands_data_uri(kind, colours, background="#ffffff"):
+    """The favoured/allowed bands of one distribution, as an embedded PNG.
+
+    Rendered at the grid's native 180x180 and stretched by the SVG, which the
+    browser resamples smoothly — so the bands read as soft contours rather
+    than the hard rectangles this plot used to draw.
+    """
+    import base64
+    fav_c, allow_c = (_hex_rgb(c) for c in colours)
+    bg = _hex_rgb(background)
+    g = _grids()[kind]
+    floor = _ALLOWED_MIN[kind]
+    px = bytearray(_NBINS * _NBINS * 3)
+    for j in range(_NBINS):                     # psi, top row = +180
+        row = _NBINS - 1 - j
+        for i in range(_NBINS):                 # phi, left = -180
+            v = g[i, j]
+            c = fav_c if v >= _FAVOURED_MIN else (allow_c if v >= floor else bg)
+            o = (row * _NBINS + i) * 3
+            px[o:o + 3] = bytes(c)
+    b64 = base64.b64encode(_png_bytes(px, _NBINS, _NBINS)).decode("ascii")
+    return f"data:image/png;base64,{b64}"
+
+
+def _dominant_class(result):
+    """Which distribution to shade behind the points. Whichever class holds
+    most of the scored residues — in practice 'general' for any real protein,
+    but a proline-rich peptide should not be shown a background that has
+    nothing to do with it."""
+    by = (result or {}).get("by_class") or {}
+    return max(by, key=by.get) if by else "general"
 
 
 def plot_svg(result, title=None, width=620):
@@ -269,18 +359,19 @@ def plot_svg(result, title=None, width=620):
     already rasterizes SVG through headless Chromium, so this needs no
     plotting library and therefore no new dependency.
 
-    The shading is drawn from the SAME box definitions the classifier uses, so
-    the background and the statistics come from one model rather than two that
-    could drift apart.
+    The shading is rasterised from the SAME Top8000 grid the classifier scores
+    against, so the background and the statistics come from one source rather
+    than two that could drift apart.
 
-    It shades the GENERAL-case regions only, though, while points are scored
-    against their own residue type's regions. So a glycine can legitimately
-    appear favoured while sitting outside the shading — GLY75 of ubiquitin,
-    at phi 120 psi 126, is exactly that: a real mirror-region glycine, which
-    is forbidden to any residue carrying a side chain. Shading the union of
-    all three region sets instead would be worse, implying those areas are
-    open to every residue. The caption states this rather than leaving a
-    reader to wonder why a blue point sits on white.
+    Only ONE distribution can be shown behind the points, and the plot shades
+    whichever class holds most of them (the general case, for any real
+    protein). Points are still scored against their own class, so a glycine
+    can legitimately appear favoured while sitting outside the shading —
+    GLY75 of ubiquitin, at phi 120 psi 126, is exactly that: a real
+    mirror-region glycine, forbidden to any residue carrying a side chain.
+    Shading the union of all six would be worse, implying those areas are open
+    to every residue. The caption states this rather than leaving a reader to
+    wonder why a blue point sits on white.
 
     Point colour marks region membership. Outliers use a status red because
     an outlier IS a problem state, not merely another category; favoured and
@@ -319,13 +410,12 @@ def plot_svg(result, title=None, width=620):
         f'{pct["allowed"]}% allowed · {pct["outlier"]}% outliers</text>',
     ]
 
-    # shaded regions, allowed first so favoured paints over it
-    for boxes, fill in ((_GENERAL_ALLOWED, ALLOW_FILL), (_GENERAL_FAVOURED, FAV_FILL)):
-        for lo_x, hi_x, lo_y, hi_y in boxes:
-            x0, x1 = sx(lo_x), sx(hi_x)
-            y0, y1 = sy(hi_y), sy(lo_y)         # hi psi is the TOP edge
-            out.append(f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{x1 - x0:.1f}" '
-                       f'height="{y1 - y0:.1f}" fill="{fill}"/>')
+    # Contour bands, rasterised straight from the SAME Top8000 grid the
+    # classifier scores against — so the shading a reader sees and the
+    # percentages quoted underneath can never disagree.
+    shade_kind = _dominant_class(result)
+    out.append(f'<image x="{PAD_L}" y="{PAD_T}" width="{size}" height="{size}" '
+               f'preserveAspectRatio="none" href="{_bands_data_uri(shade_kind, (FAV_FILL, ALLOW_FILL))}"/>')
 
     # gridlines + ticks every 90 degrees
     for t in (-180, -90, 0, 90, 180):
@@ -370,11 +460,11 @@ def plot_svg(result, title=None, width=620):
                    f'{name} ({n})</text>')
         lx += 26 + len(f"{name} ({n})") * 6.0
     out.append(f'<text x="24" y="{bottom + 76}" font-size="10" fill="{MUTED}">'
-               f'Shading shows the general-case regions; glycine and proline are '
-               f'scored against their own,</text>')
+               f'MolProbity Top8000 contours ({_CLASS_LABEL.get(shade_kind, shade_kind)} '
+               f'shown). Each residue is scored against its own distribution —</text>')
     out.append(f'<text x="24" y="{bottom + 88}" font-size="10" fill="{MUTED}">'
-               f'so a few points may sit outside it. Approximate regions — '
-               f'screening aid, not a MolProbity substitute.</text>')
+               f'glycine, cis/trans-proline, pre-proline and Ile/Val — so some points '
+               f'legitimately sit outside this shading.</text>')
     out.append("</svg>")
     return "\n".join(out)
 
