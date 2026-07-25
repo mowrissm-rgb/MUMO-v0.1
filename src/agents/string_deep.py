@@ -358,3 +358,61 @@ def similarity_tree(dossier_map):
         return None
     labels, D = distance_matrix(pairs)
     return upgma(labels, D)
+
+
+# ── report text ────────────────────────────────────────────────────────────
+
+def biology_blocks(dossier_map, order=None, limit=12):
+    """Dossiers -> ordered, display-ready blocks.
+
+    One shared shape for the app panel and the .docx, so the two renderings
+    cannot drift apart the way a screen-only feature usually does.
+
+    Each block: {gene, protein_name, accession, length, summary,
+                 rows: [(label, text), ...]}
+    """
+    doss = dossier_map or {}
+    keys = [g for g in (order or list(doss)) if g in doss][:limit]
+    blocks = []
+    for g in keys:
+        d = doss[g]
+        rows = []
+
+        mf = [t["term"] for t in d.get("go", {}).get("molecular_function", [])][:5]
+        bp = [t["term"] for t in d.get("go", {}).get("biological_process", [])][:5]
+        cc = [t["term"] for t in d.get("go", {}).get("cellular_component", [])][:4]
+        if mf:
+            rows.append(("Molecular function", "; ".join(mf)))
+        if d.get("catalytic_activity"):
+            rx = d["catalytic_activity"][0]
+            txt = rx["reaction"] + (f"  (EC {rx['ec']})" if rx.get("ec") else "")
+            rows.append(("Catalytic activity", txt))
+        elif d.get("ec_numbers"):
+            rows.append(("Enzyme class", ", ".join(f"EC {e}" for e in d["ec_numbers"])))
+        if bp:
+            rows.append(("Biological process", "; ".join(bp)))
+        if cc:
+            rows.append(("Found in", "; ".join(cc)))
+        elif d.get("subcellular_location"):
+            rows.append(("Found in", "; ".join(d["subcellular_location"][:3])))
+        if d.get("domains"):
+            rows.append(("Domains", "; ".join(x["name"] for x in d["domains"][:4])))
+        if d.get("disease"):
+            dis = "; ".join(
+                f"{x['name']}" + (f" ({x['acronym']})" if x.get("acronym") else "")
+                for x in d["disease"][:3])
+            rows.append(("Disease links", dis))
+
+        summary = (d.get("function") or [""])[0]
+        if len(summary) > 420:
+            summary = summary[:418].rsplit(" ", 1)[0] + "…"
+
+        blocks.append({
+            "gene": g,
+            "protein_name": d.get("protein_name") or g,
+            "accession": d.get("accession") or "",
+            "length": d.get("length"),
+            "summary": summary,
+            "rows": rows,
+        })
+    return blocks

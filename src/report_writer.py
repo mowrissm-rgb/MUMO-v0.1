@@ -442,6 +442,37 @@ def build_string_docx(r):
             if pw:
                 pw.stop()
 
+    # What each protein DOES — the layer STRING has no answer for. Built from
+    # the same biology_blocks() the app panel renders, so the exported document
+    # and the screen cannot disagree.
+    try:
+        from agents.string_deep import biology_blocks
+        _order = list(r.get("input", [])) + [p.get("preferredName_B")
+                                             for p in (r.get("partners") or [])]
+        _blocks = biology_blocks(r.get("dossiers"), order=_order)
+    except Exception:
+        _blocks = []
+
+    if _blocks:
+        doc.add_heading("What these proteins do", level=1)
+        doc.add_paragraph(
+            "Curated biology from UniProt: molecular function, the reaction "
+            "catalysed where there is one, the processes each protein takes part "
+            "in, where in the cell it acts, and the diseases it is implicated in.")
+        for b in _blocks:
+            doc.add_heading(f'{b["gene"]} — {b["protein_name"]}', level=2)
+            meta = " · ".join(x for x in (
+                b.get("accession"),
+                f'{b["length"]} aa' if b.get("length") else "") if x)
+            if meta:
+                doc.add_paragraph(meta)
+            if b["summary"]:
+                doc.add_paragraph(b["summary"])
+            for label, text in b["rows"]:
+                p = doc.add_paragraph()
+                p.add_run(f"{label}: ").bold = True
+                p.add_run(text)
+
     narrative = r.get("narrative")
     if narrative:
         doc.add_heading("Report", level=1)

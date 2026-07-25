@@ -2753,6 +2753,40 @@ def _string_views(r):
     return choice
 
 
+def _render_string_biology(r):
+    """What each protein in the network actually does.
+
+    STRING gives connections and confidence; this is the layer that says what
+    is being connected — molecular function, the reaction it catalyses, the
+    processes it belongs to, where in the cell it acts, and what goes wrong
+    when it breaks. Dossiers are fetched with the analysis and persisted with
+    it, so this costs nothing to render and survives a conversation reload.
+    """
+    from agents.string_deep import biology_blocks
+
+    order = list(r.get("input", [])) + [p.get("preferredName_B")
+                                        for p in (r.get("partners") or [])]
+    blocks = biology_blocks(r.get("dossiers"), order=order)
+    if not blocks:
+        return
+
+    st.markdown("#### What these proteins do")
+    st.caption("Curated biology from UniProt — the layer STRING itself doesn't carry.")
+    queried = set(r.get("input", []))
+    for b in blocks:
+        head = f'{b["gene"]} — {b["protein_name"]}'
+        if b.get("accession"):
+            head += f'  ·  {b["accession"]}'
+        if b.get("length"):
+            head += f'  ·  {b["length"]} aa'
+        with st.expander(head, expanded=b["gene"] in queried):
+            if b["summary"]:
+                st.markdown(b["summary"])
+            for label, text in b["rows"]:
+                st.markdown(f"**{label}** — {text}")
+    st.markdown("---")
+
+
 def _render_string_report(r):
     """STRING interaction report: network image + partners + enriched pathways."""
     import re
@@ -2790,6 +2824,8 @@ def _render_string_report(r):
     if narrative:
         st.markdown(narrative)
         st.markdown("---")
+
+    _render_string_biology(r)
 
     partners = r.get("partners") or []
     if partners:

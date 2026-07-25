@@ -117,12 +117,25 @@ def analyze_string(identifiers, species=HUMAN, limit=20):
     enr_set = list(dict.fromkeys(names + [p["preferredName_B"] for p in partners[:12]]))
     enr = enrichment(enr_set, species) if len(enr_set) > 2 else []
 
+    # What each protein actually DOES — function, GO, catalytic activity,
+    # location, disease. STRING itself has none of this. Fetched once here so
+    # the panel, the .docx and the LLM narrative all read the same dossiers
+    # rather than each going back to UniProt, and so a reloaded conversation
+    # still has them.
+    try:
+        from . import string_deep
+        doss = string_deep.dossiers(
+            names + [p["preferredName_B"] for p in partners[:11]], species)
+    except Exception:
+        doss = {}
+
     return {
         "input": names,
         "resolved": resolved,
         "partners": partners,
         "network_svg": network_svg(names, species),
         "enrichment": enr,
+        "dossiers": doss,
         "species": species,
     }
 
