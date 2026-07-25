@@ -70,13 +70,28 @@ def unsupported_elements(smiles):
     return sorted(elements_in_smiles(smiles) & set(UNSUPPORTED_ELEMENTS))
 
 
+# A leading list enumerator that leaked into a pasted name — "35) ", "35. ",
+# "35 - ", "• ", "- ". Stripped before lookup so a numbered list ("35) Autotaxin-
+# IN-5") resolves as the compound, not the literal "35) …" PubChem never has.
+# Deliberately narrow: the number must be followed by a real delimiter + space,
+# so chemical locants like "2-acetyl", "1,2-dimethyl" or "5 beta" are left alone.
+_LIST_MARKER_RE = re.compile(
+    r"^\s*(?:\d{1,3}\s*[.)\]:]\s+"     # 35)  35.  35]  35:
+    r"|\d{1,3}\s+[-–—]\s+"   # 35 -  (number, space, dash, space)
+    r"|[•·*▪‣◦]\s+"   # bullet glyphs
+    r"|[-–—]\s+)"            # dash bullet
+)
+
+
 def normalize_name(name):
-    """Tidy a pasted compound name: collapse whitespace, drop stray trailing
-    punctuation. Never repairs a truncated name — guessing the missing half
-    would silently dock the wrong molecule."""
+    """Tidy a pasted compound name: collapse whitespace, strip a leading list
+    number/bullet, drop stray trailing punctuation. Never repairs a truncated
+    name — guessing the missing half would silently dock the wrong molecule."""
     if name is None:
         return ""
-    return re.sub(r"\s+", " ", str(name)).strip().strip(",;").strip()
+    s = re.sub(r"\s+", " ", str(name)).strip()
+    s = _LIST_MARKER_RE.sub("", s).strip()
+    return s.strip(",;").strip()
 
 
 def looks_truncated(name):

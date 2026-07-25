@@ -292,6 +292,7 @@ ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the
 ss.setdefault("job_id", None)     # id of an in-flight background docking job (subprocess)
 ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in session
 ss.setdefault("upload_pending", None)  # in-flight file-upload choice flow
+ss.setdefault("awaiting_ligand", None)  # a dock that stalled for lack of a resolvable ligand — {target, …}
 ss.setdefault("pending_actions", [])   # steps queued behind a running dock
 ss.setdefault("stored_runs", [])       # every docking run in this conversation
 ss.setdefault("run_index", 0)          # which stored run the panel is showing
@@ -1144,6 +1145,18 @@ def converse(msg):
     _persist("user", msg)
     c = ss.convo
 
+    # ── a dock left waiting for a ligand structure ──────────────────────────
+    # When a dock stalled only because a named ligand wouldn't resolve, MUMO
+    # remembered the target. A pasted SMILES (or a short corrected name/CAS)
+    # supplies the missing molecule and offers to run against that same target —
+    # no need to restate it. Confirm-first (see confirm_dock) is the safety valve
+    # if a stray message gets mistaken for a ligand.
+    if ss.get("awaiting_ligand"):
+        objs = _ligand_from_message(msg)
+        if objs:
+            _offer_pending_dock(objs)
+            return
+
     # ── no LLM key: minimal rule-based fallback (dock-only) ──
     if _llm is None:
         intent = parse_intent(msg, None)["intent"]
@@ -1211,6 +1224,10 @@ def converse(msg):
 
     for k in ("disease", "target", "tier"):
         if data.get(k):
+            # moving to a different target abandons a dock that was waiting for a
+            # ligand against the old one, so its stale prompt doesn't resurface.
+            if k == "target" and ss.get("awaiting_ligand") and data[k] != c.get(k):
+                ss.awaiting_ligand = None
             c[k] = data[k]
     if data.get("ligand"):
         c["ligand"] = data["ligand"]
@@ -1412,11 +1429,32 @@ def _run_plan(actions, c):
             # Falling through would let the pipeline SCOUT substitutes from ChEMBL and
             # present them as the answer — silently docking something the user never
             # asked about. Stop instead; _resolve_ligands has already said why.
-            say("None of those ligands can be docked, so I've stopped here rather than "
-                "substituting different molecules. Give me one that works and I'll run it.")
+            tgt = c.get("target")
+            if tgt:
+                # The target IS known — the only thing missing is a structure for a
+                # name no database has (a vendor code, a novel analogue). Remember
+                # the target so the next SMILES / structure file the user gives drops
+                # straight into this dock, instead of making them restate everything.
+                ss.awaiting_ligand = {
+                    "target": tgt,
+                    "uploaded_target_pdb": c.get("uploaded_target_pdb"),
+                    "uploaded_target_name": c.get("uploaded_target_name"),
+                    "tier": c.get("tier") or "Standard",
+                }
+                _tname = ", ".join(tgt) if isinstance(tgt, list) else tgt
+                _tried = c.get("ligand")
+                _tried = (_tried[0] if isinstance(_tried, list) else _tried) or "that ligand"
+                say(f"I couldn't get a structure for **{_tried}** from its name alone. "
+                    f"Paste its **SMILES**, or attach its structure file "
+                    f"(SDF / MOL / MOL2 / PDB) with the **+**, and I'll dock it against "
+                    f"**{_tname}**.")
+            else:
+                say("None of those ligands can be docked, so I've stopped here rather than "
+                    "substituting different molecules. Give me one that works and I'll run it.")
             ss.pending_actions = []
             return
         c["tier"] = c.get("tier") or "Standard"
+        ss.awaiting_ligand = None  # a real dock is starting — supersede any stalled one
         # park the rest WITH the slots they need, then hand off to the dock
         ss.pending_actions = [{"action": a, "convo": dict(c)} for a in queue]
         if len(queue):
@@ -1982,9 +2020,16 @@ def _handle_upload(files, text=""):
                 "name column), and text-based PDF/Word reports.")
         return
 
-    # ── a SINGLE structure to fix a name → infer ligand, confirm ──
+    # ── a SINGLE structure to fix a name ──
     if len(all_compounds) == 1 and all_compounds[0].get("smiles"):
-        ss.upload_pending = {"stage": "confirm_ligand", "compound": all_compounds[0]}
+        c0 = all_compounds[0]
+        # If a target is already known — most often because a dock just stalled
+        # waiting for exactly this structure — skip "is this a ligand? now name a
+        # target" and go straight to the one-tap dock confirm against that target.
+        if (ss.get("awaiting_ligand") or {}).get("target") or ss.convo.get("target"):
+            _offer_pending_dock([{"label": c0["name"], "smiles": c0["smiles"]}])
+        else:
+            ss.upload_pending = {"stage": "confirm_ligand", "compound": c0}
         return
 
     # ── a LIST of compounds → show them, then let the user choose ──
@@ -2011,6 +2056,45 @@ def _upload_ligand_objs(compounds):
     return ready
 
 
+def _ligand_from_message(msg):
+    """If a chat message is itself the missing ligand — a pasted SMILES, or a
+    short corrected name/CAS — return dock-ready [{label, smiles}]. Otherwise
+    None, so the message flows on to the normal conversational turn.
+
+    Only consulted while a dock is awaiting a ligand, so the extra structure
+    lookup a name costs is rare, and confirm-first catches a false positive.
+    """
+    s = (msg or "").strip()
+    if not s:
+        return None
+    from agents.admet import is_valid_smiles
+    if is_valid_smiles(s):
+        return [{"label": "your molecule", "smiles": s}]
+    # a terse token (not a sentence, not a question) might be the name retyped
+    if len(s.split()) <= 6 and not s.endswith("?"):
+        objs = _resolve_ligands(s, announce=False)
+        if objs:
+            return objs
+    return None
+
+
+def _offer_pending_dock(ligand_objs):
+    """Stage a one-tap 'Dock <ligand> against <known target>?' confirmation.
+
+    The target comes from a dock that stalled waiting for a structure (or, failing
+    that, whatever target the conversation already holds), so the user never has
+    to restate it. Shared by the pasted-SMILES path and the file-attach path."""
+    aw = ss.get("awaiting_ligand") or {}
+    ss.upload_pending = {
+        "stage": "confirm_dock",
+        "ligand_objs": ligand_objs,
+        "target": aw.get("target") or ss.convo.get("target"),
+        "uploaded_target_pdb": aw.get("uploaded_target_pdb") or ss.convo.get("uploaded_target_pdb"),
+        "uploaded_target_name": aw.get("uploaded_target_name") or ss.convo.get("uploaded_target_name"),
+        "tier": aw.get("tier") or ss.convo.get("tier"),
+    }
+
+
 def _render_upload_pending():
     """The interactive step after an upload: the choice buttons, the pick list,
     or the ligand/target confirmation. One small state machine on
@@ -2019,6 +2103,32 @@ def _render_upload_pending():
     if not pend:
         return
     stage = pend.get("stage")
+
+    if stage == "confirm_dock":
+        objs = pend.get("ligand_objs") or []
+        tgt = pend.get("target")
+        tname = ", ".join(tgt) if isinstance(tgt, list) else (tgt or "the target")
+        lname = objs[0]["label"] if len(objs) == 1 else f"{len(objs)} compounds"
+        st.info(f"Dock **{lname}** against **{tname}**?")
+        a, b = st.columns(2)
+        if a.button("Dock it", key="up_do_dock", use_container_width=True):
+            ss.convo["ligand_objs"] = objs
+            ss.convo["ligand"] = ([o["label"] for o in objs]
+                                  if len(objs) > 1 else objs[0]["label"])
+            ss.convo["target"] = tgt
+            if pend.get("uploaded_target_pdb"):
+                ss.convo["uploaded_target_pdb"] = pend["uploaded_target_pdb"]
+                ss.convo["uploaded_target_name"] = pend.get("uploaded_target_name")
+            ss.convo["tier"] = ss.convo.get("tier") or pend.get("tier") or "Standard"
+            ss.upload_pending = None
+            ss.awaiting_ligand = None
+            say(f"Docking **{lname}** against **{tname}**.")
+            ss.run_now = True
+            st.rerun()
+        if b.button("Cancel", key="up_cancel_dock", use_container_width=True):
+            ss.upload_pending = None
+            st.rerun()
+        return
 
     if stage == "confirm_target":
         tgt = pend["target"]
