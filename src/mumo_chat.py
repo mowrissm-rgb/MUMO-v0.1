@@ -57,6 +57,12 @@ THEMES = {
         "border_3": "rgba(255,255,255,0.12)",
         "input_bg": "rgba(255,255,255,0.04)",
         "scroll": "rgba(255,255,255,0.14)",
+        # Chat-box chrome is deliberately NOT the accent: everything in that
+        # control except its background is plain white here / plain black in
+        # light mode, so the box reads identically in both themes.
+        "chrome": "#ffffff",
+        "chrome_soft": "rgba(255,255,255,0.62)",
+        "chrome_faint": "rgba(255,255,255,0.30)",
         "accent": ACCENT,
         "accent_wash": "rgba(111,184,236,0.10)",
         "select": "rgba(111,184,236,0.28)",
@@ -74,6 +80,9 @@ THEMES = {
         "border_3": "rgba(0,0,0,0.16)",
         "input_bg": "rgba(0,0,0,0.03)",
         "scroll": "rgba(0,0,0,0.18)",
+        "chrome": "#000000",
+        "chrome_soft": "rgba(0,0,0,0.62)",
+        "chrome_faint": "rgba(0,0,0,0.28)",
         # Darker than ACCENT2: #2f7fc4 is only 3.98:1 on this background, which
         # fails AA for the 11px label it styles. #2569a6 gives 5.40:1.
         "accent": "#2569a6",
@@ -123,6 +132,8 @@ st.markdown(f"""
   --muted: {T['muted']}; --glass: {T['glass']};
   --border: {T['border']}; --border-2: {T['border_2']}; --border-3: {T['border_3']};
   --input-bg: {T['input_bg']}; --scroll: {T['scroll']};
+  --chrome: {T['chrome']}; --chrome-soft: {T['chrome_soft']};
+  --chrome-faint: {T['chrome_faint']};
   --accent-wash: {T['accent_wash']}; --select: {T['select']};
   --on-accent: {T['on_accent']}; --shadow: {T['shadow']};
   --shadow-panel: {T['shadow_panel']}; }}
@@ -179,17 +190,35 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     font:17px/1.65 'IBM Plex Serif',serif; color: var(--ink);
 }}
 .mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
+/* The chat box is monochrome by design, in BOTH themes: background aside,
+   every part of it (border, caret, text, placeholder, "+", send arrow) is
+   plain white on dark and plain black on light. It used to mix the accent
+   with Streamlit's own defaults, which made the control look like it came
+   from a different app depending on the theme. */
 [data-testid="stChatInput"] {{
-    border: 1px solid var(--border-3) !important;
+    border: 1px solid var(--chrome-faint) !important;
     border-radius: 14px !important; background: var(--input-bg) !important;
 }}
+[data-testid="stChatInput"]:focus-within {{ border-color: var(--chrome) !important; }}
 [data-testid="stChatInput"] [data-baseweb="textarea"],
 [data-testid="stChatInput"] [data-baseweb="base-input"],
 [data-testid="stChatInput"] div {{
-    background: transparent !important; color: var(--ink) !important;
+    background: transparent !important; color: var(--chrome) !important;
 }}
-[data-testid="stChatInput"] textarea {{ color: var(--ink) !important; }}
-[data-testid="stChatInput"] textarea::placeholder {{ color: var(--muted) !important; }}
+[data-testid="stChatInput"] textarea {{
+    color: var(--chrome) !important; caret-color: var(--chrome) !important;
+}}
+[data-testid="stChatInput"] textarea::placeholder {{ color: var(--chrome-soft) !important; }}
+/* Streamlit never themes its own send button — left alone it keeps a slate
+   icon on a slate chip, which is close to invisible on the dark background. */
+[data-testid="stChatInputSubmitButton"] {{ background: transparent !important; }}
+[data-testid="stChatInputSubmitButton"] svg {{
+    fill: var(--chrome) !important; color: var(--chrome) !important;
+}}
+[data-testid="stChatInputSubmitButton"]:disabled svg {{
+    fill: var(--chrome-soft) !important; color: var(--chrome-soft) !important;
+}}
+[data-testid="stChatInputSubmitButton"]:hover {{ background: var(--glass) !important; }}
 /* The native file-attach control, restyled to the "+" the user asked for.
    The clickable element is the inner <button aria-label="Upload a file">, and
    its icon is what gives it its size — so the glyph is hidden with
@@ -200,15 +229,16 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
    size and clicking it opens the file picker. */
 [data-testid="stChatInputFileUploadButton"] button {{
     position: relative; min-width: 2rem; min-height: 2rem;
+    background: transparent !important;
 }}
 [data-testid="stChatInputFileUploadButton"] button svg {{ visibility: hidden; }}
 [data-testid="stChatInputFileUploadButton"] button::after {{
     content: "+"; position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    font: 400 24px/1 'Inter', system-ui, sans-serif; color: var(--accent);
+    font: 400 24px/1 'Inter', system-ui, sans-serif; color: var(--chrome);
     pointer-events: none;
 }}
-[data-testid="stChatInputFileUploadButton"] button:hover::after {{ filter: brightness(1.3); }}
+[data-testid="stChatInputFileUploadButton"] button:hover::after {{ opacity: .7; }}
 [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
 [data-testid="stBottom"] > div {{ background: transparent !important; }}
 [data-testid="stHeader"] {{ background: transparent !important; }}
