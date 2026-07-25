@@ -1,0 +1,229 @@
+"""
+MUMO — figures for the STRING report.
+
+Hand-written SVG, same reasoning as charts.py and ramachandran.py: the .docx
+export already rasterises SVG through headless Chromium, so these need no
+plotting library and therefore no new dependency.
+
+Every figure takes a `dark` flag because the same drawing is used twice — dark
+in the app panel, light in the exported report — and a chart that only reads
+on one background is a chart that gets screenshotted badly into the other.
+"""
+
+_FONT = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, "
+         "Helvetica, Arial, sans-serif")
+
+
+def _palette(dark):
+    if dark:
+        return {"bg": "none", "ink": "#eef5fa", "ink2": "#cdd8df",
+                "muted": "#93a0aa", "grid": "rgba(255,255,255,0.10)",
+                "axis": "rgba(255,255,255,0.22)", "accent": "#6fb8ec"}
+    return {"bg": "#ffffff", "ink": "#0b0b0b", "ink2": "#52514e",
+            "muted": "#898781", "grid": "#e1e0d9", "axis": "#c3c2b7",
+            "accent": "#2a78d6"}
+
+
+def _esc(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _ramp(v, dark):
+    """0..1 -> interpolated fill. Sequential single-hue, so the eye reads it as
+    a magnitude rather than as categories."""
+    v = max(0.0, min(1.0, float(v)))
+    if dark:
+        r0, g0, b0 = 12, 26, 36            # near-background
+        r1, g1, b1 = 111, 184, 236         # accent
+    else:
+        r0, g0, b0 = 244, 248, 252
+        r1, g1, b1 = 26, 92, 158
+    f = v ** 0.75                          # lift the low end so weak evidence shows
+    return f"rgb({int(r0+(r1-r0)*f)},{int(g0+(g1-g0)*f)},{int(b0+(b1-b0)*f)})"
+
+
+def heatmap_svg(matrix, title="Evidence by channel", dark=True, width=680):
+    """Partners x STRING evidence channels.
+
+    The combined score hides WHY a link exists — this is the figure that shows
+    an interaction resting entirely on text mining rather than experiment.
+    """
+    rows, cols, vals = matrix.get("rows") or [], matrix.get("cols") or [], matrix.get("values") or []
+    if not rows or not cols:
+        return ""
+    P = _palette(dark)
+    # TOP has to clear the rotated column labels, not just the subtitle: at -38
+    # degrees a 13-character label like "Co-expression" reaches ~40px upward,
+    # and at 74 they were being cut off by the top of the canvas.
+    LEFT, TOP, RIGHT, BOT = 132, 112, 16, 54
+    cw = max(46, (width - LEFT - RIGHT) // len(cols))
+    ch = 22
+    w = LEFT + cw * len(cols) + RIGHT
+    h = TOP + ch * len(rows) + BOT
+
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
+         f'viewBox="0 0 {w} {h}" font-family="{_FONT}">']
+    if P["bg"] != "none":
+        o.append(f'<rect width="{w}" height="{h}" fill="{P["bg"]}"/>')
+    o.append(f'<text x="14" y="24" font-size="14" font-weight="600" '
+             f'fill="{P["ink"]}">{_esc(title)}</text>')
+    o.append(f'<text x="14" y="42" font-size="11" fill="{P["muted"]}">'
+             f'Darker = stronger evidence in that channel (0 to 1)</text>')
+
+    for c, label in enumerate(cols):
+        x = LEFT + c * cw + cw / 2
+        o.append(f'<text x="{x:.1f}" y="{TOP - 8}" font-size="10" '
+                 f'fill="{P["ink2"]}" text-anchor="end" '
+                 f'transform="rotate(-38 {x:.1f} {TOP - 8})">{_esc(label)}</text>')
+
+    for r, name in enumerate(rows):
+        y = TOP + r * ch
+        o.append(f'<text x="{LEFT - 8}" y="{y + ch/2 + 3.5:.1f}" font-size="11" '
+                 f'fill="{P["ink"]}" text-anchor="end">{_esc(name)}</text>')
+        for c in range(len(cols)):
+            v = vals[r][c] if r < len(vals) and c < len(vals[r]) else 0.0
+            x = LEFT + c * cw
+            o.append(f'<rect x="{x}" y="{y}" width="{cw - 2}" height="{ch - 2}" '
+                     f'rx="2" fill="{_ramp(v, dark)}"/>')
+            if v >= 0.4:
+                o.append(f'<text x="{x + (cw-2)/2:.1f}" y="{y + ch/2 + 3.5:.1f}" '
+                         f'font-size="9.5" text-anchor="middle" '
+                         f'fill="{"#08131b" if v > 0.72 else P["ink"]}">'
+                         f'{v:.2f}</text>')
+
+    o.append(f'<text x="14" y="{h - 18}" font-size="10" fill="{P["muted"]}">'
+             f'Experiments and Databases are direct evidence; Text mining only '
+             f'means two proteins are discussed together.</text>')
+    o.append("</svg>")
+    return "\n".join(o)
+
+
+def tree_svg(tree, title="Sequence similarity", dark=True, width=680):
+    """Rectangular dendrogram of a UPGMA tree.
+
+    Leaves are drawn at a common right edge (the tree is ultrametric), so
+    horizontal position of each join reads directly as distance.
+    """
+    if not tree:
+        return ""
+    P = _palette(dark)
+
+    leaves = []
+
+    def collect(n):
+        if "name" in n:
+            leaves.append(n)
+        else:
+            for c in n["children"]:
+                collect(c)
+    collect(tree)
+    if len(leaves) < 2:
+        return ""
+
+    LEFT, TOP, RIGHT, BOT = 18, 66, 128, 46
+    row = 22
+    h = TOP + row * len(leaves) + BOT
+    span = width - LEFT - RIGHT
+    root_h = max(1e-9, tree.get("height", 1.0))
+
+    ypos = {id(l): TOP + i * row + row / 2 for i, l in enumerate(leaves)}
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{h}" '
+         f'viewBox="0 0 {width} {h}" font-family="{_FONT}">']
+    if P["bg"] != "none":
+        o.append(f'<rect width="{width}" height="{h}" fill="{P["bg"]}"/>')
+    o.append(f'<text x="14" y="24" font-size="14" font-weight="600" '
+             f'fill="{P["ink"]}">{_esc(title)}</text>')
+    o.append(f'<text x="14" y="42" font-size="11" fill="{P["muted"]}">'
+             f'k-mer distance, average linkage — sequence family structure, '
+             f'not an aligned phylogeny</text>')
+
+    def x_of(height):
+        return LEFT + span * (1.0 - height / root_h)
+
+    def draw(n):
+        if "name" in n:
+            y = ypos[id(n)]
+            o.append(f'<text x="{LEFT + span + 8}" y="{y + 3.5:.1f}" font-size="11" '
+                     f'fill="{P["ink"]}">{_esc(n["name"])}</text>')
+            return y
+        ys = [draw(c) for c in n["children"]]
+        y0, y1 = min(ys), max(ys)
+        x = x_of(n.get("height", 0.0))
+        o.append(f'<line x1="{x:.1f}" y1="{y0:.1f}" x2="{x:.1f}" y2="{y1:.1f}" '
+                 f'stroke="{P["accent"]}" stroke-width="1.5"/>')
+        for c, y in zip(n["children"], ys):
+            cx = x_of(c.get("height", 0.0)) if "children" in c else LEFT + span
+            o.append(f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{cx:.1f}" y2="{y:.1f}" '
+                     f'stroke="{P["accent"]}" stroke-width="1.5"/>')
+        return (y0 + y1) / 2
+
+    draw(tree)
+    o.append(f'<line x1="{LEFT}" y1="{h - BOT + 10}" x2="{LEFT + span}" '
+             f'y2="{h - BOT + 10}" stroke="{P["axis"]}" stroke-width="1"/>')
+    for frac in (0.0, 0.5, 1.0):
+        x = LEFT + span * frac
+        o.append(f'<text x="{x:.1f}" y="{h - BOT + 24}" font-size="9.5" '
+                 f'fill="{P["muted"]}" text-anchor="middle">'
+                 f'{root_h * (1 - frac):.2f}</text>')
+    o.append(f'<text x="{LEFT + span/2:.1f}" y="{h - 10}" font-size="10" '
+             f'fill="{P["muted"]}" text-anchor="middle">distance '
+             f'(0 = identical sequence)</text>')
+    o.append("</svg>")
+    return "\n".join(o)
+
+
+def enrichment_svg(rows, title="Functional enrichment", dark=True, width=680, top=12):
+    """Horizontal bars of the most enriched terms, by false discovery rate.
+
+    Bars are -log10(FDR) because raw p-values span orders of magnitude and a
+    linear axis would render everything except the top hit as a stub.
+    """
+    import math
+    if not rows:
+        return ""
+    P = _palette(dark)
+    items = []
+    for r in rows[:top]:
+        try:
+            fdr = float(r.get("fdr") or r.get("p_value") or 1.0)
+        except (TypeError, ValueError):
+            fdr = 1.0
+        fdr = max(fdr, 1e-300)
+        items.append({
+            "term": r.get("description") or r.get("term") or "?",
+            "score": -math.log10(fdr),
+            "n": r.get("number_of_genes") or r.get("n") or "",
+            "cat": r.get("category") or "",
+        })
+    if not items:
+        return ""
+    LEFT, TOP, RIGHT, BOT = 250, 62, 44, 34
+    bh, gap = 20, 7
+    h = TOP + (bh + gap) * len(items) + BOT
+    span = width - LEFT - RIGHT
+    top_score = max(i["score"] for i in items) or 1.0
+
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{h}" '
+         f'viewBox="0 0 {width} {h}" font-family="{_FONT}">']
+    if P["bg"] != "none":
+        o.append(f'<rect width="{width}" height="{h}" fill="{P["bg"]}"/>')
+    o.append(f'<text x="14" y="24" font-size="14" font-weight="600" '
+             f'fill="{P["ink"]}">{_esc(title)}</text>')
+    o.append(f'<text x="14" y="42" font-size="11" fill="{P["muted"]}">'
+             f'Longer bar = less likely by chance (-log10 FDR)</text>')
+
+    for i, it in enumerate(items):
+        y = TOP + i * (bh + gap)
+        term = it["term"]
+        if len(term) > 40:
+            term = term[:38] + "…"
+        o.append(f'<text x="{LEFT - 10}" y="{y + bh/2 + 4:.1f}" font-size="11" '
+                 f'fill="{P["ink"]}" text-anchor="end">{_esc(term)}</text>')
+        bw = max(2.0, span * (it["score"] / top_score))
+        o.append(f'<rect x="{LEFT}" y="{y}" width="{bw:.1f}" height="{bh}" rx="3" '
+                 f'fill="{_ramp(0.35 + 0.65 * it["score"] / top_score, dark)}"/>')
+        o.append(f'<text x="{LEFT + bw + 7:.1f}" y="{y + bh/2 + 4:.1f}" '
+                 f'font-size="10" fill="{P["muted"]}">{it["score"]:.1f}</text>')
+    o.append("</svg>")
+    return "\n".join(o)

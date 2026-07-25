@@ -252,3 +252,109 @@ def dominant_channel(partner):
         if v > best_v:
             best, best_v = label, v
     return (best, round(best_v, 3)) if best_v > 0 else ("", 0.0)
+
+
+# ── sequence-similarity tree ───────────────────────────────────────────────
+# The dossiers already carry sequences, so clustering the network by sequence
+# costs no extra network call.
+#
+# HONEST LABELLING: this is k-mer distance + UPGMA, not a multiple-sequence
+# alignment with a substitution model. It answers "which of these proteins are
+# built from similar sequence" — family structure, paralogues, shared domains —
+# and it is fast and deterministic. It is NOT a publication phylogeny, and the
+# rendered figure says so. A real one needs an MSA plus FastTree/IQ-TREE, which
+# are native binaries this image deliberately does not carry.
+
+def _kmers(seq, k=3):
+    seq = (seq or "").upper()
+    if len(seq) < k:
+        return {}
+    counts = {}
+    for i in range(len(seq) - k + 1):
+        km = seq[i:i + k]
+        counts[km] = counts.get(km, 0) + 1
+    return counts
+
+
+def _cosine_distance(a, b):
+    """1 - cosine similarity over shared k-mer counts. Bounded [0, 1], and
+    unlike raw identity it does not need the sequences to be the same length."""
+    if not a or not b:
+        return 1.0
+    common = a.keys() & b.keys()
+    dot = sum(a[k] * b[k] for k in common)
+    na = sum(v * v for v in a.values()) ** 0.5
+    nb = sum(v * v for v in b.values()) ** 0.5
+    if not na or not nb:
+        return 1.0
+    return max(0.0, min(1.0, 1.0 - dot / (na * nb)))
+
+
+def distance_matrix(named_sequences, k=3):
+    """[(name, seq)] -> (labels, DxD list-of-lists of distances)."""
+    labels = [n for n, s in named_sequences if s]
+    profs = [_kmers(s, k) for _, s in named_sequences if s]
+    n = len(labels)
+    D = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = _cosine_distance(profs[i], profs[j])
+            D[i][j] = D[j][i] = d
+    return labels, D
+
+
+def upgma(labels, D):
+    """Average-linkage tree. Returns a nested dict:
+       {"name":..., "height":0}  |  {"children":[l, r], "height": h}
+
+    UPGMA rather than neighbour-joining because the result is ultrametric —
+    every leaf ends at the same depth — which draws as an honest rectangular
+    dendrogram without needing a root to be guessed.
+    """
+    nodes = [{"name": lab, "height": 0.0, "_n": 1} for lab in labels]
+    D = [row[:] for row in D]
+    idx = list(range(len(nodes)))
+
+    while len(idx) > 1:
+        bi, bj, best = None, None, float("inf")
+        for a in range(len(idx)):
+            for b in range(a + 1, len(idx)):
+                d = D[idx[a]][idx[b]]
+                if d < best:
+                    best, bi, bj = d, a, b
+        i, j = idx[bi], idx[bj]
+        ni, nj = nodes[i]["_n"], nodes[j]["_n"]
+        merged = {"children": [nodes[i], nodes[j]], "height": best / 2.0,
+                  "_n": ni + nj}
+        nodes.append(merged)
+        new = len(nodes) - 1
+        # extend the matrix for the new node, average-linkage
+        for row in D:
+            row.append(0.0)
+        D.append([0.0] * (len(D) + 1))
+        for other in idx:
+            if other in (i, j):
+                continue
+            d = (D[i][other] * ni + D[j][other] * nj) / (ni + nj)
+            D[new][other] = D[other][new] = d
+        idx = [x for x in idx if x not in (i, j)] + [new]
+
+    root = nodes[idx[0]]
+
+    def strip(node):
+        node.pop("_n", None)
+        for c in node.get("children", []):
+            strip(c)
+        return node
+
+    return strip(root)
+
+
+def similarity_tree(dossier_map):
+    """{gene: dossier} -> UPGMA tree over their sequences, or None."""
+    pairs = [(g, d.get("sequence", "")) for g, d in (dossier_map or {}).items()]
+    pairs = [(g, s) for g, s in pairs if s]
+    if len(pairs) < 3:
+        return None
+    labels, D = distance_matrix(pairs)
+    return upgma(labels, D)

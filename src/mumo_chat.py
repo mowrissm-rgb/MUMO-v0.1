@@ -2687,6 +2687,72 @@ def render_results():
                     st.caption(f"(3D view unavailable: {e})")
 
 
+def _string_views(r):
+    """The view switcher under a STRING network.
+
+    Same shape as the docking panel's action row: the network alone answers
+    "what is connected", and these answer the questions that follow — why the
+    link exists, how the proteins relate by sequence, and what the set does.
+    Each figure is built on demand and cached on the result dict, so switching
+    views costs nothing after the first click and a reload never refetches.
+    """
+    import viz_string as vs
+    from agents.string_deep import evidence_matrix, dossiers, similarity_tree
+
+    views = ["Network", "Evidence", "Similarity", "Enrichment"]
+    key = f"strview_{id(r)}"
+    choice = st.radio("View", views, horizontal=True, key=key,
+                      label_visibility="collapsed")
+
+    partners = r.get("partners") or []
+    cache = r.setdefault("_figs", {})
+
+    def panel(svg):
+        st.markdown(
+            f'<div style="background:#fff;padding:10px;border-radius:12px;'
+            f'border:1px solid rgba(111,184,236,0.28);'
+            f'box-shadow:0 8px 28px -10px rgba(0,0,0,0.5);overflow:auto;">'
+            f'{svg}</div>', unsafe_allow_html=True)
+
+    if choice == "Evidence":
+        if "heat" not in cache:
+            cache["heat"] = vs.heatmap_svg(evidence_matrix(partners), dark=False)
+        if cache["heat"]:
+            panel(cache["heat"])
+            st.caption("Every STRING link is a sum of independent channels. A partner "
+                       "carried only by text mining is a weaker claim than one with "
+                       "experimental support, even at the same combined score.")
+        else:
+            st.info("No per-channel evidence returned for these partners.")
+
+    elif choice == "Similarity":
+        if "tree" not in cache:
+            with st.spinner("Fetching sequences and clustering…"):
+                genes = list(r.get("input", [])) + [p["preferredName_B"] for p in partners[:11]]
+                doss = dossiers(genes)
+                r.setdefault("_dossiers", doss)
+                cache["tree"] = vs.tree_svg(similarity_tree(doss), dark=False)
+        if cache["tree"]:
+            panel(cache["tree"])
+            st.caption("Groups the network by sequence similarity — paralogues and "
+                       "shared families fall together. This is k-mer distance with "
+                       "average linkage, not an aligned phylogeny.")
+        else:
+            st.info("Not enough sequences resolved to build a tree (needs at least three).")
+
+    elif choice == "Enrichment":
+        if "enrich" not in cache:
+            cache["enrich"] = vs.enrichment_svg(r.get("enrichment") or [], dark=False)
+        if cache["enrich"]:
+            panel(cache["enrich"])
+            st.caption("What this set of proteins does together, ranked by how "
+                       "unlikely the overlap is by chance.")
+        else:
+            st.info("STRING returned no enrichment for this set.")
+
+    return choice
+
+
 def _render_string_report(r):
     """STRING interaction report: network image + partners + enriched pathways."""
     import re
@@ -2695,7 +2761,11 @@ def _render_string_report(r):
     st.caption("STRING protein–protein associations (known + predicted). "
                "Combined score 0–1 from several evidence channels.")
 
+    view = _string_views(r)
     svg = r.get("network_svg") or ""
+    if view != "Network":
+        svg = ""
+
     if svg:
         # make the root <svg> responsive: add a viewBox from its px width/height
         # (STRING uses single-quoted attrs, no viewBox), then let it scale to width
