@@ -55,8 +55,12 @@ import os
 # axes, each normalised so its densest bin is 1.0. Loaded once, lazily: the
 # file is ~217KB and most MUMO runs never open a Ramachandran plot.
 
+# Stored base64-encoded rather than as a raw .npz: Hugging Face's pre-receive
+# hook rejects binary files that are not in Xet storage (the same rule that
+# rejected bin/vina.exe), and 297KB of text costs less than adding Xet/LFS
+# tooling to the deploy path. Decoded once, lazily.
 _GRID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "refdata", "rama8000.npz")
+                          "refdata", "rama8000.npz.b64")
 _GRIDS = None
 _NBINS = 180
 _STEP = 360.0 / _NBINS
@@ -81,8 +85,11 @@ _CLASS_LABEL = {
 def _grids():
     global _GRIDS
     if _GRIDS is None:
+        import base64, io
         import numpy as np
-        with np.load(_GRID_FILE) as z:
+        with open(_GRID_FILE, "r", encoding="ascii") as fh:
+            blob = base64.b64decode("".join(fh.read().split()))
+        with np.load(io.BytesIO(blob)) as z:
             _GRIDS = {k: z[k] for k in z.files}
     return _GRIDS
 

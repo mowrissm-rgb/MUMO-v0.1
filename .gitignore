@@ -20,3 +20,4 @@ Thumbs.db
 # Secrets — never commit API keys
 mumo_config.json
 .streamlit/secrets.toml
+src/refdata/rama8000.npz
