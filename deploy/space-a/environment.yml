@@ -1,0 +1,27 @@
+name: mumo-docking
+# Specialist A — docking & structure ONLY.
+#
+# Deliberately much smaller than the monolith's environment: no streamlit,
+# no torch/admet-ai, no playwright/chromium, no BLAST database. Those belong
+# to other specialists, and leaving them out is most of the point — a smaller
+# image boots faster and has fewer native libraries that can conflict.
+#
+# openmm/openff are absent for the same reason as in the main env: they caused
+# an ABI conflict that segfaulted ProLIF. Do not add them here either.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - rdkit
+  - autodock-vina
+  - numpy
+  - scipy               # meeko needs it (meeko declares no deps)
+  - gemmi               # meeko receptor preparation
+  - pandas
+  - pip
+  - pip:
+      - meeko
+      - prolif          # interaction fingerprints (Apache-2.0)
+      - requests
+      - supabase        # persists results to the SHARED database
