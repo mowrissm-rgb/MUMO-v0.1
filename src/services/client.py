@@ -109,7 +109,15 @@ def call(capability, payload, timeout=None):
 
     url = registry.endpoint(sid)
     if not url:
-        return None                      # local: caller runs it itself
+        # Local — but still gated, so a capability that is broken IN THIS
+        # PROCESS (missing RDKit, absent Vina, repeated crashes) degrades
+        # exactly like an unreachable remote one. One failure path, one
+        # message, whether or not the split has happened yet.
+        from . import resilience
+        ok, reason = resilience.available(capability)
+        if not ok:
+            raise SpecialistUnavailable(capability, reason or "unavailable locally")
+        return None                      # caller runs it itself
 
     if not health(sid):
         raise SpecialistUnavailable(capability, "health check failed")
