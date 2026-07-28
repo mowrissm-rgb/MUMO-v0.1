@@ -2461,7 +2461,9 @@ def _run_stability_md(r, status_cb=lambda m: None):
     ligand of a docking result. Self-contained: derives the receptor + ligand from
     the (persisted) complex PDB, so it works for fresh AND reloaded results.
     Returns an md result dict, or {"_error": ...}."""
-    from agents.md_analyst import run_stability_md
+    from agents.md_analyst import (run_stability_md,
+                                   run_stability_md_isolated,
+                                   md_isolated_available)
     from report_writer import _split_complex_pdb
     from rdkit import Chem
     from rdkit.Chem import AllChem
@@ -2510,7 +2512,14 @@ def _run_stability_md(r, status_cb=lambda m: None):
     with open(rec_path, "w") as f:
         f.write(rec_pdb)
 
-    res = run_stability_md(rec_path, lig, DATA, status=status_cb)
+    # Prefer the ISOLATED environment: openmm in this process is what caused
+    # the exit-139 outage. The in-process path stays only as a local-dev
+    # fallback, for a machine where the MD env was never built.
+    if md_isolated_available():
+        status_cb("Running in the isolated simulation environment…")
+        res = run_stability_md_isolated(rec_path, lig, DATA)
+    else:
+        res = run_stability_md(rec_path, lig, DATA, status=status_cb)
     if res and "_error" not in res:
         res["kind"], res["ligand"], res["meta"] = "md", label, meta
     return res

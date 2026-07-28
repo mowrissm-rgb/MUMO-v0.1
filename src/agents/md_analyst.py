@@ -212,3 +212,85 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
         "note": ("Fast gas-phase pose refinement + short relaxation (protein restrained) "
                  "— a lightweight precursor to full solvated molecular dynamics."),
     }
+
+
+# ── isolated execution ─────────────────────────────────────────────────────
+# The functions above run openmm IN THIS PROCESS. On the deployed Space that
+# is exactly what must never happen: openmm in the shared environment caused
+# an ABI conflict that segfaulted ProLIF and took the app down. There, MD
+# lives in a separate conda env and is reached through the wrapper below.
+
+import json as _json
+import subprocess as _sp
+import tempfile as _tf
+
+
+def md_env_python():
+    """The interpreter of the isolated MD environment, or "" if absent.
+
+    MUMO_MD_PYTHON lets the path be overridden; /opt/mdenv is where the
+    Dockerfile builds it.
+    """
+    cand = [os.environ.get("MUMO_MD_PYTHON") or "",
+            "/opt/mdenv/bin/python",
+            os.path.join(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))), "..", "mdenv", "bin", "python")]
+    for c in cand:
+        if c and os.path.exists(c):
+            return c
+    return ""
+
+
+def md_isolated_available():
+    return bool(md_env_python())
+
+
+def run_stability_md_isolated(receptor_pdb_path, lig_rdkit, out_dir,
+                              relax_ps=2.0, timeout=900):
+    """Run the pose-stability check in the isolated environment.
+
+    Same return shape as run_stability_md, so callers do not care which path
+    executed. Never raises: a crashed child becomes {"_error": ...}, which is
+    the entire point of running it out of process.
+    """
+    py = md_env_python()
+    if not py:
+        return {"_error": "The isolated molecular-simulation environment is "
+                          "not installed in this build."}
+
+    from rdkit import Chem
+    os.makedirs(out_dir, exist_ok=True)
+    work = _tf.mkdtemp(prefix="mumo-md-", dir=out_dir)
+    lig_path = os.path.join(work, "ligand.sdf")
+    w = Chem.SDWriter(lig_path)
+    w.write(lig_rdkit)
+    w.close()
+
+    spec = {"receptor_pdb": receptor_pdb_path, "ligand_sdf": lig_path,
+            "out_dir": work, "relax_ps": relax_ps}
+    spec_path = os.path.join(work, "spec.json")
+    with open(spec_path, "w", encoding="utf-8") as fh:
+        _json.dump(spec, fh)
+
+    runner = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "md_runner.py")
+    try:
+        proc = _sp.run([py, runner, spec_path], capture_output=True, text=True,
+                       timeout=timeout)
+    except _sp.TimeoutExpired:
+        return {"_error": f"The simulation did not finish within {timeout}s."}
+    except Exception as e:
+        return {"_error": f"Could not start the simulation: {type(e).__name__}: {e}"}
+
+    result_path = os.path.join(work, "result.json")
+    if os.path.exists(result_path):
+        try:
+            with open(result_path, "r", encoding="utf-8") as fh:
+                return _json.load(fh)
+        except Exception as e:
+            return {"_error": f"Simulation result could not be read: {e}"}
+
+    # No result file: the child died before writing one — a segfault looks
+    # exactly like this, and is precisely what isolation is protecting against.
+    tail = ((proc.stderr or proc.stdout or "").strip().splitlines() or [""])[-1]
+    return {"_error": f"The simulation stopped unexpectedly (exit {proc.returncode}). {tail[:160]}"}

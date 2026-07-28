@@ -42,11 +42,11 @@ from . import registry
 REQUIREMENTS = {
     "dock": {"modules": ("rdkit", "meeko"), "needs_vina": True},
     "ramachandran": {"modules": ("numpy",), "needs_vina": False},
-    # NOT just openmm: the engine also needs openff.toolkit and
-    # openmmforcefields to parameterise the ligand. Probing one of three
-    # reported MD as available on a build where it could not run.
-    "md": {"modules": ("openmm", "openff.toolkit", "openmmforcefields"),
-           "needs_vina": False},
+    # MD deliberately does NOT run in this process — openmm lives in an
+    # isolated env at /opt/mdenv and is reached by subprocess. So the probe
+    # asks whether that environment exists, not whether openmm imports here;
+    # importing it here is the thing we are avoiding.
+    "md": {"modules": ("rdkit",), "needs_vina": False, "needs_mdenv": True},
     "string": {"modules": ("requests",), "needs_vina": False},
     "blast": {"modules": ("requests",), "needs_vina": False},
     "phylogeny": {"modules": ("requests",), "needs_vina": False},
@@ -103,6 +103,14 @@ def probe(capability, force=False):
             break
     if ok and req["needs_vina"] and not _vina_ok():
         ok, reason = False, "the AutoDock Vina binary is missing"
+    if ok and req.get("needs_mdenv"):
+        try:
+            from agents.md_analyst import md_isolated_available
+            if not md_isolated_available():
+                ok, reason = False, ("the isolated molecular-simulation "
+                                     "environment is not installed")
+        except Exception as e:
+            ok, reason = False, f"MD env check failed ({type(e).__name__})"
     if ok and req.get("needs_xtb"):
         try:
             from agents.qm_analyst import xtb_available

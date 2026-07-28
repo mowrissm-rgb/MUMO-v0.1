@@ -60,6 +60,22 @@ shutil.copyfileobj(gzip.open('sprot.gz','rb'), open('uniprot_sprot.fasta','wb'))
 USER mambauser
 
 # --- app code ---
+# ── isolated molecular-simulation environment ──────────────────────────────
+# openmm and openff go in their OWN conda env at /opt/mdenv, NOT the base one.
+# Installing them into the shared environment once already caused a
+# numpy/MKL/libstdc++ ABI conflict that segfaulted ProLIF (exit 139) and took
+# this Space down. Kept apart, nothing MD-related is ever imported into the
+# Streamlit process; src/md_runner.py is invoked with this interpreter instead,
+# so a crash kills a child rather than the app.
+#
+# openmmforcefields comes from PIP on purpose: the conda package hard-depends on
+# ambertools (~1GB, and only needed for the GAFF path we do not use), while the
+# SMIRNOFF path we do use needs none of it. Verified locally on 3PTB.
+USER root
+RUN micromamba create -y -p /opt/mdenv -c conda-forge         python=3.11 openmm openff-toolkit rdkit numpy lxml &&     /opt/mdenv/bin/pip install --no-cache-dir openmmforcefields &&     micromamba clean --all --yes &&     chmod -R a+rX /opt/mdenv
+ENV MUMO_MD_PYTHON=/opt/mdenv/bin/python
+USER mambauser
+
 WORKDIR /app
 COPY --chown=mambauser:mambauser . /app
 
