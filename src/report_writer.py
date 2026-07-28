@@ -473,6 +473,38 @@ def build_string_docx(r):
                 p.add_run(f"{label}: ").bold = True
                 p.add_run(text)
 
+    # Which of these proteins can actually be drugged. A network says what is
+    # connected; this says which nodes are validated points of intervention.
+    try:
+        from agents.string_deep import druggability_map
+        _doss = r.get("dossiers") or r.get("_dossiers") or {}
+        _drug = r.get("_druggability") or (druggability_map(_doss) if _doss else {})
+    except Exception:
+        _drug = {}
+
+    if _drug:
+        doc.add_heading("Druggability", level=1)
+        doc.add_paragraph(
+            "Known modulators from ChEMBL, looked up by UniProt accession. "
+            "A protein with approved drugs is a validated point of intervention; "
+            "one with none is either genuinely hard to drug or simply unexplored.")
+        _order = list(r.get("input", [])) + [p.get("preferredName_B")
+                                             for p in (r.get("partners") or [])]
+        _seen = set()
+        _rows = []
+        for g in _order:
+            if g in _drug and g not in _seen:
+                _seen.add(g)
+                v = _drug[g]
+                _rows.append({
+                    "Protein": g,
+                    "Druggability": v.get("verdict", ""),
+                    "Modulators": str(v.get("n_mechanisms", 0)),
+                    "Examples": ", ".join(x["name"] for x in v.get("drugs", [])[:3]) or "—",
+                })
+        if _rows:
+            _add_df_table(doc, pd.DataFrame(_rows))
+
     narrative = r.get("narrative")
     if narrative:
         doc.add_heading("Report", level=1)

@@ -2773,7 +2773,7 @@ def _string_views(r):
     import viz_string as vs
     from agents.string_deep import evidence_matrix, dossiers, similarity_tree
 
-    views = ["Network", "Evidence", "Similarity", "Enrichment"]
+    views = ["Network", "Evidence", "Similarity", "Enrichment", "Druggability"]
     key = f"strview_{id(r)}"
     choice = st.radio("View", views, horizontal=True, key=key,
                       label_visibility="collapsed")
@@ -2813,6 +2813,46 @@ def _string_views(r):
                        "average linkage, not an aligned phylogeny.")
         else:
             st.info("Not enough sequences resolved to build a tree (needs at least three).")
+
+    elif choice == "Druggability":
+        # Fetched on demand, not with the analysis: it is ~5s of ChEMBL calls
+        # and most STRING questions never ask it.
+        if "drug" not in cache:
+            with st.spinner("Asking ChEMBL what modulates these proteins…"):
+                doss = r.get("dossiers") or r.get("_dossiers") or {}
+                if not doss:
+                    from agents.string_deep import dossiers as _dz
+                    genes = list(r.get("input", [])) + [p["preferredName_B"]
+                                                        for p in partners[:11]]
+                    doss = _dz(genes)
+                    r["_dossiers"] = doss
+                from agents.string_deep import druggability_map
+                cache["drug"] = druggability_map(doss)
+        dm = cache["drug"] or {}
+        if not dm:
+            st.info("Couldn't resolve these proteins in ChEMBL.")
+        else:
+            order = list(r.get("input", [])) + [p["preferredName_B"] for p in partners]
+            seen, rows = set(), []
+            for g in order:
+                if g in dm and g not in seen:
+                    seen.add(g)
+                    v = dm[g]
+                    top = ", ".join(x["name"] for x in v["drugs"][:3]) or "—"
+                    rows.append({"Protein": g, "Druggability": v["verdict"],
+                                 "Known modulators": v["n_mechanisms"],
+                                 "Examples": top})
+            import pandas as _pd
+            st.dataframe(_pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            hits = [g for g in seen if dm[g]["approved"]]
+            if hits:
+                st.caption(f"**{len(hits)} of {len(seen)} proteins already have approved "
+                           f"drugs** — those are validated points of intervention in this "
+                           f"network. Proteins with none are either genuinely hard to drug "
+                           f"or simply unexplored.")
+            else:
+                st.caption("None of these proteins has an approved drug — this network is "
+                           "unexploited territory, which can mean opportunity or difficulty.")
 
     elif choice == "Enrichment":
         if "enrich" not in cache:

@@ -416,3 +416,135 @@ def biology_blocks(dossier_map, order=None, limit=12):
             "rows": rows,
         })
     return blocks
+
+
+# ── druggability ───────────────────────────────────────────────────────────
+# A network tells you what a protein is connected to. It does not tell you
+# whether anyone can actually drug it — which is the question that decides
+# whether a partner is a lead worth chasing or a dead end.
+
+CHEMBL = "https://www.ebi.ac.uk/chembl/api/data"
+
+
+def _chembl_target(accession, timeout=45):
+    """UniProt accession -> ChEMBL SINGLE PROTEIN target id.
+
+    Queried by ACCESSION, not by name: the dossiers already carry accessions,
+    and a gene symbol can match several ChEMBL entries. The same lookup for
+    EGFR returns 16 targets, most of them PROTEIN FAMILY groupings — taking
+    the first hit would attribute a family's drugs to one protein.
+    """
+    try:
+        r = requests.get(f"{CHEMBL}/target",
+                         params={"target_components__accession": accession,
+                                 "format": "json"}, timeout=timeout)
+        r.raise_for_status()
+        for t in r.json().get("targets") or []:
+            if t.get("target_type") == "SINGLE PROTEIN":
+                return t.get("target_chembl_id"), t.get("pref_name") or ""
+    except Exception:
+        pass
+    return None, ""
+
+
+def _phase_label(phase):
+    try:
+        p = float(phase)
+    except (TypeError, ValueError):
+        return "preclinical"
+    if p >= 4:
+        return "approved"
+    if p >= 1:
+        return f"phase {int(p)}"
+    return "preclinical"
+
+
+def druggability(accession, timeout=45, max_drugs=6):
+    """What is known to modulate this protein, from ChEMBL.
+
+    Returns {} when the protein is not in ChEMBL — which is itself a finding,
+    not an error, and is reported as such rather than as a failure.
+    """
+    if not accession:
+        return {}
+    tid, tname = _chembl_target(accession, timeout)
+    if not tid:
+        return {"target_chembl_id": None, "verdict": "not in ChEMBL",
+                "drugs": [], "n_mechanisms": 0, "approved": 0}
+
+    try:
+        m = requests.get(f"{CHEMBL}/mechanism",
+                         params={"target_chembl_id": tid, "format": "json",
+                                 "limit": 60}, timeout=timeout)
+        m.raise_for_status()
+        mech = m.json()
+        rows = mech.get("mechanisms") or []
+        total = (mech.get("page_meta") or {}).get("total_count", len(rows))
+    except Exception:
+        return {"target_chembl_id": tid, "target_name": tname,
+                "verdict": "lookup failed", "drugs": [], "n_mechanisms": 0,
+                "approved": 0}
+
+    by_mol = {}
+    for x in rows:
+        mid = x.get("molecule_chembl_id")
+        if mid and mid not in by_mol:
+            by_mol[mid] = {"action": x.get("action_type") or "",
+                           "moa": x.get("mechanism_of_action") or ""}
+    drugs = []
+    if by_mol:
+        ids = ",".join(list(by_mol)[:40])
+        try:
+            d = requests.get(f"{CHEMBL}/molecule",
+                             params={"molecule_chembl_id__in": ids, "format": "json",
+                                     "limit": 40,
+                                     "only": "molecule_chembl_id,pref_name,max_phase"},
+                             timeout=timeout)
+            d.raise_for_status()
+            for mol in d.json().get("molecules") or []:
+                mid = mol.get("molecule_chembl_id")
+                meta = by_mol.get(mid) or {}
+                try:
+                    phase = float(mol.get("max_phase") or 0)
+                except (TypeError, ValueError):
+                    phase = 0.0
+                drugs.append({
+                    "chembl_id": mid,
+                    "name": (mol.get("pref_name") or mid or "").title(),
+                    "phase": phase,
+                    "stage": _phase_label(phase),
+                    "action": (meta.get("action") or "").title(),
+                    "moa": meta.get("moa") or "",
+                })
+        except Exception:
+            pass
+
+    drugs.sort(key=lambda x: (-x["phase"], x["name"]))
+    approved = sum(1 for x in drugs if x["phase"] >= 4)
+    if approved:
+        verdict = f"{approved} approved drug{'s' if approved > 1 else ''}"
+    elif any(1 <= x["phase"] < 4 for x in drugs):
+        verdict = "in clinical trials"
+    elif drugs or total:
+        verdict = "chemical tools only"
+    else:
+        verdict = "no known modulators"
+
+    return {"target_chembl_id": tid, "target_name": tname, "verdict": verdict,
+            "n_mechanisms": total, "approved": approved,
+            "drugs": drugs[:max_drugs]}
+
+
+def druggability_map(dossier_map, max_workers=6, limit=12):
+    """{gene: druggability} for a whole network, fetched concurrently.
+
+    Skips proteins with no accession — without one the lookup would fall back
+    to name matching, which is exactly the ambiguity this avoids.
+    """
+    items = [(g, d.get("accession")) for g, d in (dossier_map or {}).items()
+             if d.get("accession")][:limit]
+    if not items:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(items))) as ex:
+        got = list(ex.map(lambda it: druggability(it[1]), items))
+    return {g: r for (g, _), r in zip(items, got) if r}
