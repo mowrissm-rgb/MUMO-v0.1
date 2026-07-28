@@ -1310,6 +1310,47 @@ def converse(msg):
     _run_plan(actions, c)
 
 
+def _capability_ok(capability):
+    """Pre-flight gate before attempting a capability.
+
+    Each action already contains its own try/except, so a failure never
+    crashed the app. What this adds is refusing to START work that cannot
+    succeed — a missing RDKit or absent Vina is reported as "docking is
+    unavailable, everything else works" instead of being discovered halfway
+    through a slow import — and a breaker that stops re-attempting a
+    repeatedly-failing capability on every single message.
+    """
+    try:
+        from services import resilience
+        ok, _ = resilience.available(capability)
+        if not ok:
+            say(resilience.message(capability))
+        return ok
+    except Exception:
+        # The guard must never be the thing that breaks a working feature.
+        return True
+
+
+def _capability_failed(capability, err):
+    """Feed a real failure back to the breaker, so the second occurrence is
+    caught before the user waits through it again."""
+    try:
+        from services import resilience
+        resilience.record_failure(capability, f"{type(err).__name__}: {err}")
+    except Exception:
+        pass
+
+
+def _capability_ran(capability):
+    """A success clears the failure count — a transient wobble must not
+    accumulate across a session into a permanent outage."""
+    try:
+        from services import resilience
+        resilience.record_success(capability)
+    except Exception:
+        pass
+
+
 def _run_sync_action(action, c):
     """Run one action that finishes within this script run (everything but dock).
 
@@ -1321,6 +1362,8 @@ def _run_sync_action(action, c):
 
     # analyze-only → drug-likeness + ADMET-AI predictions, no docking
     if action == "analyze" and c.get("ligand"):
+        if not _capability_ok("admet"):
+            return
         one = c["ligand"][0] if isinstance(c["ligand"], list) else c["ligand"]
         smi, label = resolve_ligand(str(one))
         if smi:
@@ -1340,6 +1383,8 @@ def _run_sync_action(action, c):
 
     # predicted phase I / phase II metabolism of a compound
     if action == "metabolism" and c.get("ligand"):
+        if not _capability_ok("metabolism"):
+            return
         from agents.metabolism import predict_metabolites
         one = c["ligand"][0] if isinstance(c["ligand"], list) else c["ligand"]
         smi, label = resolve_ligand(str(one))
@@ -1365,6 +1410,8 @@ def _run_sync_action(action, c):
 
     # backbone-geometry (Ramachandran) validation of a target structure
     if action == "ramachandran" and c.get("target"):
+        if not _capability_ok("ramachandran"):
+            return
         from pipeline_core import structure_validation
         tgt = c["target"]
         name = tgt[0] if isinstance(tgt, list) else tgt
@@ -1374,6 +1421,7 @@ def _run_sync_action(action, c):
                                            progress=lambda m: stt.write(m))
                 stt.update(label="Structure validation complete", state="complete")
         except Exception as e:
+            _capability_failed("ramachandran", e)
             say(f"Structure validation couldn't run: {e}")
             return
         if res.get("_error"):
@@ -1392,6 +1440,8 @@ def _run_sync_action(action, c):
 
     # protein–protein interaction network → STRING
     if action == "string" and c.get("target"):
+        if not _capability_ok("string"):
+            return
         from agents.string_analyst import analyze_string
         prot = c["target"]
         label = ", ".join(prot) if isinstance(prot, list) else str(prot)
@@ -1402,16 +1452,20 @@ def _run_sync_action(action, c):
                 data_str["narrative"] = _string_narrative(data_str)
             ss.results = {"kind": "string", **data_str}
             ss.panel_open = True
+            _capability_ran("string")
             import dispatch
             tip = dispatch.next_step("string", target=label)
             if tip:
                 say(tip)
         except Exception as e:
+            _capability_failed("string", e)
             say(f"STRING analysis couldn't run: {e}")
         return
 
     # BLAST sequence similarity (self-hosted BLAST+ — runs in seconds)
     if action == "blast" and c.get("target"):
+        if not _capability_ok("blast"):
+            return
         from agents.blast_analyst import analyze_blast
         q = c["target"]
         q = q[0] if isinstance(q, list) else q
@@ -1424,11 +1478,13 @@ def _run_sync_action(action, c):
                 data_bl["narrative"] = _blast_narrative(data_bl)
             ss.results = {"kind": "blast", **data_bl}
             ss.panel_open = True
+            _capability_ran("blast")
             import dispatch
             tip = dispatch.next_step("blast", target=str(q))
             if tip:
                 say(tip)
         except Exception as e:
+            _capability_failed("blast", e)
             say(f"BLAST couldn't run: {e}")
         return
 
@@ -1970,6 +2026,24 @@ with st.sidebar:
             ss.pending_actions = []
             ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
             st.rerun()
+
+    # Capability health. Shown ONLY when something is actually down — a board
+    # that is green on every page teaches people to ignore it, which is exactly
+    # when you need them to read it.
+    try:
+        from services import resilience as _res
+        _down = [r for r in _res.status() if not r["ok"]]
+        if _down:
+            st.markdown("---")
+            with st.expander(f"⚠ {len(_down)} feature(s) unavailable", expanded=True):
+                st.caption("Everything not listed here is working normally.")
+                for _r in _down:
+                    st.markdown(f"**{_r['capability']}** — {_r['reason']}")
+                if st.button("Re-check now", use_container_width=True):
+                    _res.reset()
+                    st.rerun()
+    except Exception:
+        pass
 
     # Data-source attributions (CC-BY / CC-BY-SA terms require credit) + tool credits.
     st.markdown("---")
