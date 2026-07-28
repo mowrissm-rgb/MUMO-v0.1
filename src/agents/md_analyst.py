@@ -25,14 +25,23 @@ Never raises — returns {"_error": ...} so the rest of MUMO keeps working.
 
 import os
 
-# Availability probe (heavy MD stack may be absent on a stripped build).
+# Availability probe.
+#
+# This used to test `import openmm` alone, which was WRONG: openmm is only the
+# integrator. Ligand parameterisation needs openff.toolkit and
+# openmmforcefields too, so a build with openmm and neither of those reported
+# MD_AVAILABLE = True, offered the button, and then failed at
+# _ligand_offmol with ModuleNotFoundError after the user had already waited.
+# An availability flag that overstates what is installed is worse than no flag.
 MD_AVAILABLE = True
 _MD_IMPORT_ERROR = ""
-try:
-    import openmm  # noqa: F401
-except Exception as _e:                      # pragma: no cover
-    MD_AVAILABLE = False
-    _MD_IMPORT_ERROR = f"{type(_e).__name__}: {_e}"
+for _mod in ("openmm", "openff.toolkit", "openmmforcefields"):
+    try:
+        __import__(_mod)
+    except Exception as _e:                  # pragma: no cover
+        MD_AVAILABLE = False
+        _MD_IMPORT_ERROR = f"{_mod}: {type(_e).__name__}: {_e}"
+        break
 
 
 def _ligand_offmol(lig_rdkit):

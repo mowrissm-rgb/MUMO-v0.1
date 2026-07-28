@@ -42,7 +42,11 @@ from . import registry
 REQUIREMENTS = {
     "dock": {"modules": ("rdkit", "meeko"), "needs_vina": True},
     "ramachandran": {"modules": ("numpy",), "needs_vina": False},
-    "md": {"modules": ("openmm",), "needs_vina": False},
+    # NOT just openmm: the engine also needs openff.toolkit and
+    # openmmforcefields to parameterise the ligand. Probing one of three
+    # reported MD as available on a build where it could not run.
+    "md": {"modules": ("openmm", "openff.toolkit", "openmmforcefields"),
+           "needs_vina": False},
     "string": {"modules": ("requests",), "needs_vina": False},
     "blast": {"modules": ("requests",), "needs_vina": False},
     "phylogeny": {"modules": ("requests",), "needs_vina": False},
