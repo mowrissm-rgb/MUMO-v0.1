@@ -52,6 +52,27 @@ def _ligand_offmol(lig_rdkit):
     from rdkit import Chem
     m = Chem.AddHs(lig_rdkit, addCoords=True) if lig_rdkit.GetNumAtoms() == \
         Chem.RemoveHs(lig_rdkit).GetNumAtoms() else lig_rdkit
+
+    # Force the whole ligand into ONE residue before handing it to OpenFF.
+    #
+    # OpenFF carries RDKit's per-atom PDB residue info through into the OpenMM
+    # topology. A ligand read from a PDB has residue info on its heavy atoms,
+    # but hydrogens added by AddHs carry none — so the molecule arrives as TWO
+    # residues (e.g. BEN with 9 atoms + UNK with 8). The SMIRNOFF template
+    # generator matches PER RESIDUE, so neither half matches the whole
+    # molecule, the ligand falls through to the protein templates, and system
+    # creation dies with "No template found for residue (BEN) ... similar to
+    # NTRP". Normalising to a single residue is what makes the match possible.
+    m = Chem.Mol(m)                                   # don't mutate the caller's mol
+    for atom in m.GetAtoms():
+        info = Chem.AtomPDBResidueInfo()
+        info.SetResidueName("LIG")
+        info.SetResidueNumber(1)
+        info.SetChainId("L")
+        info.SetName(f"{atom.GetSymbol():<4}"[:4])
+        info.SetIsHeteroAtom(True)
+        atom.SetMonomerInfo(info)
+
     off = Molecule.from_rdkit(m, allow_undefined_stereo=True)
     try:
         off.assign_partial_charges("gasteiger")
