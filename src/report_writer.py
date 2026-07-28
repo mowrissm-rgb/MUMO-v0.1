@@ -694,6 +694,35 @@ def build_admet_docx(r):
     doc.add_heading(f"MUMO ADMET Report — {r.get('lig_label', 'ligand')}", level=0)
     doc.add_paragraph(f"SMILES: {r.get('lig_smiles', '')}")
 
+    qm = r.get("qm")
+    if qm and not qm.get("_error"):
+        doc.add_heading("Frontier molecular orbitals", level=1)
+        doc.add_paragraph(f"Method: {qm.get('method', 'GFN2-xTB')}")
+        _add_kv_table(doc, [
+            ("HOMO", f"{qm['homo_ev']:.3f} eV"),
+            ("LUMO", f"{qm['lumo_ev']:.3f} eV"),
+            ("HOMO-LUMO gap", f"{qm['gap_ev']:.3f} eV"),
+        ] + ([("Dipole moment", f"{qm['dipole_debye']:.2f} D")]
+             if qm.get("dipole_debye") is not None else []))
+        try:
+            import viz_string as _vs
+            _svg = _vs.orbital_svg(qm, dark=False)
+            if _svg:
+                pw = browser = None
+                try:
+                    pw, browser = new_browser()
+                    png = svg_to_png(_svg, browser, width=700, height=430)
+                    doc.add_picture(io.BytesIO(png), width=Inches(5.2))
+                finally:
+                    if browser:
+                        browser.close()
+                    if pw:
+                        pw.stop()
+        except Exception as e:
+            doc.add_paragraph(f"(Orbital diagram could not be rendered: {e})")
+        if qm.get("interpretation"):
+            doc.add_paragraph(qm["interpretation"])
+
     narrative = r.get("narrative")
     if narrative:
         doc.add_heading("Report", level=1)

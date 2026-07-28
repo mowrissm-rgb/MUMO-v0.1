@@ -1331,6 +1331,20 @@ def _capability_ok(capability):
         return True
 
 
+def _capability_ok_quiet(capability):
+    """Like _capability_ok but says nothing when unavailable.
+
+    For OPTIONAL enrichments: a build without xtb should quietly omit the
+    orbital section, not announce a missing feature the user never asked for.
+    """
+    try:
+        from services import resilience
+        ok, _ = resilience.available(capability)
+        return ok
+    except Exception:
+        return False
+
+
 def _capability_failed(capability, err):
     """Feed a real failure back to the breaker, so the second occurrence is
     caught before the user waits through it again."""
@@ -1371,6 +1385,21 @@ def _run_sync_action(action, c):
                    "lig_label": label, "lig_smiles": smi}
             with st.spinner("Running ADMET-AI models (hERG, CYP, Ames, DILI…)"):
                 res["admet_ml"] = admet_ml(smi)
+            # Electronic structure, when the xtb binary is in this build.
+            # Gated rather than assumed: a build without xtb simply omits the
+            # section instead of failing the whole ADMET run.
+            if _capability_ok_quiet("qm"):
+                try:
+                    from agents.qm_analyst import orbitals
+                    with st.spinner("Computing frontier orbitals (GFN2-xTB)…"):
+                        qm_res = orbitals(smi)
+                    if not qm_res.get("_error"):
+                        res["qm"] = qm_res
+                        _capability_ran("qm")
+                    else:
+                        _capability_failed("qm", qm_res["_error"])
+                except Exception as _e:
+                    _capability_failed("qm", _e)
             with st.spinner("Writing the ADMET report…"):
                 res["narrative"] = _admet_narrative(res)
             ss.results = res
@@ -2530,6 +2559,28 @@ def render_results():
             st.markdown(narrative)
             st.markdown("---")
         st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
+
+        qm = r.get("qm")
+        if qm and not qm.get("_error"):
+            st.markdown("#### Frontier molecular orbitals")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("HOMO", f"{qm['homo_ev']:.2f} eV")
+            c2.metric("LUMO", f"{qm['lumo_ev']:.2f} eV")
+            c3.metric("HOMO–LUMO gap", f"{qm['gap_ev']:.2f} eV")
+            try:
+                import viz_string as _vs
+                _svg = _vs.orbital_svg(qm, dark=False)
+                if _svg:
+                    st.markdown(
+                        f'<div style="background:#fff;padding:10px;border-radius:12px;'
+                        f'border:1px solid rgba(111,184,236,0.28);overflow:auto;">'
+                        f'{_svg}</div>', unsafe_allow_html=True)
+            except Exception:
+                pass
+            if qm.get("interpretation"):
+                st.caption(qm["interpretation"])
+            st.markdown("---")
+
         adm = r.get("admet_ml")
         if adm and "_error" not in adm:
             st.markdown("#### ADMET-AI predictions")

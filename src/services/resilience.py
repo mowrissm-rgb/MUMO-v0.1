@@ -47,6 +47,9 @@ REQUIREMENTS = {
     "blast": {"modules": ("requests",), "needs_vina": False},
     "phylogeny": {"modules": ("requests",), "needs_vina": False},
     "admet": {"modules": ("rdkit",), "needs_vina": False},
+    # xtb is an executable, so "is the module importable" is the wrong test;
+    # needs_xtb checks the binary is actually on PATH.
+    "qm": {"modules": ("rdkit",), "needs_vina": False, "needs_xtb": True},
     "metabolism": {"modules": ("rdkit",), "needs_vina": False},
     "druglikeness": {"modules": ("rdkit",), "needs_vina": False},
     "report": {"modules": ("docx",), "needs_vina": False},
@@ -96,6 +99,13 @@ def probe(capability, force=False):
             break
     if ok and req["needs_vina"] and not _vina_ok():
         ok, reason = False, "the AutoDock Vina binary is missing"
+    if ok and req.get("needs_xtb"):
+        try:
+            from agents.qm_analyst import xtb_available
+            if not xtb_available():
+                ok, reason = False, "the xtb quantum-chemistry binary is missing"
+        except Exception as e:
+            ok, reason = False, f"xtb check failed ({type(e).__name__})"
 
     _probe_cache[cap] = (now, ok, reason)
     return ok, reason

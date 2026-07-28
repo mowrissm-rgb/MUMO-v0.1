@@ -227,3 +227,78 @@ def enrichment_svg(rows, title="Functional enrichment", dark=True, width=680, to
                  f'font-size="10" fill="{P["muted"]}">{it["score"]:.1f}</text>')
     o.append("</svg>")
     return "\n".join(o)
+
+
+def orbital_svg(qm, title="Frontier molecular orbitals", dark=True, width=560):
+    """Orbital energy-level diagram: occupied levels, the gap, and the frontier.
+
+    A ladder rather than a bar chart, because orbital energies ARE levels — the
+    vertical axis is energy and the eye should read the HOMO-LUMO separation
+    directly as the distance between two rungs.
+    """
+    if not qm or qm.get("_error") or "homo_ev" not in qm:
+        return ""
+    P = _palette(dark)
+    levels = qm.get("levels") or []
+    homo, lumo = qm["homo_ev"], qm["lumo_ev"]
+
+    # Show a window around the frontier: the deep core levels are far away and
+    # would compress the interesting region into a single line.
+    span = max(2.5, (lumo - homo) * 2.6)
+    lo, hi = homo - span, lumo + span
+    shown = [l for l in levels if lo <= l["energy_ev"] <= hi] or [
+        {"energy_ev": homo, "occupation": 2.0, "label": "HOMO"},
+        {"energy_ev": lumo, "occupation": 0.0, "label": "LUMO"}]
+
+    LEFT, TOP, RIGHT, BOT = 96, 62, 150, 56
+    h = 330
+    plot_h = h - TOP - BOT
+    x0, x1 = LEFT, width - RIGHT
+
+    def y(e):
+        return TOP + plot_h * (hi - e) / (hi - lo)
+
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{h}" '
+         f'viewBox="0 0 {width} {h}" font-family="{_FONT}">']
+    if P["bg"] != "none":
+        o.append(f'<rect width="{width}" height="{h}" fill="{P["bg"]}"/>')
+    o.append(f'<text x="14" y="24" font-size="14" font-weight="600" '
+             f'fill="{P["ink"]}">{_esc(title)}</text>')
+    o.append(f'<text x="14" y="42" font-size="11" fill="{P["muted"]}">'
+             f'{_esc(qm.get("method", "GFN2-xTB"))} · energies in eV</text>')
+
+    # energy axis
+    o.append(f'<line x1="{LEFT-30}" y1="{TOP}" x2="{LEFT-30}" y2="{TOP+plot_h}" '
+             f'stroke="{P["axis"]}" stroke-width="1"/>')
+    for frac in (0, 0.5, 1):
+        e = hi - (hi - lo) * frac
+        yy = y(e)
+        o.append(f'<text x="{LEFT-36}" y="{yy+3.5:.1f}" font-size="9.5" '
+                 f'fill="{P["muted"]}" text-anchor="end">{e:.1f}</text>')
+
+    # the gap, drawn as the thing the eye should land on
+    o.append(f'<rect x="{x0}" y="{y(lumo):.1f}" width="{x1-x0}" '
+             f'height="{y(homo)-y(lumo):.1f}" fill="{_ramp(0.18, dark)}" opacity="0.55"/>')
+    mid = (y(homo) + y(lumo)) / 2
+    o.append(f'<text x="{(x0+x1)/2:.1f}" y="{mid+4:.1f}" font-size="12" '
+             f'font-weight="600" fill="{P["ink"]}" text-anchor="middle">'
+             f'gap {qm["gap_ev"]:.2f} eV</text>')
+
+    for lv in shown:
+        e = lv["energy_ev"]
+        occupied = (lv.get("occupation") or 0) > 0
+        lab = lv.get("label") or ""
+        stroke = P["accent"] if lab in ("HOMO", "LUMO") else P["axis"]
+        wdt = 2.2 if lab in ("HOMO", "LUMO") else 1.1
+        o.append(f'<line x1="{x0}" y1="{y(e):.1f}" x2="{x1}" y2="{y(e):.1f}" '
+                 f'stroke="{stroke}" stroke-width="{wdt}" '
+                 f'{"" if occupied else "stroke-dasharray=\'5 4\'"}/>')
+        if lab:
+            o.append(f'<text x="{x1+8}" y="{y(e)+4:.1f}" font-size="11" '
+                     f'font-weight="600" fill="{P["ink"]}">{lab} {e:.2f}</text>')
+
+    o.append(f'<text x="14" y="{h-16}" font-size="10" fill="{P["muted"]}">'
+             f'Solid = occupied, dashed = empty. A smaller gap means the molecule '
+             f'engages more readily in electron transfer.</text>')
+    o.append("</svg>")
+    return "\n".join(o)

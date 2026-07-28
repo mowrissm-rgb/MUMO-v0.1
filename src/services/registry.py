@@ -54,7 +54,7 @@ SPECIALISTS = {
         "id": "C",
         "name": "Cheminformatics",
         "blurb": "ADMET prediction, metabolism and drug-likeness",
-        "capabilities": ("admet", "metabolism", "druglikeness"),
+        "capabilities": ("admet", "metabolism", "druglikeness", "qm"),
         "env": "MUMO_SPACE_CHEM",
         "heavy": False,
     },

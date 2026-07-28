@@ -9,6 +9,9 @@ dependencies:
   - python=3.11
   - rdkit
   - autodock-vina      # provides the 'vina' command on PATH
+  - xtb                # GFN2-xTB semi-empirical QM (HOMO/LUMO). A COMMAND-LINE
+                       # BINARY, run as a subprocess and never imported, so it
+                       # carries none of the in-process ABI risk that openmm did.
   - blast              # bioconda — self-hosted BLAST+ (blastp/makeblastdb), public domain
   - numpy
   - scipy              # required by meeko (meeko declares no deps, so we add them)
