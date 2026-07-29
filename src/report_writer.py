@@ -140,68 +140,75 @@ def _add_markdown(doc, text):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_docking_docx(r, llm=None):
-    """Full docking report: method summary, an all-ligands table, then a
-    detailed section per ligand (metrics, write-up, 2D diagram, 3D pose)."""
+    """Full docking report, organised BY TARGET.
+
+    The previous layout put every ligand-target pair into one flat table and
+    one flat chart, then gave all 60 pairs their own section. On a 15-ligand
+    4-target screen that is a 61-row table, a 60-bar chart and 116 images —
+    nothing in it can actually be read, and the file ran to 10 MB.
+
+    This groups by target instead. Each target gets its own ranked table, its
+    own three figures and ONE pose (its best ligand), so every number sits
+    next to the protein it belongs to. Tables and figures are numbered
+    sequentially and cross-referenced, so a reader can follow a residue list
+    from a table row to the pose that produced it.
+
+    Section order is deliberate and was specified: validate the structure
+    first, then the ligands, and only then present affinities that depend on
+    both being sound.
+    """
     from docx import Document
-    from docx.shared import Inches
+    from docx.shared import Inches, Pt
     from brain import write_report
     from viz import find_entry
 
     rdf, viz, meta = r["rdf"], r.get("viz", {}), r.get("meta", {})
     doc = Document()
-    doc.add_heading(f"MUMO Docking Report — {meta.get('gene', 'target')}", level=0)
+    doc.add_heading("MUMO Docking Report", level=0)
 
-    bits = []
-    if meta.get("exhaustiveness"):
-        bits.append(f"exhaustiveness {meta['exhaustiveness']}")
-    if meta.get("replicas"):
-        bits.append(f"{meta['replicas']} replica(s)")
-    if meta.get("pocket"):
-        bits.append(meta["pocket"])
-    val = meta.get("validation")
-    if val:
-        bits.append(f"native redock RMSD {val['rmsd']} Å "
-                    f"({'validated' if val['passed'] else '>2 Å'})")
-    if bits:
-        doc.add_paragraph("Method: " + " · ".join(bits))
+    # ── numbering ──────────────────────────────────────────────────────────
+    # One counter per kind, shared across the whole document, so captions can
+    # refer to each other ("matches the top row of Table 1") the way a paper
+    # does. Without this the reader has no way to tie a pose to its row.
+    counts = {"Table": 0, "Figure": 0}
 
-    doc.add_heading("Summary — all docked ligands", level=1)
-    # "Target" only exists on a multi-target screen's rows, and is skipped by
-    # the `in rdf.columns` filter below for an ordinary single-target report —
-    # so this list is safe to extend without changing anything for the common
-    # case. Its absence is exactly what left a multi-target report with no way
-    # to tell which row was docked against which protein. Residue NAMES
-    # (as opposed to bare counts) are what an industrial report needs to be
-    # checkable without opening every per-ligand section.
-    summary_cols = ["Target", "Ligand", "Best affinity (kcal/mol)", "Est. Ki", "Ligand efficiency",
-                     "Vinardo (kcal/mol)", "Consensus", "Pose consistency", "Confidence",
-                     "Reliability", "Total interactions", "H-bonds",
-                     "H-bond residues", "All interacting residues"]
-    cols = [c for c in summary_cols if c in rdf.columns]
-    summary = rdf[cols].reset_index().rename(columns={"index": "Rank"})
-    _add_df_table(doc, summary)
+    def caption(kind, text):
+        counts[kind] += 1
+        p = doc.add_paragraph()
+        run = p.add_run(f"{kind} {counts[kind]}. {text}")
+        run.italic = True
+        run.font.size = Pt(9)
+        return counts[kind]
 
-    # On a multi-target screen, "Method:" above describes only the FIRST
-    # target it happened to build — misleadingly implying a single pocket
-    # for the whole screen. State each target's own pocket/validation
-    # explicitly instead of leaving the rest silently unstated.
-    per_target = meta.get("per_target") or {}
-    if len(per_target) > 1:
-        doc.add_heading("Targets in this screen", level=2)
-        for name, tm in per_target.items():
-            bits2 = []
-            if tm.get("pocket"):
-                bits2.append(tm["pocket"])
-            tval = tm.get("validation")
-            if tval:
-                bits2.append(f"native redock RMSD {tval['rmsd']} Å "
-                            f"({'validated' if tval['passed'] else '>2 Å'})")
-            doc.add_paragraph(f"{name}: " + (" · ".join(bits2) if bits2 else "—"))
+    def picture(png, width=6.0):
+        doc.add_picture(io.BytesIO(png), width=Inches(width))
 
-    # One shared headless browser for all the screenshots. Rendering many WebGL
-    # (3D) scenes in one browser can exhaust memory on a small host and crash it
-    # mid-batch — which would fail every remaining ligand. `bh` holds the current
-    # browser so `_shot` can restart it once on failure and keep going.
+    # ── rows, grouped by target ────────────────────────────────────────────
+    rows = rdf.reset_index().rename(columns={"index": "Rank"}).to_dict(orient="records")
+    ok_rows = [x for x in rows if str(x.get("Best affinity (kcal/mol)")) != "FAILED"]
+    failed_rows = [x for x in rows if str(x.get("Best affinity (kcal/mol)")) == "FAILED"]
+
+    def _aff(x):
+        try:
+            return float(x.get("Best affinity (kcal/mol)"))
+        except (TypeError, ValueError):
+            return 0.0
+
+    has_targets = any(x.get("Target") for x in rows)
+    if has_targets:
+        targets = []
+        for x in rows:
+            t = x.get("Target")
+            if t and t not in targets:
+                targets.append(t)
+    else:
+        targets = [meta.get("gene", "target")]
+
+    def rows_for(t):
+        sub = [x for x in ok_rows if (x.get("Target") == t)] if has_targets else list(ok_rows)
+        return sorted(sub, key=_aff)          # most negative (best) first
+
+    # ── headless browser, shared ───────────────────────────────────────────
     bh = {"pw": None, "browser": None, "err": None}
     try:
         bh["pw"], bh["browser"] = new_browser()
@@ -209,8 +216,7 @@ def build_docking_docx(r, llm=None):
         bh["err"] = f"{type(e).__name__}: {e}"
 
     def _shot(kind, *args):
-        """Take a 2D/3D screenshot; if the browser died, restart it once and retry.
-        Returns (png_bytes, None) or (None, error_string)."""
+        """Screenshot with one restart if the browser died mid-batch."""
         for attempt in (0, 1):
             if bh["browser"] is None:
                 return None, bh["err"] or "headless browser unavailable"
@@ -220,7 +226,7 @@ def build_docking_docx(r, llm=None):
                 return png_from_3d(args[0], args[1], bh["browser"]), None
             except Exception as e:
                 bh["err"] = f"{type(e).__name__}: {e}"
-                if attempt == 0:                       # browser may have crashed — restart once
+                if attempt == 0:
                     try:
                         bh["browser"].close(); bh["pw"].stop()
                     except Exception:
@@ -232,186 +238,376 @@ def build_docking_docx(r, llm=None):
                         return None, f"{type(e2).__name__}: {e2}"
         return None, bh["err"]
 
-    # ── Figures: the two views the per-ligand sections can't give you ──
-    # The summary table has every number but no shape; these say which ligands
-    # separate from the pack and which residues the whole series converges on.
-    # Both are skipped when the data can't support them (see charts.py), so a
-    # single-ligand report simply doesn't get a one-bar chart.
     try:
-        import charts
-        chart_rows = rdf.reset_index(drop=True).to_dict(orient="records")
-        # build_figures scopes the residue/contact-map figures to ONE target at
-        # a time on a multi-target screen — pooling two proteins' residues into
-        # one ranking would state a shared pocket that does not exist.
-        drawn = charts.build_figures(chart_rows)
-        if drawn:
-            doc.add_heading("Figures", level=1)
-            for cap, svg in drawn:
-                png, err = _shot("2d", svg)
-                if png:
-                    doc.add_picture(io.BytesIO(png), width=Inches(6.2))
-                else:
-                    doc.add_paragraph(f"[{cap} chart unavailable: {err}]")
-    except Exception as e:
-        # a figure is a nice-to-have; never lose the whole report over one
-        doc.add_paragraph(f"[Charts unavailable: {type(e).__name__}: {e}]")
-
-    # ── Structure validation: is the receptor we docked into trustworthy? ──
-    # Every affinity above is conditional on the receptor's geometry being
-    # sane, so this belongs in the report rather than as a separate thing the
-    # reader has to go and check. On a multi-target screen each target is
-    # validated separately — they are different structures with different
-    # provenance and can differ wildly in quality.
-    try:
-        _rama_by_target = {}
-        _per_t = meta.get("per_target") or {}
-        if _per_t:
-            for _t, _tm in _per_t.items():
-                if (_tm or {}).get("ramachandran"):
-                    _rama_by_target[_t] = _tm["ramachandran"]
-        elif meta.get("ramachandran"):
-            _rama_by_target[meta.get("gene", "target")] = meta["ramachandran"]
-
-        if _rama_by_target:
-            import ramachandran as _ram
-            doc.add_heading("Structure validation (backbone geometry)", level=1)
-            for _t, _res in _rama_by_target.items():
-                doc.add_heading(_t, level=2)
-                doc.add_paragraph(_ram.verdict(_res))
-                _svg = _ram.plot_svg(_res, title=f"Ramachandran plot — {_t}")
-                if _svg:
-                    _png, _err = _shot("2d", _svg)
-                    if _png:
-                        doc.add_picture(io.BytesIO(_png), width=Inches(4.9))
-                    else:
-                        doc.add_paragraph(f"(Ramachandran plot could not be rendered: {_err})")
-                _outs = _res.get("outliers") or []
-                if _outs:
-                    shown = ", ".join(_outs[:20]) + (" …" if len(_outs) > 20 else "")
-                    doc.add_paragraph(f"Outlier residues ({len(_outs)}): {shown}")
-                    doc.add_paragraph(
-                        "Check whether any outlier sits in or near the binding site — "
-                        "a distorted residue lining the pocket undermines the poses "
-                        "above far more than one out on a surface loop.")
-                doc.add_paragraph(_res.get("note", ""))
-    except Exception as e:
-        doc.add_paragraph(f"[Structure validation unavailable: {type(e).__name__}: {e}]")
-
-    def _sp(v):
-        return [x for x in str(v).split("; ") if x and x != "-"]
-
-    def _narrative_job(rank, row):
-        """Everything write_report() needs for one row, resolved and called.
-        Runs in a worker thread — see the pool below for why."""
-        label = row["Ligand"]
-        # On a multi-target screen meta["gene"] is the JOINED label
-        # ("PLA2 + 2PE4") — using it here produced sentences like "the
-        # docking result of lupeol against the PLA2 + 2PE4 target", as if
-        # that were one protein. Each row carries its OWN target; use that.
-        row_target = row.get("Target") or meta.get("gene")
-        # reliability_by is keyed by plain LIGAND LABEL, rebuilt fresh per
-        # target — so the SAME ligand ("lupeol") has a different entry in
-        # each target's own dict. meta["reliability_by"] only ever holds
-        # the FIRST target's dict (see pipeline_core.run_job), so using it
-        # for a row from any OTHER target would show that other target's
-        # reliability data mislabelled as this one's — wrong, not just
-        # missing. per_target keeps every target's dict separately; use
-        # THAT source whenever the row actually names a target.
-        if row.get("Target"):
-            _rel_src = (meta.get("per_target", {}).get(row_target, {})
-                       .get("reliability_by") or {})
+        # ══ SUMMARY ════════════════════════════════════════════════════════
+        doc.add_heading("Summary", level=1)
+        n_lig = len({x.get("Ligand") for x in rows})
+        if len(targets) > 1:
+            doc.add_paragraph(
+                f"This run docked {n_lig} small-molecule ligands against each of "
+                f"{len(targets)} targets — {', '.join(targets)} — for a total of "
+                f"{len(ok_rows)} scored poses.")
         else:
-            _rel_src = meta.get("reliability_by") or {}
-        _rel = _rel_src.get(label, {})
-        try:
-            return rank, write_report({
-                "target": row_target, "ligand": label,
-                "affinity": float(row["Best affinity (kcal/mol)"]),
-                "estimated_ki": row.get("Est. Ki"),
-                "ligand_efficiency": row.get("Ligand efficiency"),
-                "reliability": row.get("Reliability"),
-                "reliability_reason": _rel.get("reason"),
-                "total_interactions": row.get("Total interactions"),
-                "n_hbonds": int(row.get("H-bonds", 0) or 0),
-                "hbond_residues": _sp(row.get("H-bond residues", "")),
-                "n_hydrophobic": int(row.get("Hydrophobic", 0) or 0),
-                "interacting_residues": _sp(row.get("All interacting residues", "")),
-            }, llm, r.get("tier", "Standard"))
-        except Exception as e:
-            # never let one ligand's narrative failure blank out the rest
-            return rank, f"(Interpretation unavailable: {type(e).__name__}: {e})"
+            doc.add_paragraph(
+                f"This run docked {n_lig} small-molecule ligand(s) against "
+                f"{targets[0]}, producing {len(ok_rows)} scored poses.")
 
-    # write_report() is one network round-trip to the LLM per ligand, and
-    # ligands' narratives don't depend on each other at all — calling them one
-    # at a time inside the loop below meant an 8-ligand report paid 8 FULL,
-    # sequential round-trips before a single screenshot even started. Fetching
-    # them concurrently overlaps that wait instead of paying it N times.
-    # The (browser-bound) 2D/3D screenshots stay sequential in the loop below —
-    # Playwright's sync API isn't meant to be driven from several threads
-    # against one shared browser, so that part is left exactly as it was.
-    from concurrent.futures import ThreadPoolExecutor
-    ok_rows = [(rank, row) for rank, row in rdf.iterrows()
-              if str(row["Best affinity (kcal/mol)"]) != "FAILED"]
-    writeups = {}
-    if ok_rows:
-        with ThreadPoolExecutor(max_workers=min(6, len(ok_rows))) as pool:
-            futures = [pool.submit(_narrative_job, rank, row) for rank, row in ok_rows]
-            for fut in futures:
-                rank, writeup = fut.result()
-                writeups[rank] = writeup
+        best_bits = []
+        for t in targets:
+            sub = rows_for(t)
+            if sub:
+                b = sub[0]
+                best_bits.append(f"{t} → {b['Ligand']} ({_aff(b):.3f} kcal/mol)")
+        if best_bits:
+            doc.add_paragraph("Per-target best hit: " + "; ".join(best_bits) + ".")
 
-    try:
-        for pos, (rank, row) in enumerate(rdf.iterrows()):
-            label = row["Ligand"]
-            # continuous flow — no page break per ligand; a thin spacer between
-            # sections keeps them visually separated without forcing new pages
-            if pos > 0:
-                doc.add_paragraph()
-            doc.add_heading(f"#{rank} — {label}", level=1)
-            if str(row["Best affinity (kcal/mol)"]) == "FAILED":
-                doc.add_paragraph(f"Docking failed for this ligand: {row.get('Total interactions', '')}")
+        method = []
+        if meta.get("exhaustiveness"):
+            method.append(f"exhaustiveness {meta['exhaustiveness']}")
+        if meta.get("replicas"):
+            method.append(f"{meta['replicas']} replica(s)")
+        if method:
+            doc.add_paragraph("Method: AutoDock Vina · " + " · ".join(method) + ".")
+        if failed_rows:
+            doc.add_paragraph(
+                f"{len(failed_rows)} ligand(s) could not be docked and are "
+                f"excluded from the tables below: "
+                + ", ".join(sorted({x['Ligand'] for x in failed_rows})) + ".")
+
+        # ══ 1. STRUCTURE VALIDATION ════════════════════════════════════════
+        # First, because every affinity below is conditional on the receptor
+        # geometry being sound. A distorted pocket invalidates the numbers.
+        doc.add_heading("Structure validation", level=1)
+        per_target = meta.get("per_target") or {}
+        wrote_any = False
+        for t in targets:
+            tm = per_target.get(t) or ({} if len(targets) > 1 else meta)
+            rama = (tm or {}).get("ramachandran") or (
+                meta.get("ramachandran") if len(targets) == 1 else None)
+            pocket_bits = []
+            if (tm or {}).get("pocket"):
+                pocket_bits.append(tm["pocket"])
+            tval = (tm or {}).get("validation")
+            if tval:
+                pocket_bits.append(
+                    f"native redock RMSD {tval['rmsd']} Å "
+                    f"({'validated' if tval['passed'] else 'above 2 Å'})")
+
+            if not (rama or pocket_bits):
                 continue
+            wrote_any = True
+            doc.add_heading(t, level=2)
 
-            _add_kv_table(doc, [(c, row[c]) for c in cols if c != "Ligand"])
+            if rama:
+                try:
+                    import ramachandran as _ram
+                    doc.add_paragraph(_ram.verdict(rama))
+                    svg = _ram.plot_svg(rama, title=f"Ramachandran plot — {t}")
+                    if svg:
+                        png, err = _shot("2d", svg)
+                        if png:
+                            picture(png, 5.0)
+                            caption("Figure",
+                                    f"Ramachandran plot for {t}. Backbone torsion angles "
+                                    f"scored against the MolProbity Top8000 reference "
+                                    f"distributions.")
+                        else:
+                            doc.add_paragraph(f"(Ramachandran plot unavailable: {err})")
+                    outs = rama.get("outliers") or []
+                    if outs:
+                        shown = ", ".join(outs[:20]) + (" …" if len(outs) > 20 else "")
+                        doc.add_paragraph(f"Outlier residues ({len(outs)}): {shown}")
+                        doc.add_paragraph(
+                            "Check whether any outlier lines the binding site — a distorted "
+                            "residue in the pocket undermines the poses below far more than "
+                            "one on a surface loop.")
+                except Exception as e:
+                    doc.add_paragraph(f"(Structure validation unavailable: "
+                                      f"{type(e).__name__}: {e})")
 
-            doc.add_heading("Interpretation", level=2)
-            _add_markdown(doc, writeups.get(rank) or "")
+            if pocket_bits:
+                doc.add_paragraph("Docking site: " + " · ".join(pocket_bits) + ".")
+        if not wrote_any:
+            doc.add_paragraph("No structure-validation data was recorded for this run.")
 
-            entry = find_entry(viz, label, row.get("Target"))
-            if not entry:
-                doc.add_paragraph("(No pose/interaction data available for this ligand.)")
-            elif bh["browser"] is None:
-                doc.add_paragraph(f"(2D/3D images unavailable — headless browser failed to "
-                                  f"start: {bh['err']})")
+        # ══ 2. LIGAND VALIDATION (HOMO/LUMO) ═══════════════════════════════
+        # Second, because the electronic character of a ligand is a property of
+        # the molecule alone — it does not depend on which target it was docked
+        # into, so it belongs before the target-by-target results.
+        doc.add_heading("Ligand validation — frontier molecular orbitals", level=1)
+        qm_rows, qm_figs = [], []
+        try:
+            from agents.qm_analyst import orbitals, xtb_available
+            if not xtb_available():
+                doc.add_paragraph(
+                    "The quantum-chemistry engine (xtb) is not available in this "
+                    "build, so HOMO/LUMO properties were not computed.")
             else:
-                svg = entry["ia"].get("svg_2d")
-                doc.add_heading("2D interaction diagram", level=2)
-                if svg:
+                seen = {}
+                for x in ok_rows:
+                    lab, smi = x.get("Ligand"), x.get("SMILES")
+                    if lab and smi and lab not in seen:
+                        seen[lab] = smi
+                doc.add_paragraph(
+                    f"Electronic properties of the {len(seen)} unique ligand(s) in this "
+                    f"screen, computed with GFN2-xTB. The HOMO–LUMO gap indicates how "
+                    f"readily a molecule takes part in electron transfer: a smaller gap "
+                    f"means a more reactive, more easily polarised molecule.")
+                for lab, smi in seen.items():
+                    q = orbitals(smi)
+                    if q.get("_error"):
+                        qm_rows.append({"Ligand": lab, "HOMO (eV)": "—",
+                                        "LUMO (eV)": "—", "Gap (eV)": "—",
+                                        "Note": q["_error"][:60]})
+                        continue
+                    qm_rows.append({
+                        "Ligand": lab,
+                        "HOMO (eV)": f"{q['homo_ev']:.2f}",
+                        "LUMO (eV)": f"{q['lumo_ev']:.2f}",
+                        "Gap (eV)": f"{q['gap_ev']:.2f}",
+                        "Note": "",
+                    })
+                    qm_figs.append((lab, q))
+                if qm_rows:
+                    import pandas as _pd
+                    caption("Table", "Frontier orbital energies for every ligand in the "
+                                     "screen (GFN2-xTB).")
+                    _add_df_table(doc, _pd.DataFrame(qm_rows))
+                for lab, q in qm_figs:
+                    try:
+                        import viz_string as _vs
+                        svg = _vs.orbital_svg(q, dark=False,
+                                              title=f"Frontier orbitals — {lab}")
+                        if svg:
+                            png, err = _shot("2d", svg)
+                            if png:
+                                picture(png, 4.6)
+                                caption("Figure",
+                                        f"Orbital energy diagram for {lab}: HOMO "
+                                        f"{q['homo_ev']:.2f} eV, LUMO {q['lumo_ev']:.2f} eV, "
+                                        f"gap {q['gap_ev']:.2f} eV.")
+                    except Exception:
+                        pass
+        except Exception as e:
+            doc.add_paragraph(f"(Ligand validation unavailable: {type(e).__name__}: {e})")
+
+        # ══ 3. NARRATIVES (fetched concurrently, used below) ════════════════
+        def _sp(v):
+            return [x for x in str(v).split("; ") if x and x != "-"]
+
+        def _narrative_job(row):
+            label = row["Ligand"]
+            row_target = row.get("Target") or meta.get("gene")
+            # reliability_by is rebuilt PER TARGET and keyed by plain ligand
+            # label, so the top-level dict only ever holds the FIRST target's.
+            # Reading it for a row from another target attaches the wrong
+            # target's reasoning — wrong data, not merely missing.
+            if row.get("Target"):
+                src = (meta.get("per_target", {}).get(row_target, {})
+                       .get("reliability_by") or {})
+            else:
+                src = meta.get("reliability_by") or {}
+            rel = src.get(label, {})
+            try:
+                return write_report({
+                    "target": row_target, "ligand": label,
+                    "affinity": _aff(row),
+                    "estimated_ki": row.get("Est. Ki"),
+                    "ligand_efficiency": row.get("Ligand efficiency"),
+                    "reliability": row.get("Reliability"),
+                    "reliability_reason": rel.get("reason"),
+                    "total_interactions": row.get("Total interactions"),
+                    "n_hbonds": int(row.get("H-bonds", 0) or 0),
+                    "hbond_residues": _sp(row.get("H-bond residues", "")),
+                    "n_hydrophobic": int(row.get("Hydrophobic", 0) or 0),
+                    "interacting_residues": _sp(row.get("All interacting residues", "")),
+                }, llm, r.get("tier", "Standard"))
+            except Exception as e:
+                return f"(Interpretation unavailable: {type(e).__name__}: {e})"
+
+        from concurrent.futures import ThreadPoolExecutor
+        top_rows = [rows_for(t)[0] for t in targets if rows_for(t)]
+        writeups = {}
+        if top_rows:
+            with ThreadPoolExecutor(max_workers=min(6, len(top_rows))) as pool:
+                futures = {id(x): pool.submit(_narrative_job, x) for x in top_rows}
+                for x in top_rows:
+                    writeups[id(x)] = futures[id(x)].result()
+
+        # ══ 4. DOCKING RESULTS, PER TARGET ═════════════════════════════════
+        doc.add_heading("Docking results", level=1)
+        import charts
+        table_no_for = {}
+
+        for t in targets:
+            sub = rows_for(t)
+            if not sub:
+                continue
+            doc.add_heading(t, level=2)
+            best = sub[0]
+            ki = f" (Ki {best.get('Est. Ki')})" if best.get("Est. Ki") else ""
+            doc.add_paragraph(
+                f"Top ligand: {best['Ligand']} — {_aff(best):.3f} kcal/mol{ki}.")
+
+            # ranked table
+            doc.add_heading("Ranked ligand table", level=3)
+            table_no = caption(
+                "Table",
+                f"Ranked docking results for all {len(sub)} ligand(s) screened against "
+                f"{t}, best to worst binding affinity. The top row's residue list "
+                f"matches the pose figure for this target.")
+            table_no_for[t] = table_no
+            import pandas as _pd
+            tab = _pd.DataFrame([{
+                "Ligand": x.get("Ligand"),
+                "Affinity (kcal/mol)": f"{_aff(x):.3f}",
+                "Est. Ki": x.get("Est. Ki", "—"),
+                "Ligand eff.": x.get("Ligand efficiency", "—"),
+                "H-bonds": x.get("H-bonds", 0),
+                "Key interacting residues": x.get("All interacting residues", "—"),
+            } for x in sub])
+            _add_df_table(doc, tab)
+
+            # figures, scoped to THIS target only
+            for heading, fn, cap in (
+                ("Binding affinity chart", charts.affinity_chart_svg,
+                 f"Binding affinity by ligand for {t} (colour scale = affinity strength)."),
+                ("Residue contact frequency", charts.residue_frequency_svg,
+                 f"Frequency with which each binding-site residue in {t} is contacted "
+                 f"across the docked ligands."),
+                ("Ligand × residue heatmap", charts.contact_heatmap_svg,
+                 f"Contact heatmap for {t}: rows = ligands (ranked by affinity), "
+                 f"columns = residues (ranked by contact frequency)."),
+            ):
+                try:
+                    svg = (fn(sub) if fn is charts.affinity_chart_svg
+                           else fn(sub, target_name=t))
+                    if not svg:
+                        continue
+                    doc.add_heading(heading, level=3)
                     png, err = _shot("2d", svg)
                     if png:
-                        doc.add_picture(io.BytesIO(png), width=Inches(5.5))
+                        picture(png, 6.2)
+                        caption("Figure", cap)
                     else:
-                        doc.add_paragraph(f"(2D diagram could not be rendered: {err})")
-                else:
-                    doc.add_paragraph("(No 2D interaction diagram available for this ligand.)")
+                        doc.add_paragraph(f"({heading} unavailable: {err})")
+                except Exception as e:
+                    doc.add_paragraph(f"({heading} unavailable: {type(e).__name__}: {e})")
 
-                doc.add_heading("3D pose", level=2)
-                png3d, err = _shot("3d", entry["complex"], entry["ia"])
+            # ONE pose — the best ligand for this target
+            doc.add_heading(f"Top pose: {best['Ligand']}", level=3)
+            _add_markdown(doc, writeups.get(id(best)) or "")
+            entry = find_entry(viz, best["Ligand"], best.get("Target"))
+            if not entry:
+                doc.add_paragraph("(No pose data available for this ligand.)")
+            else:
+                shown = False
+                png3d, err3 = _shot("3d", entry["complex"], entry["ia"])
                 if png3d:
-                    doc.add_picture(io.BytesIO(png3d), width=Inches(5.5))
+                    picture(png3d, 5.5)
+                    shown = True
+                svg2d = entry["ia"].get("svg_2d")
+                if svg2d:
+                    png2d, err2 = _shot("2d", svg2d)
+                    if png2d:
+                        picture(png2d, 5.5)
+                        shown = True
+                if shown:
+                    caption("Figure",
+                            f"3D binding pose and 2D interaction diagram of "
+                            f"{best['Ligand']} in the {t} pocket. Residues shown here "
+                            f"match the top row of Table {table_no_for.get(t, '?')}.")
                 else:
-                    doc.add_paragraph(f"(3D pose could not be rendered: {err})")
+                    doc.add_paragraph(f"(Pose images unavailable: {err3})")
+
+        # ══ 5. RESULTS + 6. DISCUSSION ═════════════════════════════════════
+        _add_results_discussion(doc, targets, rows_for, _aff, meta, llm, qm_rows)
+
     finally:
-        browser = bh["browser"]
-        pw = bh["pw"]
-        if browser:
-            browser.close()
-        if pw:
-            pw.stop()
+        if bh["browser"]:
+            bh["browser"].close()
+        if bh["pw"]:
+            bh["pw"].stop()
 
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+_RESULTS_SYSTEM = (
+    "You are writing the Results and Discussion sections of a molecular-docking "
+    "report for a pharmacy researcher. Be precise, sober and academic. Use the "
+    "standard AutoDock Vina interpretation bands: more negative than -7.0 kcal/mol "
+    "is generally considered strong, -5.0 to -7.0 moderate, weaker than -5.0 poor. "
+    "Never claim a result the numbers do not support, and say plainly when a screen "
+    "produced no strong binder. Cover, under a '## Results' heading: what was docked "
+    "against what, the per-target best hits with their affinities, and how the set "
+    "distributes across those bands. Then under a '## Discussion' heading cover: the "
+    "evaluation basis, why these targets matter, interpretation against the bands, "
+    "whether any ligand is active across multiple targets, limitations (single "
+    "replica, exhaustiveness setting, no solvent, docking scores are not free "
+    "energies), and a short conclusion. Use markdown headings and short paragraphs."
+)
+
+
+def _add_results_discussion(doc, targets, rows_for, aff, meta, llm, qm_rows):
+    """The written sections. Falls back to a factual template without an LLM —
+    a report that simply stops after the tables is harder to act on."""
+    facts = []
+    for t in targets:
+        sub = rows_for(t)
+        if not sub:
+            continue
+        best = sub[0]
+        facts.append(
+            f"{t}: {len(sub)} ligands docked; best {best['Ligand']} at "
+            f"{aff(best):.3f} kcal/mol (Ki {best.get('Est. Ki', 'n/a')}, "
+            f"ligand efficiency {best.get('Ligand efficiency', 'n/a')}, "
+            f"{best.get('H-bonds', 0)} H-bonds); "
+            f"weakest {aff(sub[-1]):.3f} kcal/mol.")
+    if qm_rows:
+        gaps = [x for x in qm_rows if x.get("Gap (eV)") not in ("—", "", None)]
+        if gaps:
+            facts.append("HOMO-LUMO gaps (eV): " + ", ".join(
+                f"{x['Ligand']} {x['Gap (eV)']}" for x in gaps[:12]))
+    settings = []
+    if meta.get("exhaustiveness"):
+        settings.append(f"exhaustiveness {meta['exhaustiveness']}")
+    if meta.get("replicas"):
+        settings.append(f"{meta['replicas']} replica(s)")
+    if settings:
+        facts.append("Settings: " + ", ".join(settings) + ".")
+
+    text = ""
+    if llm:
+        try:
+            text = llm.chat(_RESULTS_SYSTEM,
+                            "Run facts:\n" + "\n".join(facts) +
+                            "\n\nWrite the Results and Discussion sections.",
+                            temperature=0.3, max_tokens=1400)
+        except Exception:
+            text = ""
+
+    if text.strip():
+        _add_markdown(doc, text)
+        return
+
+    doc.add_heading("Results", level=1)
+    for f in facts:
+        doc.add_paragraph(f)
+    doc.add_heading("Discussion", level=1)
+    doc.add_paragraph(
+        "Evaluation basis. Binding affinity more negative than -7.0 kcal/mol is "
+        "generally considered strong for AutoDock Vina, -5.0 to -7.0 moderate, and "
+        "weaker than -5.0 poor. Ligand efficiency normalises affinity by heavy-atom "
+        "count and is the fairer comparison across molecules of different size.")
+    doc.add_paragraph(
+        "Limitations. These poses come from a single docking replica at the "
+        "exhaustiveness recorded above, in the absence of explicit solvent. Docking "
+        "scores are not free energies, and the ranking is more reliable than the "
+        "absolute values. Treat this as a hypothesis-generating screen rather than "
+        "a lead-identification result, and re-run anything promising at higher "
+        "exhaustiveness with replicas before acting on it.")
 
 
 def build_string_docx(r):
