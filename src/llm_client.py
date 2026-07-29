@@ -71,12 +71,38 @@ def _rate_limit_message(resp, wait):
             (f" Provider said: {detail[:200]}" if detail else ""))
 
 # Each provider: the endpoint, a default model, and how to read its key.
+#
+# `fallbacks` are smaller models on the SAME provider, tried in order when the
+# primary model's quota is exhausted. Groq's free-tier limits are per-model AND
+# per-organisation-per-day: llama-3.3-70b-versatile allows only 100k tokens a
+# day, which at MUMO's ~4k per turn is roughly 25 messages. The 8b model has a
+# far larger daily budget, so falling back to it keeps MUMO usable for the rest
+# of the day instead of failing every request until midnight. Making a NEW API
+# KEY does not help — the limit is charged to the organisation, not the key.
 PROVIDERS = {
-    "openai":    {"model": "gpt-4o-mini",                 "env": "OPENAI_API_KEY"},
-    "anthropic": {"model": "claude-3-5-haiku-latest",     "env": "ANTHROPIC_API_KEY"},
-    "gemini":    {"model": "gemini-1.5-flash",            "env": "GEMINI_API_KEY"},
-    "groq":      {"model": "llama-3.3-70b-versatile",     "env": "GROQ_API_KEY"},
+    "openai":    {"model": "gpt-4o-mini",                 "env": "OPENAI_API_KEY",
+                  "fallbacks": []},
+    "anthropic": {"model": "claude-3-5-haiku-latest",     "env": "ANTHROPIC_API_KEY",
+                  "fallbacks": []},
+    "gemini":    {"model": "gemini-1.5-flash",            "env": "GEMINI_API_KEY",
+                  "fallbacks": []},
+    "groq":      {"model": "llama-3.3-70b-versatile",     "env": "GROQ_API_KEY",
+                  "fallbacks": ["llama-3.1-8b-instant", "gemma2-9b-it"]},
 }
+
+
+def _is_daily_limit(resp):
+    """True when a 429 is the per-DAY quota rather than a per-minute burst.
+
+    The distinction decides what to do: a burst is worth waiting a few seconds
+    for, a daily cap is not — nothing will change until it resets, so the only
+    useful move is a different model.
+    """
+    try:
+        msg = resp.json().get("error", {}).get("message", "") or ""
+    except Exception:
+        msg = resp.text or ""
+    return bool(re.search(r"per day|\bTPD\b|\bRPD\b", msg, re.I))
 
 
 def _read_config():
@@ -116,27 +142,43 @@ class LLM:
         if self.provider in ("openai", "groq"):
             url = ("https://api.openai.com/v1/chat/completions" if self.provider == "openai"
                    else "https://api.groq.com/openai/v1/chat/completions")
-            payload = {"model": self.model, "temperature": temperature,
-                       "max_tokens": max_tokens,
-                       "messages": [{"role": "system", "content": system},
-                                    {"role": "user", "content": user}]}
-            # Free tiers rate-limit per minute. A 429 is usually a short wait
-            # rather than a failure, and the provider states how long — so
-            # waiting beats losing the user's turn. Only a SHORT wait is worth
-            # sitting through; a daily quota reports minutes or hours and is
-            # surfaced instead of slept on.
-            for attempt in range(3):
-                r = requests.post(url, timeout=30,
-                                  headers={"Authorization": f"Bearer {self.api_key}"},
-                                  json=payload)
-                if r.status_code != 429:
-                    break
-                wait = _retry_after_seconds(r)
-                if wait is None or wait > 25 or attempt == 2:
-                    raise RuntimeError(_rate_limit_message(r, wait))
-                time.sleep(wait + 0.5)
-            r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"]
+            msgs = [{"role": "system", "content": system},
+                    {"role": "user", "content": user}]
+            # Models to try in order: the configured one, then smaller ones on
+            # the same provider. A per-minute burst is waited out; a per-DAY cap
+            # is not, because nothing changes until it resets — the only useful
+            # move there is a different model.
+            models = [self.model] + [m for m in
+                                     PROVIDERS.get(self.provider, {}).get("fallbacks", [])
+                                     if m != self.model]
+            last_429 = None
+            for model in models:
+                payload = {"model": model, "temperature": temperature,
+                           "max_tokens": max_tokens, "messages": msgs}
+                for attempt in range(3):
+                    r = requests.post(url, timeout=30,
+                                      headers={"Authorization": f"Bearer {self.api_key}"},
+                                      json=payload)
+                    if r.status_code != 429:
+                        break
+                    last_429 = r
+                    if _is_daily_limit(r):
+                        break                      # waiting cannot help; next model
+                    wait = _retry_after_seconds(r)
+                    if wait is None or wait > 25 or attempt == 2:
+                        break
+                    time.sleep(wait + 0.5)
+
+                if r.status_code == 429:
+                    continue                       # try the next, smaller model
+                r.raise_for_status()
+                if model != self.model:
+                    self.active_model = model      # so the UI can say which answered
+                return r.json()["choices"][0]["message"]["content"]
+
+            # every model was rate-limited
+            raise RuntimeError(_rate_limit_message(
+                last_429, _retry_after_seconds(last_429) if last_429 else None))
 
         if self.provider == "anthropic":
             r = requests.post("https://api.anthropic.com/v1/messages", timeout=30,
