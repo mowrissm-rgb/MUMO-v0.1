@@ -21,7 +21,54 @@ We use plain HTTP (requests) so there are NO heavy SDKs to install.
 
 import os
 import json
+import re
+import time
+
 import requests
+
+
+def _retry_after_seconds(resp):
+    """How long the provider says to wait, in seconds, or None if it didn't say.
+
+    Groq answers a 429 with Retry-After, and also puts a human phrasing in the
+    JSON body ("Please try again in 6.9s" / "in 21m30s"), so both are read.
+    """
+    ra = (resp.headers or {}).get("Retry-After")
+    if ra:
+        try:
+            return float(ra)
+        except (TypeError, ValueError):
+            pass
+    try:
+        msg = resp.json().get("error", {}).get("message", "")
+    except Exception:
+        msg = resp.text or ""
+    m = re.search(r"try again in\s+(?:(\d+)m)?\s*([\d.]+)?s", msg, re.I)
+    if m:
+        mins = float(m.group(1) or 0)
+        secs = float(m.group(2) or 0)
+        return mins * 60 + secs
+    return None
+
+
+def _rate_limit_message(resp, wait):
+    """A 429 explained in terms the user can act on.
+
+    The distinction that matters is per-minute versus per-day: one is worth
+    waiting out, the other means the day's free quota is gone.
+    """
+    try:
+        detail = resp.json().get("error", {}).get("message", "") or ""
+    except Exception:
+        detail = (resp.text or "")[:200]
+    when = ""
+    if wait is not None:
+        when = (f" Try again in about {int(wait)} seconds."
+                if wait < 120 else
+                f" The limit resets in about {int(wait / 60)} minutes.")
+    return ("The language model is rate-limited right now (HTTP 429) — the key "
+            "works, it has simply been used too much in the last window." + when +
+            (f" Provider said: {detail[:200]}" if detail else ""))
 
 # Each provider: the endpoint, a default model, and how to read its key.
 PROVIDERS = {
@@ -69,12 +116,25 @@ class LLM:
         if self.provider in ("openai", "groq"):
             url = ("https://api.openai.com/v1/chat/completions" if self.provider == "openai"
                    else "https://api.groq.com/openai/v1/chat/completions")
-            r = requests.post(url, timeout=30,
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": self.model, "temperature": temperature,
-                      "max_tokens": max_tokens,
-                      "messages": [{"role": "system", "content": system},
-                                   {"role": "user", "content": user}]})
+            payload = {"model": self.model, "temperature": temperature,
+                       "max_tokens": max_tokens,
+                       "messages": [{"role": "system", "content": system},
+                                    {"role": "user", "content": user}]}
+            # Free tiers rate-limit per minute. A 429 is usually a short wait
+            # rather than a failure, and the provider states how long — so
+            # waiting beats losing the user's turn. Only a SHORT wait is worth
+            # sitting through; a daily quota reports minutes or hours and is
+            # surfaced instead of slept on.
+            for attempt in range(3):
+                r = requests.post(url, timeout=30,
+                                  headers={"Authorization": f"Bearer {self.api_key}"},
+                                  json=payload)
+                if r.status_code != 429:
+                    break
+                wait = _retry_after_seconds(r)
+                if wait is None or wait > 25 or attempt == 2:
+                    raise RuntimeError(_rate_limit_message(r, wait))
+                time.sleep(wait + 0.5)
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]
 
