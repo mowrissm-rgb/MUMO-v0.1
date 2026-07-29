@@ -299,7 +299,66 @@ def resolve_ligand(text):
     smi = name_to_smiles(text)
     if smi and is_valid_smiles(smi):
         return smi, text          # keep the friendly name as the label
+
+    # Exact lookup failed. Before giving up, ask PubChem what it thinks the
+    # user meant — its autocomplete tolerates the misspellings and spacing
+    # variants that a typed compound name collects ("resveratrole",
+    # "iso eugenol"). Only a confident single suggestion is used, and the
+    # label records the correction so the report never silently claims a
+    # compound the user did not ask for.
+    suggestion = suggest_name(text)
+    if suggestion and suggestion.lower() != (text or "").strip().lower():
+        smi = name_to_smiles(suggestion)
+        if smi and is_valid_smiles(smi):
+            return smi, f"{suggestion} (interpreted from “{text}”)"
     return None, None
+
+
+def suggest_name(text, limit=8, min_score=0.85):
+    """PubChem's best guess at a misspelled compound name, or None.
+
+    PubChem's autocomplete is PREFIX-based, not typo-correcting, which makes it
+    dangerous used naively: "resveratrole" returns "Veratrole methyl ether" and
+    "aspirn" returns "Aspirin acetaminophen ester" — different molecules
+    entirely. Docking one of those and presenting it as the answer is the worst
+    failure this system can have.
+
+    So two safeguards. Progressively shorter prefixes are tried, because the
+    correct name usually shares a prefix with the typo ("resverat" ->
+    resveratrol). And every candidate must clear a high string-similarity bar
+    against what the user actually typed, so a plausible-looking but unrelated
+    compound is rejected rather than silently substituted.
+    """
+    import difflib
+    import requests
+    q = (text or "").strip()
+    if len(q) < 5:
+        return None
+
+    seen, candidates = set(), []
+    # full string first, then shorter prefixes — a trailing typo only shows up
+    # once the damaged tail is cut off
+    for n in (len(q), len(q) - 1, len(q) - 2, max(6, len(q) // 2), 5):
+        prefix = q[:n]
+        if n < 5 or prefix.lower() in seen:
+            continue
+        seen.add(prefix.lower())
+        try:
+            r = requests.get(
+                "https://pubchem.ncbi.nlm.nih.gov/rest/autocomplete/compound/"
+                f"{requests.utils.quote(prefix)}/json",
+                params={"limit": limit}, timeout=20)
+            r.raise_for_status()
+            candidates += (r.json().get("dictionary_terms") or {}).get("compound") or []
+        except Exception:
+            continue
+
+    if not candidates:
+        return None
+    scored = [(difflib.SequenceMatcher(None, q.lower(), c.lower()).ratio(), c)
+              for c in dict.fromkeys(candidates)]
+    score, best = max(scored)
+    return best if score >= min_score else None
 
 
 if __name__ == "__main__":

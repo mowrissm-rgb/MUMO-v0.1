@@ -194,3 +194,89 @@ def rejection_message(rejected):
         return "I couldn't attempt one ligand:\n\n- " + rejected[0]["reason"]
     lines = "\n".join(f"- {r['reason']}" for r in rejected)
     return f"I couldn't attempt {len(rejected)} ligands:\n\n{lines}"
+
+
+# ── splitting a pasted list into individual ligands ────────────────────────
+
+# NOTE: a numeric marker is "1)" / "1." / "1:" and never "1-", because "1-Butanol"
+# and "2-Furanmethanol" start with a locant. A bullet must be followed by
+# whitespace for the same reason.
+_LIST_MARKER = re.compile(r"^\s*(?:\d+\s*[\).:]\s*|[\-\*•]\s+)")
+
+
+def _is_cas_continuation(frag):
+    """True if this comma-fragment continues the PREVIOUS name rather than
+    starting a new one.
+
+    CAS index nomenclature inverts the parent and its substituents, so one
+    compound is written with commas inside it:
+
+        Phenol, o-(benzylthio)-
+        Propanamide, N-(4-ethoxyphenyl)-
+        1-Butanol, 3-methyl-, acetate
+
+    Splitting those on commas would shatter real GC-MS entries into nonsense,
+    which is why this is a merge rule and not a plain str.split. A continuation
+    fragment is a substituent descriptor: it starts lowercase, or with a locant
+    ("N-", "3-methyl"), or it ends with the trailing hyphen CAS uses.
+    """
+    f = (frag or "").strip()
+    if not f:
+        return True
+    if f.endswith("-"):
+        return True
+    if re.match(r"^[a-z]", f):                       # "acetate", "o-(benzylthio)-"
+        return True
+    if re.match(r"^[0-9]", f) and not re.match(r"^[0-9].*\b(acid|ol|one|ate|ine|al)\b", f, re.I):
+        return True                                  # "3-methyl-", but not "2-Methoxy-4-vinylphenol"
+    if re.match(r"^[NOSPC]-", f):                    # "N-(4-ethoxyphenyl)-"
+        return True
+    # "(E)-piperolein" continues a name; "(E)-Piperolein A" is its own compound
+    if re.match(r"^\([RSEZ0-9,\-]+\)-?[a-z]", f):
+        return True
+    return False
+
+
+def split_ligand_names(text):
+    """A pasted blob of ligand names -> a list of individual names.
+
+    The model sometimes returns fifteen compounds as ONE comma-separated
+    string. Passing that straight to PubChem looks up a 200-character
+    non-existent compound and reports "one ligand" that could not be found —
+    which is what happened, and why it looked like a spelling problem when
+    every name was spelled correctly.
+
+    Newlines, semicolons and list markers always separate. Commas separate only
+    where they are not part of a CAS name (see _is_cas_continuation) and not
+    between digits, so "3,4-Methylenedioxycinnamic acid" stays intact.
+    """
+    if isinstance(text, (list, tuple)):
+        # already split by the caller; flatten one level in case an entry is
+        # itself a pasted blob
+        out = []
+        for item in text:
+            out.extend(split_ligand_names(item))
+        return out
+    if not isinstance(text, str):
+        return [text] if text else []
+
+    # hard separators first: newlines and semicolons are never inside a name
+    chunks = [c for c in re.split(r"[\n;]+", text) if c.strip()]
+
+    out = []
+    for chunk in chunks:
+        chunk = _LIST_MARKER.sub("", chunk.strip())
+        # protect commas between digits ("3,4-") before splitting
+        guarded = re.sub(r"(?<=\d),(?=\d)", "\x00", chunk)
+        parts = [p.strip() for p in guarded.split(",")]
+        merged = []
+        for p in parts:
+            p = p.replace("\x00", ",")
+            if not p:
+                continue
+            if merged and _is_cas_continuation(p):
+                merged[-1] = merged[-1] + ", " + p      # put the CAS name back together
+            else:
+                merged.append(p)
+        out.extend(m for m in (x.strip(" ,") for x in merged) if m)
+    return out

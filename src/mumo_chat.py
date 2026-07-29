@@ -1063,7 +1063,12 @@ def _resolve_ligands(lig, announce=True):
     _trace("resolve-ligands:enter (RDKit)")
     if not lig:
         return []
-    items = lig if isinstance(lig, list) else [lig]
+    # The model often returns a whole list as ONE comma-separated string.
+    # Passing that straight through looked up a 200-character non-existent
+    # compound and reported 'one ligand' that could not be found — which read
+    # as a spelling failure when every name was spelled correctly. The split
+    # is CAS-aware, so 'Phenol, o-(benzylthio)-' stays one ligand.
+    items = lc.split_ligand_names(lig)
     out, rejected = [], []
     for x in items:
         verdict = lc.precheck_name(x)
