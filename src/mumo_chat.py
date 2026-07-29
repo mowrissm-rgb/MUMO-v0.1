@@ -1233,13 +1233,33 @@ def converse(msg):
               f"{_personalization_context()}\n\n"
               f"Conversation:\n{_history_text(14)}\n\n"
               f'The user just said: "{msg}"\n\nReturn the JSON.')
+    # These two failures were previously caught together by a bare `except`,
+    # which printed the same friendly line whether the API was unreachable, the
+    # key was rejected, or the model returned unparseable text. That hid the
+    # actual cause completely — the same anti-pattern that hid the Vinardo
+    # failure for weeks. They are separated, and each says what happened.
+    raw = ""
     try:
         with st.spinner("Thinking…"):
             raw = _llm.chat(CONV_SYSTEM, prompt, temperature=0.3, max_tokens=900)
+    except Exception as e:
+        detail = f"{type(e).__name__}: {e}"
+        say("I couldn't reach the language model just now, so I can't work out "
+            "what to run. Everything else — your saved results and reports — is "
+            "unaffected.\n\n"
+            f"Technical detail: `{detail[:400]}`\n\n"
+            "If this persists it is usually the `GROQ_API_KEY` secret on the "
+            "Space being missing, expired, or rate-limited.")
+        return
+
+    try:
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         data = _json.loads(match.group(0))
-    except Exception:
-        say("Sorry — my brain hiccupped just now. Could you say that again?")
+    except Exception as e:
+        say("The model replied, but not in a form I could read. Could you say "
+            "that again?\n\n"
+            f"Technical detail: `{type(e).__name__}: {e}`\n\n"
+            f"It said: `{(raw or '(empty response)')[:300]}`")
         return
 
     import dispatch
