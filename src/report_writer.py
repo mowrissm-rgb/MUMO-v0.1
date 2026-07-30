@@ -374,25 +374,26 @@ def build_docking_docx(r, llm=None):
                                      "screen (GFN2-xTB).")
                     _add_df_table(doc, _pd.DataFrame(qm_rows))
                 # This loop silently produced NOTHING on the first real run —
-                # the table had all 14 ligands' numbers but not one diagram,
-                # because a bare `except: pass` swallowed whatever went wrong.
-                # Every failure path now writes its reason into the document,
-                # which is the only way to diagnose it without runtime logs.
+                # the table had all 14 ligands' numbers but not one diagram.
+                # It used to go through the shared headless-Chromium SVG
+                # screenshot (_shot) that every other figure in this report
+                # uses; that round-trip has now failed twice in production
+                # for this one diagram specifically (here, and separately in
+                # the live HOMO/LUMO panel) while the browser-based charts
+                # around it render fine. Rather than keep debugging a
+                # container-specific Playwright failure blind, orbital
+                # diagrams are drawn directly with matplotlib — a handful of
+                # lines and labels needs no browser, so this failure mode is
+                # gone rather than merely diagnosed.
                 for lab, q in qm_figs:
                     try:
                         import viz_string as _vs
-                        svg = _vs.orbital_svg(q, dark=False,
-                                              title=f"Frontier orbitals — {lab}")
-                        if not svg:
+                        png = _vs.orbital_png(q, title=f"Frontier orbitals — {lab}")
+                        if not png:
                             doc.add_paragraph(
                                 f"(No orbital diagram for {lab}: the figure came back "
                                 f"empty — homo={q.get('homo_ev')}, lumo={q.get('lumo_ev')}, "
                                 f"levels={len(q.get('levels') or [])}.)")
-                            continue
-                        png, err = _shot("2d", svg)
-                        if not png:
-                            doc.add_paragraph(
-                                f"(Orbital diagram for {lab} could not be rendered: {err})")
                             continue
                         picture(png, 4.6)
                         caption("Figure",
@@ -898,8 +899,10 @@ def build_metabolism_docx(r):
 
 
 def build_admet_docx(r):
-    """ADMET / drug-likeness report: tables + beginner narrative (no images)."""
+    """ADMET / drug-likeness report: tables, narrative, and the orbital diagram
+    when frontier-orbital data was computed alongside the ADMET run."""
     from docx import Document
+    from docx.shared import Inches
 
     doc = Document()
     doc.add_heading(f"MUMO ADMET Report — {r.get('lig_label', 'ligand')}", level=0)
@@ -917,18 +920,9 @@ def build_admet_docx(r):
              if qm.get("dipole_debye") is not None else []))
         try:
             import viz_string as _vs
-            _svg = _vs.orbital_svg(qm, dark=False)
-            if _svg:
-                pw = browser = None
-                try:
-                    pw, browser = new_browser()
-                    png = svg_to_png(_svg, browser, width=700, height=430)
-                    doc.add_picture(io.BytesIO(png), width=Inches(5.2))
-                finally:
-                    if browser:
-                        browser.close()
-                    if pw:
-                        pw.stop()
+            png = _vs.orbital_png(qm, width=700, height=430)
+            if png:
+                doc.add_picture(io.BytesIO(png), width=Inches(5.2))
         except Exception as e:
             doc.add_paragraph(f"(Orbital diagram could not be rendered: {e})")
         if qm.get("interpretation"):

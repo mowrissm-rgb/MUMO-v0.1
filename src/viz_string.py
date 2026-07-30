@@ -302,3 +302,92 @@ def orbital_svg(qm, title="Frontier molecular orbitals", dark=True, width=560):
              f'engages more readily in electron transfer.</text>')
     o.append("</svg>")
     return "\n".join(o)
+
+
+def orbital_png(qm, title="Frontier molecular orbitals", dark=False, width=640, height=400):
+    """The same orbital energy-level diagram as orbital_svg, but rendered
+    straight to PNG bytes with matplotlib instead of SVG + headless Chromium.
+
+    Every other chart in MUMO is a rich interactive scene (a 3D pose, a network
+    graph) that genuinely needs a browser to rasterize. This one is a handful
+    of horizontal lines and text labels — using a full Chromium launch for it
+    was the wrong tool for the job, and in production it has twice come back
+    with no image at all (once in the docking .docx, once in the live HOMO/LUMO
+    panel) while the browser-based charts around it rendered fine. Rather than
+    keep guessing at a container-specific Playwright failure with no server-log
+    access, this removes the dependency for the one diagram users ask for by
+    name: matplotlib's Agg backend needs no display, no subprocess, and no
+    browser binary, so it cannot fail for that class of reason.
+
+    Returns PNG bytes, or None if qm has no usable orbital data.
+    """
+    if not qm or qm.get("_error") or "homo_ev" not in qm:
+        return None
+    import io
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    ink = "#e8e6e1" if dark else "#0b0b0b"
+    muted = "#a6a49c" if dark else "#6b6960"
+    bg = "#14140f" if dark else "#ffffff"
+    axis_c = "#4a483f" if dark else "#c9c7bd"
+    accent = "#5fd0a0" if dark else "#1f9d63"
+
+    homo, lumo, gap = qm["homo_ev"], qm["lumo_ev"], qm["gap_ev"]
+    levels = qm.get("levels") or []
+    span = max(2.5, (lumo - homo) * 2.6)
+    lo, hi = homo - span, lumo + span
+    shown = [lv for lv in levels if lo <= lv["energy_ev"] <= hi] or [
+        {"energy_ev": homo, "occupation": 2.0, "label": "HOMO"},
+        {"energy_ev": lumo, "occupation": 0.0, "label": "LUMO"}]
+
+    dpi = 110
+    fig, ax = plt.subplots(figsize=(width / dpi, height / dpi), dpi=dpi)
+    fig.patch.set_facecolor(bg)
+    ax.set_facecolor(bg)
+    fig.subplots_adjust(top=0.78, bottom=0.16, left=0.14, right=0.96)
+
+    xlo, xhi = 0.14, 0.72   # axes-fraction span of the ladder itself
+    ax.axhspan(min(homo, lumo), max(homo, lumo), xmin=xlo, xmax=xhi,
+               facecolor=accent, alpha=0.16, edgecolor="none", zorder=1)
+    ax.text((xlo + xhi) / 2, (homo + lumo) / 2, f"gap {gap:.2f} eV",
+            transform=ax.get_yaxis_transform(), ha="center", va="center",
+            fontsize=10, fontweight="bold", color=ink, zorder=3)
+
+    for lv in shown:
+        e = lv["energy_ev"]
+        occupied = (lv.get("occupation") or 0) > 0
+        lab = lv.get("label") or ""
+        frontier = lab in ("HOMO", "LUMO")
+        ax.hlines(e, xlo, xhi, transform=ax.get_yaxis_transform(),
+                  colors=accent if frontier else axis_c,
+                  linewidth=2.2 if frontier else 1.1,
+                  linestyles="solid" if occupied else "dashed", zorder=2)
+        if lab:
+            ax.text(xhi + 0.03, e, f"{lab} {e:.2f}",
+                    transform=ax.get_yaxis_transform(), ha="left", va="center",
+                    fontsize=9.5, fontweight="bold", color=ink)
+
+    ax.set_ylim(lo, hi)
+    ax.set_xlim(0, 1)
+    ax.set_xticks([])
+    ax.set_ylabel("Energy (eV)", color=muted, fontsize=9.5)
+    ax.tick_params(axis="y", colors=muted, labelsize=9)
+    for spine in ("top", "right", "bottom"):
+        ax.spines[spine].set_visible(False)
+    ax.spines["left"].set_color(axis_c)
+
+    fig.text(0.03, 0.94, title, ha="left", va="top", fontsize=12,
+             fontweight="bold", color=ink)
+    fig.text(0.03, 0.87, f"{qm.get('method', 'GFN2-xTB')} · energies in eV",
+             ha="left", va="top", fontsize=9, color=muted)
+    fig.text(0.03, 0.045,
+             "Solid = occupied, dashed = empty. Smaller gap = more readily\n"
+             "engages in electron transfer.",
+             ha="left", va="bottom", fontsize=8, color=muted, linespacing=1.5)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", facecolor=bg)
+    plt.close(fig)
+    return buf.getvalue()

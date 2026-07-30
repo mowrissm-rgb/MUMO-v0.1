@@ -1504,25 +1504,18 @@ def _run_sync_action(action, c):
             else:
                 entries.append({"label": label or str(nm), "smiles": smi, "qm": q})
         prog.empty()
-        # Rasterise each diagram once, here, rather than emitting inline SVG in
-        # the panel: a PNG is guaranteed to display, and the same bytes are then
-        # reused by the .docx so the report never has to re-render anything.
+        # Draw each diagram once, here, with matplotlib rather than a headless
+        # Chromium round-trip — the same PNG bytes are then reused by the
+        # .docx so the report never has to re-render anything.
         _ok = [e for e in entries if e.get("qm")]
         if _ok:
-            try:
-                import report_writer as _rw, viz_string as _vs
-                with st.spinner("Drawing orbital diagrams…"):
-                    _pw, _br = _rw.new_browser()
-                    try:
-                        for e in _ok:
-                            _svg = _vs.orbital_svg(e["qm"], dark=False,
-                                                   title=f"Frontier orbitals — {e['label']}")
-                            if _svg:
-                                e["png"] = _rw.svg_to_png(_svg, _br, width=640, height=400)
-                    finally:
-                        _br.close(); _pw.stop()
-            except Exception as _e:
-                say(f"(Orbital diagrams could not be drawn: {type(_e).__name__}: {_e})")
+            import viz_string as _vs
+            for e in _ok:
+                try:
+                    e["png"] = _vs.orbital_png(e["qm"], title=f"Frontier orbitals — {e['label']}")
+                except Exception as _e:
+                    say(f"(Orbital diagram for {e['label']} could not be drawn: "
+                        f"{type(_e).__name__}: {_e})")
         if not any(e.get("qm") for e in entries):
             _capability_failed("qm", "no ligand produced orbitals")
             say("I couldn't compute orbitals for any of those compounds."
@@ -2728,20 +2721,19 @@ def render_results():
             st.caption("Ranked by HOMO–LUMO gap, smallest first — a smaller gap means "
                        "the molecule engages more readily in electron transfer.")
             with st.expander("Orbital diagrams for each ligand"):
-                try:
-                    import viz_string as _vs
-                    for b in batch:
-                        q = b.get("qm")
-                        if not q:
-                            continue
-                        svg = _vs.orbital_svg(q, dark=False,
-                                              title=f"Frontier orbitals — {b['label']}")
-                        if svg:
-                            st.markdown(
-                                f'<div style="background:#fff;padding:8px;border-radius:10px;'
-                                f'margin-bottom:10px;">{svg}</div>', unsafe_allow_html=True)
-                except Exception as _e:
-                    st.info(f"Diagrams unavailable: {type(_e).__name__}: {_e}")
+                import viz_string as _vs
+                for b in batch:
+                    q = b.get("qm")
+                    if not q:
+                        continue
+                    try:
+                        png = _vs.orbital_png(q, title=f"Frontier orbitals — {b['label']}")
+                    except Exception as _e:
+                        st.info(f"{b['label']}: diagram unavailable "
+                                f"({type(_e).__name__}: {_e})")
+                        continue
+                    if png:
+                        st.image(png, use_container_width=True)
             st.markdown("---")
 
         qm = r.get("qm")
@@ -2753,14 +2745,11 @@ def render_results():
             c3.metric("HOMO–LUMO gap", f"{qm['gap_ev']:.2f} eV")
             try:
                 import viz_string as _vs
-                _svg = _vs.orbital_svg(qm, dark=False)
-                if _svg:
-                    st.markdown(
-                        f'<div style="background:#fff;padding:10px;border-radius:12px;'
-                        f'border:1px solid rgba(111,184,236,0.28);overflow:auto;">'
-                        f'{_svg}</div>', unsafe_allow_html=True)
-            except Exception:
-                pass
+                _png = _vs.orbital_png(qm)
+                if _png:
+                    st.image(_png, use_container_width=True)
+            except Exception as _e:
+                st.info(f"Diagram unavailable: {type(_e).__name__}: {_e}")
             if qm.get("interpretation"):
                 st.caption(qm["interpretation"])
             st.markdown("---")

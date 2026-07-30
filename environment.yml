@@ -33,5 +33,6 @@ dependencies:
       - supabase                    # login + persistent cloud chat history
       - python-docx                 # .docx report export + reading uploaded Word files (MIT)
       - playwright                  # headless Chromium: rasterizes SVG/3D views into the report (Apache-2.0)
+      - matplotlib                  # frontier-orbital diagrams — drawn directly, no browser needed (PSF/BSD-style)
       - pypdf                       # reading uploaded PDF reports (pure-Python, BSD)
       - openpyxl                    # reading uploaded .xlsx spreadsheets (pure-Python, MIT)
