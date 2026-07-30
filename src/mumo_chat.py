@@ -1054,8 +1054,29 @@ def _admet_narrative(data):
         return ""
 
 
-def _history_text(n=10):
-    return "\n".join(f'{m["role"]}: {m["content"]}' for m in ss.messages[-n:])
+def _history_text(n=10, assistant_cap=420, user_cap=900):
+    """Recent turns, with MUMO's own long replies capped.
+
+    The whole window is re-sent on EVERY turn, and MUMO's replies are long —
+    multi-paragraph narratives full of numbers. Re-sending them verbatim was the
+    single largest variable cost in a turn, and the main reason a free daily
+    token quota ran out after roughly twenty-five messages.
+
+    The user's own words are kept nearly whole (they are short, and they carry
+    the intent the planner has to get right). An assistant reply is truncated to
+    its opening, because MUMO states its conclusion first and the rest is
+    supporting detail the model does not need to re-read to stay coherent. The
+    live numbers it might need are supplied separately and in full by
+    _results_context(), so nothing factual depends on this text.
+    """
+    out = []
+    for m in ss.messages[-n:]:
+        text = str(m.get("content") or "")
+        cap = user_cap if m.get("role") == "user" else assistant_cap
+        if len(text) > cap:
+            text = text[:cap].rstrip() + " …[trimmed]"
+        out.append(f'{m["role"]}: {text}')
+    return "\n".join(out)
 
 
 def _resolve_ligands(lig, announce=True):

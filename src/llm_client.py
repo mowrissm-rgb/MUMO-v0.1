@@ -224,6 +224,128 @@ def _read_config():
     return {}
 
 
+def _collect_all(get, keys):
+    """Every provider that has a usable key in one source -> {provider: key}."""
+    found = {}
+    for provider, names in _ENV_ALIASES.items():
+        for name in names:
+            val = _clean(get(name))
+            if val:
+                found.setdefault(provider, val)
+                break
+    for name in _GENERIC_NAMES:
+        val = _clean(get(name))
+        if val:
+            p = _provider_from_key(val)
+            if p:
+                found.setdefault(p, val)
+    lowered = {str(k).lower(): k for k in keys}
+    for provider in _ENV_ALIASES:
+        if provider in found:
+            continue
+        for low, original in lowered.items():
+            if provider in low and any(w in low for w in ("key", "token", "secret")):
+                val = _clean(get(original))
+                if _looks_like_key(val):
+                    found.setdefault(provider, val)
+                    break
+    return found
+
+
+def _all_configs():
+    """Every configured provider, PREFERRED FIRST.
+
+    A free daily quota is charged per organisation, so when it runs out no
+    retry and no new key for that provider helps — only a different provider
+    does. Collecting all of them lets MUMO roll over automatically instead of
+    going dark until the quota resets.
+    """
+    ordered = []
+
+    def add(provider, key, model=None):
+        if provider in PROVIDERS and key and not any(c["provider"] == provider for c in ordered):
+            cfg = {"provider": provider, "api_key": key}
+            if model:
+                cfg["model"] = model
+            ordered.append(cfg)
+
+    primary = _read_config()          # whatever the existing precedence picks
+    add(primary.get("provider"), _clean(primary.get("api_key")), primary.get("model"))
+    try:
+        import streamlit as st
+        for p, k in _collect_all(lambda n: st.secrets.get(n), list(st.secrets.keys())).items():
+            add(p, k)
+    except Exception:
+        pass
+    for p, k in _collect_all(os.environ.get, list(os.environ.keys())).items():
+        add(p, k)
+    return ordered
+
+
+class LLMChain:
+    """Several providers behind one LLM-shaped object.
+
+    Tries each in turn and moves to the next when one is out of quota or its
+    key is rejected. Presents the same surface as LLM (chat / provider / model /
+    transcribe) so no caller needs to know whether it holds one provider or four.
+    """
+
+    def __init__(self, llms):
+        self.llms = llms
+        self.active = llms[0]
+
+    @property
+    def provider(self):
+        return self.active.provider
+
+    @property
+    def model(self):
+        return getattr(self.active, "active_model", None) or self.active.model
+
+    def can_transcribe(self):
+        return any(l.can_transcribe() for l in self.llms)
+
+    def transcribe(self, audio_bytes, filename="speech.wav"):
+        errors = []
+        for l in self.llms:
+            if not l.can_transcribe():
+                continue
+            try:
+                return l.transcribe(audio_bytes, filename)
+            except Exception as e:
+                errors.append(f"{l.provider}: {type(e).__name__}")
+        raise RuntimeError("Voice transcription failed on every configured "
+                           "provider (" + "; ".join(errors) + ").")
+
+    def chat(self, system, user, **kw):
+        last = None
+        tried = []
+        for l in self.llms:
+            try:
+                out = l.chat(system, user, **kw)
+                self.active = l
+                return out
+            except RuntimeError as e:
+                # every model on that provider was rate-limited
+                last, _ = e, tried.append(f"{l.provider} (rate-limited)")
+            except requests.HTTPError as e:
+                status = getattr(e.response, "status_code", None)
+                if status in (401, 403, 429):
+                    last, _ = e, tried.append(f"{l.provider} (HTTP {status})")
+                    continue
+                raise
+            except requests.RequestException as e:
+                last, _ = e, tried.append(f"{l.provider} ({type(e).__name__})")
+        if len(self.llms) > 1:
+            raise RuntimeError(
+                "Every configured language model is unavailable right now — "
+                + ", ".join(tried) + ". A free daily quota is charged per "
+                "provider account, so it resets on the provider's schedule; "
+                "adding a key for a different provider is what restores service "
+                "immediately. Your saved results and reports are unaffected.")
+        raise last if last else RuntimeError("No language model is configured.")
+
+
 def key_diagnostics():
     """Why is there no LLM? Reported WITHOUT ever revealing a key.
 
@@ -340,10 +462,15 @@ class LLM:
 
 
 def get_llm():
-    """Return a ready LLM, or None if no key is configured (→ rule-based fallback)."""
-    cfg = _read_config()
-    provider = cfg.get("provider")
-    api_key = cfg.get("api_key")
-    if provider in PROVIDERS and api_key:
-        return LLM(provider, api_key, cfg.get("model"))
-    return None
+    """Return a ready LLM, or None if no key is configured (→ rule-based fallback).
+
+    With more than one provider configured, the result is an LLMChain that rolls
+    over to the next provider when one is out of quota — so a per-account daily
+    cap degrades to "slightly different model" instead of "no chat until it
+    resets". A single provider still gets a plain LLM, unchanged.
+    """
+    configs = _all_configs()
+    if not configs:
+        return None
+    llms = [LLM(c["provider"], c["api_key"], c.get("model")) for c in configs]
+    return llms[0] if len(llms) == 1 else LLMChain(llms)
