@@ -1225,7 +1225,8 @@ def converse(msg):
             return
         else:
             say("Tell me a target and a ligand, e.g. *“dock 6LU7 with aspirin”*. "
-                "(Add an LLM key in secrets to unlock questions, teaching and smart chat.)")
+                "(No LLM key is visible to the app, so questions, teaching and "
+                "smart chat are off — see **Why is chat off?** in the sidebar.)")
         return
 
     # ── things MUMO genuinely cannot do ────────────────────────────────────
@@ -2110,6 +2111,39 @@ with st.sidebar:
                      key="theme_light", help="Use the light theme"):
         ss.theme = "light"
         st.rerun()
+
+    # ── why is chat off? ──────────────────────────────────────────────────
+    # Shown ONLY when there is no LLM, because "add a key in secrets" is
+    # useless advice to someone who just added one. The actionable question is
+    # whether the running container can SEE the key, and under what name — so
+    # this reports the names it can find and never the values.
+    if _llm is None:
+        with st.expander("⚠️ Why is chat off?", expanded=False):
+            try:
+                import llm_client
+                d = llm_client.key_diagnostics()
+                if d["env"]:
+                    st.markdown("**Key-shaped variables the app can see:**")
+                    for n in d["env"]:
+                        st.markdown(f"- `{n}`")
+                else:
+                    st.markdown("**The app can see no LLM key at all.**")
+                if d["secrets"]:
+                    st.caption("Streamlit secrets: " + ", ".join(f"`{n}`" for n in d["secrets"]))
+                st.markdown(
+                    "MUMO accepts any of `GROQ_API_KEY`, `GROQ_KEY`, `OPENAI_API_KEY`, "
+                    "`ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (case-insensitive), or a key "
+                    "saved as `LLM_API_KEY` / `API_KEY` whose prefix identifies the "
+                    "provider (`gsk_`, `sk-`, `sk-ant-`, `AIza`)."
+                )
+                if not d["env"]:
+                    st.info(
+                        "**Hugging Face does not restart a Space when you change a "
+                        "secret.** If you just saved one, open Settings → **Restart "
+                        "this Space** (or Factory rebuild) — until then the container "
+                        "still has the old environment.")
+            except Exception as _e:
+                st.caption(f"Diagnostics unavailable: {type(_e).__name__}: {_e}")
 
     if st.button("+ New session", use_container_width=True):
         if not _user and ss.messages:
