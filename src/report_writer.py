@@ -1194,6 +1194,13 @@ def build_structure_zip(r):
     buf = io.BytesIO()
     receptors_written = set()   # per TARGET, not once per zip — see below
     wrote_any = False
+    # Integrity check. Two DIFFERENT docking results must never be the same
+    # bytes. This has now silently happened twice — once when two runs shared a
+    # scratch directory, once when five targets in ONE run shared it — and both
+    # times nothing surfaced it until the files were opened in an external
+    # viewer. A hash per exported complex costs nothing and turns a silent
+    # corruption into a stated one.
+    complex_digests = {}
     targets_list = meta.get("targets") or ([meta["gene"]] if meta.get("gene") else [])
     readme = ["MUMO — docked structures", "=" * 25, "",
               f"Target(s): {', '.join(targets_list) or meta.get('gene', '?')}",
@@ -1233,6 +1240,10 @@ def build_structure_zip(r):
             complex_name = f"{safe}_complex.pdb" if target else f"{gene}_{safe}_complex.pdb"
             z.writestr(complex_name, _add_ligand_conect(complex_pdb, lig_mol))
             wrote_any = True
+            import hashlib
+            complex_digests.setdefault(
+                hashlib.sha256(complex_pdb.encode("utf-8", "replace")).hexdigest(),
+                []).append(str(label))
             if lig_pdb:
                 # ligand.pdb from the corrected mol (RDKit writes CONECT records) so
                 # the standalone ligand also opens with correct bonds; else raw block
@@ -1261,6 +1272,17 @@ def build_structure_zip(r):
                 z.writestr(f"{target_slug}_receptor.pdb", rec_pdb)
                 receptors_written.add(target_slug)
             readme.append(f"  - {lig_name} — vs {target}" if target else f"  - {lig_name}")
+        dupes = [labs for labs in complex_digests.values() if len(labs) > 1]
+        if dupes:
+            readme += ["", "!" * 60,
+                       "WARNING — IDENTICAL STRUCTURES DETECTED",
+                       "!" * 60,
+                       "These exported complexes are byte-for-byte identical, which "
+                       "means they do NOT each contain their own docked pose. Do not "
+                       "use them; re-run the docking and export again. The affinity "
+                       "numbers in the report are unaffected.", ""]
+            for labs in dupes:
+                readme.append("  identical: " + " | ".join(labs))
         z.writestr("README.txt", "\n".join(readme) + "\n")
 
     return buf.getvalue() if wrote_any else None

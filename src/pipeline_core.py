@@ -188,7 +188,21 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
             continue
         if multi:
             progress(f"Docking against {t_obj['gene']} ({n_t + 1} of {len(targets)})…")
-        t_rows, t_viz, t_meta = dock_pipeline(t_obj, ligands, vina, data_dir, venv,
+        # Each target gets its OWN directory. dock_pipeline writes fixed
+        # filenames keyed only by ligand index — c_complex_{k}.pdb,
+        # c_cleaned.pdb, c_receptor.pdbqt — so five targets sharing one
+        # directory means target 2 overwrites target 1 at the same k, and by
+        # the end every c_complex_{k}.pdb holds the LAST target's pose. The
+        # numbers survive (each target's docking finishes before the next
+        # starts), but viz keeps PATHS and the zip/3D re-read them at export
+        # time, so all five targets exported byte-identical complexes for a
+        # given ligand. _fresh_scratch_dir already made this collision
+        # impossible BETWEEN runs; this makes it impossible between targets
+        # WITHIN a run, for the same reason and in the same way.
+        t_dir = os.path.join(data_dir, "t%02d_%s" % (
+            n_t, re.sub(r"[^A-Za-z0-9_.-]", "_", str(t_obj.get("gene") or name))[:32]))
+        os.makedirs(t_dir, exist_ok=True)
+        t_rows, t_viz, t_meta = dock_pipeline(t_obj, ligands, vina, t_dir, venv,
                                               status=progress)
         for r in t_rows:
             # tag every row so a merged table stays readable, and key the viz by
