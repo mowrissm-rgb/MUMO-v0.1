@@ -290,9 +290,10 @@ def orbital_svg(qm, title="Frontier molecular orbitals", dark=True, width=560):
         lab = lv.get("label") or ""
         stroke = P["accent"] if lab in ("HOMO", "LUMO") else P["axis"]
         wdt = 2.2 if lab in ("HOMO", "LUMO") else 1.1
+        dash = "" if occupied else "stroke-dasharray='5 4'"
         o.append(f'<line x1="{x0}" y1="{y(e):.1f}" x2="{x1}" y2="{y(e):.1f}" '
                  f'stroke="{stroke}" stroke-width="{wdt}" '
-                 f'{"" if occupied else "stroke-dasharray=\'5 4\'"}/>')
+                 f'{dash}/>')
         if lab:
             o.append(f'<text x="{x1+8}" y="{y(e)+4:.1f}" font-size="11" '
                      f'font-weight="600" fill="{P["ink"]}">{lab} {e:.2f}</text>')
