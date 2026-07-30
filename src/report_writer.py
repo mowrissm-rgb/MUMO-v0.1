@@ -1270,3 +1270,93 @@ def build_structure_zip(r):
         z.writestr("README.txt", "\n".join(readme) + "\n")
 
     return buf.getvalue() if wrote_any else None
+
+
+def build_qm_docx(r):
+    """Frontier-orbital report: a ranked table, then a diagram per compound.
+
+    Uses the PNGs the qm action already rasterised, so this needs no headless
+    browser at all — the report builds in well under a second even for fifteen
+    ligands, and it cannot fail for a reason the panel did not already show.
+    """
+    from docx import Document
+    from docx.shared import Inches, Pt
+    import pandas as pd
+
+    entries = r.get("entries") or []
+    ok = [e for e in entries if e.get("qm")]
+
+    doc = Document()
+    doc.add_heading("MUMO Frontier Orbital Report", level=0)
+    doc.add_paragraph(
+        "Frontier molecular orbital energies computed with GFN2-xTB, a "
+        "semi-empirical quantum-chemistry method. The HOMO is the highest "
+        "occupied molecular orbital and relates to how readily the molecule "
+        "donates electron density; the LUMO is the lowest unoccupied orbital and "
+        "relates to how readily it accepts electron density. The gap between them "
+        "indicates how easily the molecule takes part in electron transfer: a "
+        "smaller gap means a more reactive, more easily polarised molecule.")
+
+    counts = {"Table": 0, "Figure": 0}
+
+    def caption(kind, text):
+        counts[kind] += 1
+        p = doc.add_paragraph()
+        run = p.add_run(f"{kind} {counts[kind]}. {text}")
+        run.italic = True
+        run.font.size = Pt(9)
+
+    if len(ok) > 1:
+        doc.add_heading("Summary", level=1)
+        rows = [{"Ligand": e["label"],
+                 "HOMO (eV)": round(e["qm"]["homo_ev"], 3),
+                 "LUMO (eV)": round(e["qm"]["lumo_ev"], 3),
+                 "Gap (eV)": round(e["qm"]["gap_ev"], 3)} for e in ok]
+        rows.sort(key=lambda x: x["Gap (eV)"])
+        caption("Table", f"Frontier orbital energies for {len(ok)} compound(s), "
+                         f"ranked by HOMO–LUMO gap (smallest first).")
+        _add_df_table(doc, pd.DataFrame(rows))
+
+    doc.add_heading("Per-compound orbital diagrams", level=1)
+    for e in ok:
+        q = e["qm"]
+        doc.add_heading(e["label"], level=2)
+        _add_kv_table(doc, [
+            ("HOMO", f"{q['homo_ev']:.3f} eV"),
+            ("LUMO", f"{q['lumo_ev']:.3f} eV"),
+            ("HOMO–LUMO gap", f"{q['gap_ev']:.3f} eV"),
+        ] + ([("Dipole moment", f"{q['dipole_debye']:.2f} D")]
+             if q.get("dipole_debye") is not None else []))
+        if e.get("png"):
+            doc.add_picture(io.BytesIO(e["png"]), width=Inches(5.4))
+            caption("Figure",
+                    f"Orbital energy diagram for {e['label']}. Solid lines are "
+                    f"occupied levels, dashed are empty; the shaded band is the "
+                    f"HOMO–LUMO gap ({q['gap_ev']:.2f} eV).")
+        else:
+            doc.add_paragraph("(No orbital diagram was rendered for this compound.)")
+        if q.get("interpretation"):
+            doc.add_paragraph(q["interpretation"])
+        if e.get("smiles"):
+            doc.add_paragraph(f"SMILES: {e['smiles']}")
+
+    failed = [e for e in entries if e.get("error")]
+    if failed or r.get("missing"):
+        doc.add_heading("Not computed", level=1)
+        for e in failed:
+            doc.add_paragraph(f"{e['label']} — {e['error'][:200]}")
+        for m in (r.get("missing") or []):
+            doc.add_paragraph(f"{m} — no structure could be found for this name.")
+
+    doc.add_heading("Method and limitations", level=1)
+    doc.add_paragraph(
+        "Geometries were generated with RDKit (ETKDG embedding followed by MMFF "
+        "optimisation) and the electronic structure computed with GFN2-xTB at the "
+        "optimised geometry. GFN2-xTB is semi-empirical: it is fast enough to "
+        "screen a whole ligand series in seconds and reproduces trends reliably, "
+        "but absolute orbital energies are not of DFT accuracy. Compare values "
+        "WITHIN this table rather than against literature numbers computed at a "
+        "different level of theory.")
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()

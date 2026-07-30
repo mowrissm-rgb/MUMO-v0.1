@@ -1504,6 +1504,25 @@ def _run_sync_action(action, c):
             else:
                 entries.append({"label": label or str(nm), "smiles": smi, "qm": q})
         prog.empty()
+        # Rasterise each diagram once, here, rather than emitting inline SVG in
+        # the panel: a PNG is guaranteed to display, and the same bytes are then
+        # reused by the .docx so the report never has to re-render anything.
+        _ok = [e for e in entries if e.get("qm")]
+        if _ok:
+            try:
+                import report_writer as _rw, viz_string as _vs
+                with st.spinner("Drawing orbital diagrams…"):
+                    _pw, _br = _rw.new_browser()
+                    try:
+                        for e in _ok:
+                            _svg = _vs.orbital_svg(e["qm"], dark=False,
+                                                   title=f"Frontier orbitals — {e['label']}")
+                            if _svg:
+                                e["png"] = _rw.svg_to_png(_svg, _br, width=640, height=400)
+                    finally:
+                        _br.close(); _pw.stop()
+            except Exception as _e:
+                say(f"(Orbital diagrams could not be drawn: {type(_e).__name__}: {_e})")
         if not any(e.get("qm") for e in entries):
             _capability_failed("qm", "no ligand produced orbitals")
             say("I couldn't compute orbitals for any of those compounds."
@@ -3289,7 +3308,6 @@ def _render_qm_report(r):
         st.caption("Ranked by gap, smallest first.")
         st.markdown("---")
 
-    import viz_string as _vs
     for e in ok:
         q = e["qm"]
         st.markdown(f"**{e['label']}**")
@@ -3297,18 +3315,10 @@ def _render_qm_report(r):
         c1.metric("HOMO", f"{q['homo_ev']:.2f} eV")
         c2.metric("LUMO", f"{q['lumo_ev']:.2f} eV")
         c3.metric("Gap", f"{q['gap_ev']:.2f} eV")
-        try:
-            svg = _vs.orbital_svg(q, dark=False,
-                                  title=f"Frontier orbitals — {e['label']}")
-            if svg:
-                st.markdown(
-                    f'<div style="background:#fff;padding:10px;border-radius:12px;'
-                    f'border:1px solid rgba(111,184,236,0.28);overflow:auto;">'
-                    f'{svg}</div>', unsafe_allow_html=True)
-            else:
-                st.info("Diagram unavailable for this compound.")
-        except Exception as ex:
-            st.info(f"Diagram unavailable: {type(ex).__name__}: {ex}")
+        if e.get("png"):
+            st.image(e["png"], use_container_width=True)
+        else:
+            st.info("Orbital diagram not available for this compound.")
         if q.get("interpretation"):
             st.caption(q["interpretation"])
         st.caption(f"`{e['smiles']}`")
@@ -3321,6 +3331,21 @@ def _render_qm_report(r):
             st.markdown(f"- {e['label']} — {e['error'][:120]}")
     if r.get("missing"):
         st.markdown("**No structure found for:** " + ", ".join(r["missing"]))
+
+    st.markdown("---")
+    doc_key = f"qmdoc_{id(r)}"
+    if doc_key not in ss:
+        if st.button("Generate report (.docx)", key=f"genqm_{id(r)}"):
+            import report_writer
+            with st.spinner("Building the report…"):
+                ss[doc_key] = report_writer.build_qm_docx(r)
+            st.rerun()
+    else:
+        st.download_button("Download report (.docx)", ss[doc_key],
+                           file_name="MUMO_frontier_orbitals_report.docx",
+                           mime=("application/vnd.openxmlformats-officedocument"
+                                 ".wordprocessingml.document"),
+                           key=f"dlqm_{id(r)}")
 
 
 _REPORT_RENDERERS["qm"] = _render_qm_report
