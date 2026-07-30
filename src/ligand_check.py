@@ -204,7 +204,7 @@ def rejection_message(rejected):
 _LIST_MARKER = re.compile(r"^\s*(?:\d+\s*[\).:]\s*|[\-\*•]\s+)")
 
 
-def _is_cas_continuation(frag):
+def _is_cas_continuation(frag, chain_open=False):
     """True if this comma-fragment continues the PREVIOUS name rather than
     starting a new one.
 
@@ -217,15 +217,19 @@ def _is_cas_continuation(frag):
 
     Splitting those on commas would shatter real GC-MS entries into nonsense,
     which is why this is a merge rule and not a plain str.split. A continuation
-    fragment is a substituent descriptor: it starts lowercase, or with a locant
-    ("N-", "3-methyl"), or it ends with the trailing hyphen CAS uses.
+    fragment carries its own CAS marker (a locant, a substituent prefix, or the
+    trailing hyphen CAS uses) — EXCEPT the plain-word case ("acetate" above),
+    which has no marker of its own and is only a continuation because the
+    fragment before it was ITSELF still open (ended in "-"). Without that
+    `chain_open` gate, a plain lowercase compound name — "aspirin", "lupeol" —
+    looks identical to "acetate" and a whole comma-separated list of ordinary
+    names collapses into one unresolvable string. That is not hypothetical: it
+    is exactly what happened with "lupeol, pytol, aspirin".
     """
     f = (frag or "").strip()
     if not f:
         return True
     if f.endswith("-"):
-        return True
-    if re.match(r"^[a-z]", f):                       # "acetate", "o-(benzylthio)-"
         return True
     if re.match(r"^[0-9]", f) and not re.match(r"^[0-9].*\b(acid|ol|one|ate|ine|al)\b", f, re.I):
         return True                                  # "3-methyl-", but not "2-Methoxy-4-vinylphenol"
@@ -233,6 +237,8 @@ def _is_cas_continuation(frag):
         return True
     # "(E)-piperolein" continues a name; "(E)-Piperolein A" is its own compound
     if re.match(r"^\([RSEZ0-9,\-]+\)-?[a-z]", f):
+        return True
+    if chain_open and re.match(r"^[a-z][a-z ]*$", f):  # "acetate" — only inside an open chain
         return True
     return False
 
@@ -272,9 +278,13 @@ def split_ligand_names(text):
         merged = []
         for p in parts:
             p = p.replace("\x00", ",")
+            # "X, Y, and Z" — "and"/"or" is an English list connector, not part
+            # of the last compound's name; strip it before anything else sees it.
+            p = re.sub(r"^(?:and|or)\s+", "", p, flags=re.I).strip()
             if not p:
                 continue
-            if merged and _is_cas_continuation(p):
+            chain_open = bool(merged) and merged[-1].endswith("-")
+            if merged and _is_cas_continuation(p, chain_open):
                 merged[-1] = merged[-1] + ", " + p      # put the CAS name back together
             else:
                 merged.append(p)
