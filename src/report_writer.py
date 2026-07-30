@@ -1331,6 +1331,9 @@ def build_qm_docx(r):
             doc.add_paragraph("(No orbital diagram was rendered for this compound.)")
         if q.get("interpretation"):
             doc.add_paragraph(q["interpretation"])
+        if e.get("also_given_as"):
+            doc.add_paragraph("Also given as: " + ", ".join(e["also_given_as"])
+                              + " — the same structure, computed once.")
         if e.get("smiles"):
             doc.add_paragraph(f"SMILES: {e['smiles']}")
 

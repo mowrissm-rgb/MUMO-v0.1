@@ -23,6 +23,8 @@ black box, which keeps every number defensible.
 """
 
 from urllib.parse import quote
+import time
+
 import requests
 from rdkit import Chem
 from rdkit.Chem import Descriptors, Lipinski, Crippen, QED, rdMolDescriptors
@@ -289,13 +291,79 @@ def admet_ml(smiles):
         return {"_error": f"ADMET-AI unavailable: {e}"}
 
 
+def smiles_to_name(smiles, timeout=15, attempts=3):
+    """Reverse lookup: a STRUCTURE -> its common name, via PubChem. None if unknown.
+
+    Sent as a POST body rather than in the URL on purpose: SMILES routinely
+    contain '/', '\\', '#' and '+', which are all meaningful in a URL path and
+    corrupt the query when interpolated into one.
+
+    Retried, because a transient failure here is not harmless: PubChem answered
+    a plain 502 for cinnamic acid in testing, which would have labelled that
+    ligand "unnamed compound" in a finished report — indistinguishable from a
+    genuinely unknown structure. PubChem also throttles above ~5 requests/sec,
+    and a 15-ligand screen calls this in a loop, so each attempt backs off.
+    """
+    for attempt in range(attempts):
+        try:
+            r = requests.post(
+                "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/property/Title/JSON",
+                data={"smiles": smiles}, timeout=timeout)
+            if r.status_code == 200:
+                title = (r.json()["PropertyTable"]["Properties"][0].get("Title") or "").strip()
+                if title:
+                    return title
+                return None                    # answered, genuinely has no title
+            if r.status_code == 404:
+                return None                    # answered: structure not in PubChem
+        except Exception:
+            pass
+        if attempt < attempts - 1:
+            time.sleep(0.6 * (attempt + 1))    # 502 / rate limit — back off
+    return None
+
+
+def formula_of(smiles):
+    """Molecular formula from RDKit — offline, instant, never fails on a valid
+    SMILES. The last-resort label, because a formula at least distinguishes two
+    different compounds where a generic phrase does not."""
+    try:
+        m = Chem.MolFromSmiles(smiles)
+        if m:
+            return rdMolDescriptors.CalcMolFormula(m)
+    except Exception:
+        pass
+    return None
+
+
+def canonical_smiles(smiles):
+    """Canonical form, so two spellings of one structure compare equal."""
+    try:
+        m = Chem.MolFromSmiles(smiles)
+        if m:
+            return Chem.MolToSmiles(m)
+    except Exception:
+        pass
+    return smiles
+
+
 def resolve_ligand(text):
     """
     Turn whatever the user gave (a SMILES or a drug name) into a valid SMILES.
     Returns (smiles, label) or (None, None) if it can't be resolved.
     """
     if is_valid_smiles(text):
-        return text, "your molecule"
+        # A raw SMILES still has an identity — find it. Labelling it "your
+        # molecule" produced a 15-compound report in which every section was
+        # headed "your molecule", making it impossible to tell which result
+        # belonged to which structure. Ask PubChem what this structure is
+        # called; failing that use the molecular formula, which at least
+        # distinguishes one compound from another.
+        name = smiles_to_name(text)
+        if name:
+            return text, name
+        formula = formula_of(text)
+        return text, (f"unnamed compound ({formula})" if formula else str(text)[:40])
     smi = name_to_smiles(text)
     if smi and is_valid_smiles(smi):
         return smi, text          # keep the friendly name as the label

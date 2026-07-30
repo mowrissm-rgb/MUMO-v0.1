@@ -1490,20 +1490,51 @@ def _run_sync_action(action, c):
             say("Give me one or more compounds and I'll compute their frontier orbitals.")
             return
         from agents.qm_analyst import orbitals
+        from agents.admet import canonical_smiles, formula_of
         entries, missing = [], []
-        prog = st.progress(0.0, text="Computing frontier orbitals…")
-        for i, nm in enumerate(names, 1):
-            prog.progress(i / len(names), text=f"{nm} ({i}/{len(names)})")
+        # Resolve everything FIRST, then compute once per distinct structure.
+        # The 15-compound run that prompted this had three inputs resolving to
+        # the same molecule, so xtb ran three times on it and the report carried
+        # three identical sections. Identity is per-structure, not per-input.
+        by_structure = {}
+        for nm in names:
             smi, label = resolve_ligand(str(nm))
             if not smi:
                 missing.append(str(nm))
                 continue
-            q = orbitals(smi)
+            key = canonical_smiles(smi)
+            slot = by_structure.setdefault(
+                key, {"smiles": smi, "label": label or str(nm), "aliases": []})
+            slot["aliases"].append(str(nm))
+
+        # Two DIFFERENT structures sharing one label would be just as unreadable
+        # as the generic label was, so disambiguate with the formula.
+        seen = {}
+        for key, slot in by_structure.items():
+            seen.setdefault(slot["label"], []).append(key)
+        for label, keys in seen.items():
+            if len(keys) > 1:
+                for key in keys:
+                    f = formula_of(by_structure[key]["smiles"])
+                    if f:
+                        by_structure[key]["label"] = f"{label} ({f})"
+
+        total = len(by_structure)
+        prog = st.progress(0.0, text="Computing frontier orbitals…")
+        for i, slot in enumerate(by_structure.values(), 1):
+            prog.progress(i / total, text=f"{slot['label']} ({i}/{total})")
+            entry = {"label": slot["label"], "smiles": slot["smiles"]}
+            # Record when several of the user's inputs were one molecule, so a
+            # collapsed duplicate is visible rather than silently dropped.
+            extra = [a for a in slot["aliases"] if a.strip().lower() != slot["label"].strip().lower()]
+            if len(slot["aliases"]) > 1 and extra:
+                entry["also_given_as"] = extra
+            q = orbitals(slot["smiles"])
             if q.get("_error"):
-                entries.append({"label": label or str(nm), "smiles": smi,
-                                "error": q["_error"]})
+                entry["error"] = q["_error"]
             else:
-                entries.append({"label": label or str(nm), "smiles": smi, "qm": q})
+                entry["qm"] = q
+            entries.append(entry)
         prog.empty()
         # Draw each diagram once, here, with matplotlib rather than a headless
         # Chromium round-trip — the same PNG bytes are then reused by the
@@ -3344,6 +3375,9 @@ def _render_qm_report(r):
             st.info("Orbital diagram not available for this compound.")
         if q.get("interpretation"):
             st.caption(q["interpretation"])
+        if e.get("also_given_as"):
+            st.caption("Also given as: " + ", ".join(e["also_given_as"])
+                       + " — the same structure, computed once.")
         st.caption(f"`{e['smiles']}`")
         st.markdown("---")
 
