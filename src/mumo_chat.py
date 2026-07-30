@@ -330,6 +330,7 @@ ss.setdefault("asked_last_turn", False)  # did we just ask a clarifying question
 
 # how to name each follow-up step when telling the user what happens next
 _ACTION_NAMES = {"analyze": "run the ADMET analysis",
+                 "qm": "compute the frontier orbitals (HOMO/LUMO)",
                  "string": "build the interaction network",
                  "blast": "run the BLAST search",
                  "dock": "run the docking"}
@@ -783,8 +784,16 @@ CONV_SYSTEM = (
     "and run BLAST. Users can also ATTACH FILES with the + button next to the message "
     "box — structure files (PDB, SDF, MOL, MOL2), spreadsheets (CSV/Excel), or GC-MS "
     "reports (PDF/Word); if someone asks how to give you a structure a name won't "
-    "resolve, or how to load a compound list, point them at that + button. You CANNOT run molecular-dynamics simulations, quantum/DFT "
-    "calculations, retrosynthesis, or anything experimental or clinical. If asked for "
+    "resolve, or how to load a compound list, point them at that + button. "
+    "You CAN compute frontier molecular orbitals — HOMO, LUMO and the gap — with "
+    "GFN2-xTB, for one ligand or a whole list. Use the \"qm\" action for anything "
+    "phrased as 'homo lumo', 'homo-lomo', 'orbital', 'band gap' or 'electronic "
+    "properties'. Use \"qm\", NOT \"analyze\": analyze is the ADMET and drug-likeness "
+    "screen, and returning it for an orbital request answers a different question "
+    "than the one asked. Never say you cannot do HOMO/LUMO, and never ask the user "
+    "to confirm before running it — just run it.\n"
+    "You CANNOT run full DFT, long molecular-dynamics trajectories, "
+    "retrosynthesis, or anything experimental or clinical. If asked for "
     "one of those, say plainly that it isn't available and what you can do instead — "
     "NEVER promise a run you cannot perform. Explaining these topics is always fine; "
     "it is only claiming to RUN them that is wrong.\n"
@@ -829,7 +838,7 @@ CONV_SYSTEM = (
     "  Do NOT drop the later steps. Do NOT ask which one to do first — the order is the "
     "order they wrote. For a pure question or explanation, return [].\n\n"
     "Reply with ONLY a JSON object, nothing else:\n"
-    '{"actions": [<any of "dock","analyze","metabolism","ramachandran","string","blast", '
+    '{"actions": [<any of "dock","analyze","qm","metabolism","ramachandran","string","blast", '
     'in the order '
     'requested; '
     '[] for a pure chat/teaching reply>], '
@@ -1466,6 +1475,48 @@ def _run_sync_action(action, c):
             tip = dispatch.next_step("admet", top_ligand=label)
             if tip:
                 say(tip)
+        return
+
+    # HOMO/LUMO on its own. Kept separate from "analyze" because an orbital
+    # request was previously answered with a drug-likeness report — a different
+    # question, and one that also only ever covered the first ligand.
+    if action == "qm" and c.get("ligand"):
+        if not _capability_ok("qm"):
+            return
+        import ligand_check as _lc
+        names = _lc.split_ligand_names(c["ligand"])
+        if not names:
+            say("Give me one or more compounds and I'll compute their frontier orbitals.")
+            return
+        from agents.qm_analyst import orbitals
+        entries, missing = [], []
+        prog = st.progress(0.0, text="Computing frontier orbitals…")
+        for i, nm in enumerate(names, 1):
+            prog.progress(i / len(names), text=f"{nm} ({i}/{len(names)})")
+            smi, label = resolve_ligand(str(nm))
+            if not smi:
+                missing.append(str(nm))
+                continue
+            q = orbitals(smi)
+            if q.get("_error"):
+                entries.append({"label": label or str(nm), "smiles": smi,
+                                "error": q["_error"]})
+            else:
+                entries.append({"label": label or str(nm), "smiles": smi, "qm": q})
+        prog.empty()
+        if not any(e.get("qm") for e in entries):
+            _capability_failed("qm", "no ligand produced orbitals")
+            say("I couldn't compute orbitals for any of those compounds."
+                + (f" Unresolved: {', '.join(missing)}." if missing else ""))
+            return
+        _capability_ran("qm")
+        ss.results = {"kind": "qm", "entries": entries, "missing": missing}
+        ss.panel_open = True
+        done = [e["label"] for e in entries if e.get("qm")]
+        say(f"Frontier orbitals computed for **{len(done)}** compound(s): "
+            f"{', '.join(done)}. The HOMO/LUMO energies, the gap and an orbital "
+            f"diagram for each are in the panel."
+            + (f" I couldn't find a structure for: {', '.join(missing)}." if missing else ""))
         return
 
     # predicted phase I / phase II metabolism of a compound
@@ -2491,6 +2542,7 @@ _render_job_progress()
 REPORT_TITLES = {
     "docking": "Docking report",
     "admet": "ADMET report",
+    "qm": "Frontier orbitals (HOMO/LUMO)",
     "string": "Interaction network",
     "blast": "BLAST results",
     "md": "Stability simulation",
@@ -3211,6 +3263,67 @@ def _render_metabolism_report(r):
                 mime="application/vnd.openxmlformats-officedocument"
                      ".wordprocessingml.document",
                 key=f"dlm_{id(r)}")
+
+
+def _render_qm_report(r):
+    """Frontier orbitals for one or many ligands.
+
+    Leads with the diagram for each compound: an orbital energy diagram is the
+    thing being asked for, and a table of six numbers is the summary, not the
+    result.
+    """
+    entries = r.get("entries") or []
+    ok = [e for e in entries if e.get("qm")]
+    st.markdown("#### Frontier molecular orbitals")
+    st.caption("GFN2-xTB semi-empirical calculation. The HOMO–LUMO gap indicates how "
+               "readily a molecule takes part in electron transfer — a smaller gap "
+               "means a more reactive, more easily polarised molecule.")
+
+    if len(ok) > 1:
+        rows = [{"Ligand": e["label"],
+                 "HOMO (eV)": round(e["qm"]["homo_ev"], 2),
+                 "LUMO (eV)": round(e["qm"]["lumo_ev"], 2),
+                 "Gap (eV)": round(e["qm"]["gap_ev"], 2)} for e in ok]
+        st.dataframe(pd.DataFrame(sorted(rows, key=lambda x: x["Gap (eV)"])),
+                     hide_index=True, use_container_width=True)
+        st.caption("Ranked by gap, smallest first.")
+        st.markdown("---")
+
+    import viz_string as _vs
+    for e in ok:
+        q = e["qm"]
+        st.markdown(f"**{e['label']}**")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("HOMO", f"{q['homo_ev']:.2f} eV")
+        c2.metric("LUMO", f"{q['lumo_ev']:.2f} eV")
+        c3.metric("Gap", f"{q['gap_ev']:.2f} eV")
+        try:
+            svg = _vs.orbital_svg(q, dark=False,
+                                  title=f"Frontier orbitals — {e['label']}")
+            if svg:
+                st.markdown(
+                    f'<div style="background:#fff;padding:10px;border-radius:12px;'
+                    f'border:1px solid rgba(111,184,236,0.28);overflow:auto;">'
+                    f'{svg}</div>', unsafe_allow_html=True)
+            else:
+                st.info("Diagram unavailable for this compound.")
+        except Exception as ex:
+            st.info(f"Diagram unavailable: {type(ex).__name__}: {ex}")
+        if q.get("interpretation"):
+            st.caption(q["interpretation"])
+        st.caption(f"`{e['smiles']}`")
+        st.markdown("---")
+
+    failed = [e for e in entries if e.get("error")]
+    if failed:
+        st.markdown("**Could not be computed**")
+        for e in failed:
+            st.markdown(f"- {e['label']} — {e['error'][:120]}")
+    if r.get("missing"):
+        st.markdown("**No structure found for:** " + ", ".join(r["missing"]))
+
+
+_REPORT_RENDERERS["qm"] = _render_qm_report
 
 
 _REPORT_RENDERERS["metabolism"] = _render_metabolism_report
