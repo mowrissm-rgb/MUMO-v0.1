@@ -1403,7 +1403,13 @@ def _run_sync_action(action, c):
     if action == "analyze" and c.get("ligand"):
         if not _capability_ok("admet"):
             return
-        one = c["ligand"][0] if isinstance(c["ligand"], list) else c["ligand"]
+        # A list of ligands used to be silently truncated to c["ligand"][0]:
+        # asking for 15 compounds produced one report for the first and no hint
+        # that the other 14 were dropped. Every ligand is resolved now, and the
+        # extra ones are carried in res["batch"] for the comparison table.
+        import ligand_check as _lc
+        _names = _lc.split_ligand_names(c["ligand"])
+        one = _names[0] if _names else c["ligand"]
         smi, label = resolve_ligand(str(one))
         if smi:
             res = {"kind": "admet", "druglikeness": druglikeness(smi),
@@ -1425,6 +1431,33 @@ def _run_sync_action(action, c):
                         _capability_failed("qm", qm_res["_error"])
                 except Exception as _e:
                     _capability_failed("qm", _e)
+            # More than one ligand: build a comparison across all of them.
+            # This is what "run HOMO/LUMO for these 15" actually asks for — a
+            # table you can rank, not fifteen separate reports.
+            if len(_names) > 1:
+                batch, qm_ok = [], _capability_ok_quiet("qm")
+                prog = st.progress(0.0, text="Analysing ligands…")
+                for _i, _nm in enumerate(_names, 1):
+                    prog.progress(_i / len(_names), text=f"Analysing {_nm} ({_i}/{len(_names)})")
+                    _smi, _lab = (smi, label) if _nm == one else resolve_ligand(str(_nm))
+                    if not _smi:
+                        batch.append({"label": str(_nm), "smiles": "", "unresolved": True})
+                        continue
+                    entry = {"label": _lab or str(_nm), "smiles": _smi,
+                             "druglikeness": druglikeness(_smi)}
+                    if qm_ok:
+                        try:
+                            from agents.qm_analyst import orbitals as _orb
+                            _q = _orb(_smi)
+                            if not _q.get("_error"):
+                                entry["qm"] = _q
+                            else:
+                                entry["qm_error"] = _q["_error"]
+                        except Exception as _e:
+                            entry["qm_error"] = f"{type(_e).__name__}: {_e}"
+                    batch.append(entry)
+                prog.empty()
+                res["batch"] = batch
             with st.spinner("Writing the ADMET report…"):
                 res["narrative"] = _admet_narrative(res)
             ss.results = res
@@ -2593,6 +2626,52 @@ def render_results():
             st.markdown(narrative)
             st.markdown("---")
         st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
+
+        # Multi-ligand run: lead with the comparison, because the point of
+        # submitting fifteen compounds is to rank them, not to read fifteen
+        # separate write-ups.
+        batch = r.get("batch") or []
+        if len(batch) > 1:
+            st.markdown(f"#### Frontier orbitals — {len(batch)} ligands")
+            rows = []
+            for b in batch:
+                q = b.get("qm") or {}
+                rows.append({
+                    "Ligand": b["label"],
+                    "HOMO (eV)": f"{q['homo_ev']:.2f}" if q else "—",
+                    "LUMO (eV)": f"{q['lumo_ev']:.2f}" if q else "—",
+                    "Gap (eV)": f"{q['gap_ev']:.2f}" if q else "—",
+                    "MW": (b.get("druglikeness") or {}).get("Molecular weight", "—"),
+                    "LogP": (b.get("druglikeness") or {}).get("LogP", "—"),
+                    "Note": ("not found" if b.get("unresolved")
+                             else (b.get("qm_error", "")[:40] if b.get("qm_error") else "")),
+                })
+            # smallest gap first — the most electronically reactive end of the set
+            def _gapkey(x):
+                try:
+                    return float(x["Gap (eV)"])
+                except ValueError:
+                    return 1e9
+            st.dataframe(pd.DataFrame(sorted(rows, key=_gapkey)),
+                         hide_index=True, use_container_width=True)
+            st.caption("Ranked by HOMO–LUMO gap, smallest first — a smaller gap means "
+                       "the molecule engages more readily in electron transfer.")
+            with st.expander("Orbital diagrams for each ligand"):
+                try:
+                    import viz_string as _vs
+                    for b in batch:
+                        q = b.get("qm")
+                        if not q:
+                            continue
+                        svg = _vs.orbital_svg(q, dark=False,
+                                              title=f"Frontier orbitals — {b['label']}")
+                        if svg:
+                            st.markdown(
+                                f'<div style="background:#fff;padding:8px;border-radius:10px;'
+                                f'margin-bottom:10px;">{svg}</div>', unsafe_allow_html=True)
+                except Exception as _e:
+                    st.info(f"Diagrams unavailable: {type(_e).__name__}: {_e}")
+            st.markdown("---")
 
         qm = r.get("qm")
         if qm and not qm.get("_error"):
