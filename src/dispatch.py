@@ -41,6 +41,7 @@ import re
 ACTION_SLOTS = {
     "dock":    (("target", "disease"),),
     "analyze": (("ligand",),),
+    "qm":      (("ligand",),),      # orbitals are a property of the molecule alone
     "metabolism": (("ligand",),),
     "ramachandran": (("target",),),
     "string":  (("target",),),
@@ -61,6 +62,13 @@ ACTION_CUES = {
                      r"\bphi[/ -]?psi\b", r"\btorsion angle", r"\bvalidat",
                      r"\bstructure quality\b", r"\bstereochemistr",
                      r"\bbackbone quality\b"),
+    # HOMO/LUMO is matched BEFORE "analyze": the two overlap in phrasing
+    # ("electronic properties" of a candidate), and routing an orbital request
+    # to the ADMET screen answers a different question. "lomo" is included
+    # deliberately - that is how it gets typed in practice.
+    "qm": (r"\bhomo\b", r"\blumo\b", r"\blomo\b", r"homo[\s\-/]*l[uo]mo",
+           r"\bfrontier orbital", r"\borbital energ", r"\bband gap\b",
+           r"\benergy gap\b", r"\belectronic propert", r"\bmolecular orbital"),
     "metabolism": (r"\bmetaboli", r"\bmetabolite", r"\bbiotransform",
                    r"\bphase (i|ii|1|2)\b", r"\bglucuronid",
                    r"\bfirst[- ]pass\b", r"\bconjugat"),
@@ -92,7 +100,11 @@ RUN_VERBS = (r"\bdock\b", r"\brun\b", r"\banaly[sz]e\b", r"\bpredict\b", r"\bche
              # "ramachandran 1NFK" stalled: real requests with no other verb
              # in them. (Pre-existing gap for blast, found while adding
              # ramachandran.)
-             r"\bblast\b", r"\bramachandran\b")
+             r"\bblast\b", r"\bramachandran\b",
+             # "lupeol, aspirin homo lumo for these 3" carries none of the verbs
+             # above yet is plainly a request; the orbital terms are specific
+             # enough to serve as their own imperative.
+             r"\bhomo\b", r"\blumo\b", r"\blomo\b")
 
 # Bare confirmations: the user is not naming an action, they are saying "yes, the
 # thing we were just discussing". These are the replies that used to stall.
@@ -196,7 +208,8 @@ def plan(data, convo, user_msg, asked_last_turn=False):
     # A bare "yes / go ahead" carries no action of its own: it authorises
     # whatever the conversation has been building toward.
     if not user and is_confirmation(user_msg):
-        user = [a for a in ("dock", "analyze", "string", "blast") if is_ready(a, convo)][:1]
+        user = [a for a in ("dock", "analyze", "qm", "string", "blast")
+                if is_ready(a, convo)][:1]
 
     if model:
         chosen = model
