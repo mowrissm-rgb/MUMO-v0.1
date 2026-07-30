@@ -373,21 +373,36 @@ def build_docking_docx(r, llm=None):
                     caption("Table", "Frontier orbital energies for every ligand in the "
                                      "screen (GFN2-xTB).")
                     _add_df_table(doc, _pd.DataFrame(qm_rows))
+                # This loop silently produced NOTHING on the first real run —
+                # the table had all 14 ligands' numbers but not one diagram,
+                # because a bare `except: pass` swallowed whatever went wrong.
+                # Every failure path now writes its reason into the document,
+                # which is the only way to diagnose it without runtime logs.
                 for lab, q in qm_figs:
                     try:
                         import viz_string as _vs
                         svg = _vs.orbital_svg(q, dark=False,
                                               title=f"Frontier orbitals — {lab}")
-                        if svg:
-                            png, err = _shot("2d", svg)
-                            if png:
-                                picture(png, 4.6)
-                                caption("Figure",
-                                        f"Orbital energy diagram for {lab}: HOMO "
-                                        f"{q['homo_ev']:.2f} eV, LUMO {q['lumo_ev']:.2f} eV, "
-                                        f"gap {q['gap_ev']:.2f} eV.")
-                    except Exception:
-                        pass
+                        if not svg:
+                            doc.add_paragraph(
+                                f"(No orbital diagram for {lab}: the figure came back "
+                                f"empty — homo={q.get('homo_ev')}, lumo={q.get('lumo_ev')}, "
+                                f"levels={len(q.get('levels') or [])}.)")
+                            continue
+                        png, err = _shot("2d", svg)
+                        if not png:
+                            doc.add_paragraph(
+                                f"(Orbital diagram for {lab} could not be rendered: {err})")
+                            continue
+                        picture(png, 4.6)
+                        caption("Figure",
+                                f"Orbital energy diagram for {lab}: HOMO "
+                                f"{q['homo_ev']:.2f} eV, LUMO {q['lumo_ev']:.2f} eV, "
+                                f"gap {q['gap_ev']:.2f} eV.")
+                    except Exception as _e:
+                        doc.add_paragraph(
+                            f"(Orbital diagram for {lab} failed: "
+                            f"{type(_e).__name__}: {_e})")
         except Exception as e:
             doc.add_paragraph(f"(Ligand validation unavailable: {type(e).__name__}: {e})")
 

@@ -171,6 +171,43 @@ def _axis(out, x0, plot_w, y_top, y_bot, ticks, top, unit="", negate=False):
                f'stroke="{AXIS}" stroke-width="1"/>')
 
 
+# ── colour scale ───────────────────────────────────────────────────────────
+# Bar colour encodes affinity as well as bar length. Length alone already shows
+# strength, but the report caption promises a colour scale and a reader
+# comparing two targets side by side reads colour faster than length. Anchors
+# sampled from viridis, which stays legible in greyscale and for colour-blind
+# readers — the reason it is the default in most scientific plotting.
+_VIRIDIS = [(68, 1, 84), (59, 82, 139), (33, 145, 140), (94, 201, 98), (253, 231, 37)]
+
+
+def _viridis(t):
+    """t in 0..1 -> "rgb(r,g,b)" along the viridis ramp."""
+    t = max(0.0, min(1.0, float(t)))
+    seg = t * (len(_VIRIDIS) - 1)
+    i = min(int(seg), len(_VIRIDIS) - 2)
+    f = seg - i
+    a, b = _VIRIDIS[i], _VIRIDIS[i + 1]
+    return "rgb(%d,%d,%d)" % tuple(int(a[k] + (b[k] - a[k]) * f) for k in range(3))
+
+
+def _colourbar(out, x, y_top, y_bot, vmin, vmax, label="kcal/mol", grad_id="affgrad"):
+    """A vertical colour legend, so the bar colours mean something."""
+    out.append(f'<defs><linearGradient id="{grad_id}" x1="0" y1="1" x2="0" y2="0">')
+    for k in range(11):
+        out.append(f'<stop offset="{k*10}%" stop-color="{_viridis(k/10)}"/>')
+    out.append('</linearGradient></defs>')
+    out.append(f'<rect x="{x}" y="{y_top}" width="14" height="{y_bot - y_top}" '
+               f'fill="url(#{grad_id})" stroke="{AXIS}" stroke-width="0.5"/>')
+    for k in range(5):
+        frac = k / 4
+        yy = y_bot - frac * (y_bot - y_top)
+        val = vmin + frac * (vmax - vmin)
+        out.append(f'<text x="{x + 20}" y="{yy + 3.5:.1f}" font-size="10" '
+                   f'fill="{INK_MUTED}">{val:.2f}</text>')
+    out.append(f'<text x="{x + 8}" y="{y_top - 8}" font-size="10" '
+               f'fill="{INK_MUTED}" text-anchor="middle">{label}</text>')
+
+
 def affinity_chart_svg(rows, width=900):
     """Binding affinity per ligand, strongest first.
 
@@ -206,19 +243,30 @@ def affinity_chart_svg(rows, width=900):
     ticks, top = _nice_ticks(max(mags))
 
     pad_l = _gutter([_truncate(lbl, PAD_L - 24) for lbl, _ in pairs])
-    plot_w = width - pad_l - PAD_R
+    CBAR = 74                    # room on the right for the colour legend
+    plot_w = width - pad_l - PAD_R - CBAR
     height = PAD_T + len(pairs) * BAND_H + PAD_B
     y_top, y_bot = PAD_T, PAD_T + len(pairs) * BAND_H
 
-    out = _frame(width, height,
-                 "Binding affinity by ligand",
+    # Name the target in the title. On a report with one chart per target,
+    # five identically-titled figures are impossible to tell apart.
+    only_target = next(iter(targets)) if len(targets) == 1 else None
+    title = (f"{only_target} — docked ligand binding affinities" if only_target
+             else "Binding affinity by ligand")
+    out = _frame(width, height, title,
                  "More negative = stronger predicted binding (AutoDock Vina, kcal/mol)")
     _axis(out, pad_l, plot_w, y_top, y_bot, ticks, top, negate=True)
 
     for i, (label, v) in enumerate(pairs):
         y = y_top + i * BAND_H + (BAND_H - BAR_H) / 2
         w = (abs(v) / top) * plot_w if top else 0
-        out.append(f'<path d="{_bar_path(pad_l, y, w, BAR_H)}" fill="{SERIES}"/>')
+        # Strongest binder = brightest end of the ramp. mags is ordered
+        # strongest-first, so normalising against min/max (not mags[0]/mags[-1])
+        # is what keeps this the right way round — inverted, the colour would
+        # contradict the caption underneath.
+        _lo, _hi = min(mags), max(mags)
+        shade = _viridis((abs(v) - _lo) / ((_hi - _lo) or 1))
+        out.append(f'<path d="{_bar_path(pad_l, y, w, BAR_H)}" fill="{shade}"/>')
         out.append(f'<text x="{pad_l - 10}" y="{y + BAR_H / 2 + 4:.1f}" '
                    f'font-size="11.5" fill="{INK_MUTED}" text-anchor="end">'
                    f'{_esc(_truncate(label, pad_l - 22))}</text>')
@@ -226,9 +274,11 @@ def affinity_chart_svg(rows, width=900):
                    f'font-size="11.5" font-weight="600" fill="{INK}">'
                    f'−{abs(v):.1f}</text>')
 
+    # legend bottom = dark = weakest, top = bright = strongest, matching the bars
+    _colourbar(out, pad_l + plot_w + 34, y_top, y_bot, -min(mags), -max(mags))
     out.append(f'<text x="{MARGIN}" y="{height - 12}" font-size="11" '
-               f'fill="{INK_MUTED}">Longer bar = more negative ΔG = tighter '
-               f'predicted binding.</text>')
+               f'fill="{INK_MUTED}">Longer bar and brighter colour = more '
+               f'negative ΔG = tighter predicted binding.</text>')
     out.append("</svg>")
     return "\n".join(out)
 
@@ -429,10 +479,15 @@ def residue_frequency_svg(rows, width=900, top_n=14, target_name=None):
                  f"({shown} residues)")
     _axis(out, pad_l, plot_w, y_top, y_bot, ticks, top)
 
+    counts = [c for _, c in ranked]
+    lo, hi = min(counts), max(counts)
     for i, (res, n) in enumerate(ranked):
         y = y_top + i * BAND_H + (BAND_H - BAR_H) / 2
         w = (n / top) * plot_w if top else 0
-        out.append(f'<path d="{_bar_path(pad_l, y, w, BAR_H)}" fill="{SERIES}"/>')
+        # colour by how many ligands touch this residue, so the residues the
+        # whole series converges on stand out at a glance
+        shade = _viridis((n - lo) / ((hi - lo) or 1))
+        out.append(f'<path d="{_bar_path(pad_l, y, w, BAR_H)}" fill="{shade}"/>')
         out.append(f'<text x="{pad_l - 10}" y="{y + BAR_H / 2 + 4:.1f}" '
                    f'font-size="11.5" fill="{INK_MUTED}" text-anchor="end">'
                    f'{_esc(_truncate(res, pad_l - 22))}</text>')
