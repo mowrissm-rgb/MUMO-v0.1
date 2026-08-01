@@ -52,41 +52,62 @@ def clean_protein_pdb(input_path, output_path):
         "HOH", "WAT", "SOL", "TIP", "DOD", "CL", "NA", "SO4", "PO4", "ACT", "GOL", "EDT", "DMS"
     }
     
-    # First pass: analyze chains to find standard protein chains and non-standard ligand chains
+    # First pass: how many real amino-acid RESIDUES does each chain have?
+    #
+    # This used to ask "does the chain contain any non-standard residue?" and
+    # throw the whole chain away if so. That was wrong twice over, and it
+    # silently destroyed entire dockings:
+    #
+    #   On 1OYT (thrombin) the catalytic chain H carries a bound calcium and
+    #   the co-crystal inhibitor FSN. It was therefore dropped ENTIRELY — 2,019
+    #   atoms, the whole binding site — leaving only the 222-atom light chain L,
+    #   which passed the rule. The grid box still pointed at the real pocket, so
+    #   Vina docked every ligand into EMPTY SPACE and returned 0.000 kcal/mol
+    #   for all twelve of them. Twelve different molecules, one identical score.
+    #
+    # It is also redundant: the second pass below already writes only standard
+    # amino-acid atoms, so an ion or inhibitor sitting inside a protein chain is
+    # filtered out anyway. The chain-level test could only ever do harm.
+    #
+    # What the rule was actually for was excluding PEPTIDE-INHIBITOR chains
+    # (6LU7 chain C is seven residues). That is a question of size, not of
+    # purity — so ask about size.
     chain_residues = {}
+    chain_aa_count = {}
     with open(input_path, 'r') as infile:
         for line in infile:
             if line.startswith("ATOM") or line.startswith("HETATM"):
                 res_name = line[17:20].strip()
                 chain_id = line[21]
-                if chain_id not in chain_residues:
-                    chain_residues[chain_id] = set()
-                chain_residues[chain_id].add(res_name)
-                
-    # Identify valid protein chains (must have standard aminos and no non-standard ligands)
-    valid_chains = []
-    dropped_chains = []
+                chain_residues.setdefault(chain_id, set()).add(res_name)
+                if res_name in STANDARD_AMINOS:
+                    chain_aa_count.setdefault(chain_id, set()).add(line[22:27])
+
+    MIN_CHAIN_RESIDUES = 25          # below this it is a peptide, not a domain
+    valid_chains, dropped_chains = [], []
     for chain_id, residues in chain_residues.items():
-        # Check if the chain contains any actual ligand/inhibitor residues
-        non_standard = residues - STANDARD_AMINOS - SOLVENTS_AND_SALTS
-        
-        # If it has standard protein residues and does not contain non-standard residues, it's a valid protein chain
-        if (residues & STANDARD_AMINOS) and not non_standard:
+        n_aa = len(chain_aa_count.get(chain_id, ()))
+        if n_aa >= MIN_CHAIN_RESIDUES:
             valid_chains.append(chain_id)
         else:
-            dropped_chains.append((chain_id, residues))
-            
-    print(f"[Prep] Identified protein chains to keep: {valid_chains}")
-    for chain_id, residues in dropped_chains:
-        print(f"[Prep] Dropping chain '{chain_id}' because it contains non-standard residues or solvents: {list(residues)}")
-        
+            dropped_chains.append((chain_id, n_aa, residues))
+
+    print(f"[Prep] Protein chains kept: "
+          f"{[(c, len(chain_aa_count.get(c, ()))) for c in valid_chains]}")
+    for chain_id, n_aa, residues in dropped_chains:
+        print(f"[Prep] Dropping chain '{chain_id}': only {n_aa} amino-acid "
+              f"residues (peptide/ligand chain, not a protein domain)")
+
     if not valid_chains:
-        # Fallback: if all chains have some non-standard residues, keep chains with any standard amino acids
-        print("[Warning] No pure standard protein chains found. Keeping chains with any standard amino acids.")
-        valid_chains = [chain_id for chain_id, residues in chain_residues.items() if residues & STANDARD_AMINOS]
+        # Everything is small — keep whatever has amino acids rather than
+        # producing an empty receptor.
+        print("[Warning] No chain reached the size threshold. Keeping every "
+              "chain that has standard amino acids.")
+        valid_chains = [c for c, r in chain_residues.items() if r & STANDARD_AMINOS]
         if not valid_chains:
             raise ValueError("The PDB file does not contain any standard protein chains.")
-            
+
+
     # Second pass: write only standard protein ATOM records
     atom_count = 0
     with open(input_path, 'r') as infile, open(output_path, 'w') as outfile:
@@ -418,9 +439,24 @@ def parse_docking_results(log_path):
                     
     if not scores:
         raise RuntimeError("No docking scores were parsed from the log file.")
-        
+
     # The first mode is the best pose found by Vina
     best_mode, best_score = scores[0]
+
+    # A binding affinity of ~0 is not a weak result — it means the ligand felt
+    # NOTHING, i.e. it was docked into empty space. That happens when the grid
+    # box and the prepared receptor disagree, and it is silent: Vina exits 0 and
+    # prints a normal-looking table of zeros. Reported as a number it is worse
+    # than useless, because every ligand gets the SAME 0.000 and the whole
+    # screen looks like it ran. On 1OYT this produced twelve identical scores
+    # for twelve different molecules. Refuse it here so the caller marks the
+    # ligand FAILED with a reason instead of publishing a fake affinity.
+    if best_score > -0.5:
+        raise RuntimeError(
+            f"Docking produced a non-binding score ({best_score} kcal/mol). The "
+            f"ligand found no contact with the receptor, which normally means "
+            f"the search box does not cover the prepared protein.")
+
     print(f"[Results] Best Docking Score (Mode {best_mode}): {best_score} kcal/mol")
     return best_score, scores
 

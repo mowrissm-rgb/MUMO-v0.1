@@ -45,6 +45,34 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     receptor = os.path.join(data_dir, "c_receptor.pdbqt")
     clean_protein_pdb(pdb_path, cleaned)
 
+    # Does the search box actually contain the protein we are about to dock
+    # into? The box is derived from the RAW structure (usually its co-crystal
+    # ligand) while docking runs against the CLEANED one, so the two can drift
+    # apart — and when they do, Vina reports 0.000 kcal/mol for every ligand
+    # without erroring. That is how 1OYT produced twelve identical scores.
+    # One cheap count turns a silent, screen-wide corruption into a clear stop.
+    _bx, _by, _bz = center
+    _hx, _hy, _hz = (s / 2.0 for s in size)
+    _inside = 0
+    with open(cleaned) as _f:
+        for _ln in _f:
+            if _ln.startswith("ATOM"):
+                try:
+                    _x = float(_ln[30:38]); _y = float(_ln[38:46]); _z = float(_ln[46:54])
+                except ValueError:
+                    continue
+                if (abs(_x - _bx) <= _hx and abs(_y - _by) <= _hy
+                        and abs(_z - _bz) <= _hz):
+                    _inside += 1
+    if _inside < 10:
+        raise RuntimeError(
+            f"The docking box for {tgt.get('gene', 'this target')} contains only "
+            f"{_inside} receptor atoms, so no ligand could bind anywhere inside "
+            f"it. The pocket and the prepared protein do not line up — usually "
+            f"the chain carrying the binding site was removed during cleaning. "
+            f"Docking was stopped rather than returning meaningless scores.")
+    status(f"Pocket check: {_inside} receptor atoms inside the search box.")
+
     # Backbone-geometry (Ramachandran) validation of the receptor we are about
     # to dock into. Computed HERE because this is the only point where the full
     # protein exists on disk — the report later only has pocket-cropped
