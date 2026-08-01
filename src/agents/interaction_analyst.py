@@ -27,6 +27,7 @@ HOW IT WORKS
        3D lines — so all three always agree.
 """
 
+import math
 import os
 import re
 
@@ -279,6 +280,94 @@ def _collect_interactions(ifp, lig_conf, prot_conf):
     return recs
 
 
+def _polar_protein_atoms(prot_mol, conf):
+    """Every N/O in the protein, with the residue identity needed to report it.
+
+    Precomputed once per receptor because a batch of ligands re-uses it.
+    """
+    out = []
+    for atom in prot_mol.GetAtoms():
+        if atom.GetSymbol() not in ("N", "O"):
+            continue
+        info = atom.GetPDBResidueInfo()
+        if not info:
+            continue
+        resn = info.GetResidueName().strip()
+        if resn in ("HOH", "WAT", "DOD"):
+            continue
+        p = conf.GetAtomPosition(atom.GetIdx())
+        out.append({"resn": resn, "resi": int(info.GetResidueNumber()),
+                    "chain": (info.GetChainId() or "A").strip() or "A",
+                    "name": info.GetName().strip(),
+                    "charge": atom.GetFormalCharge(),
+                    "xyz": (p.x, p.y, p.z)})
+    return out
+
+
+def _geometric_hbonds(lig_mol, polar_atoms, existing, cutoff=3.5):
+    """Hydrogen bonds found by DONOR–ACCEPTOR HEAVY-ATOM distance.
+
+    WHY THIS EXISTS
+    ---------------
+    ProLIF decides an H-bond using the D–H···A angle, which needs the hydrogen
+    to be in the right place. Ours are not: the receptor is protonated with
+    RDKit's AddHs, which sets a chemically valid but ARBITRARY torsion for every
+    rotatable donor — Ser/Thr/Tyr hydroxyls, Lys ammonium. Their hydrogens end
+    up pointing in whatever direction the geometry code chose, so genuine bonds
+    fail the angle test and vanish.
+
+    That is not a hypothetical. On a real trypsin pose, aspirin sat with its
+    carbonyl oxygen 2.70 Å from Ser195 OG and 2.72 Å from Cys191 O — eleven
+    polar pairs inside 3.5 Å — and MUMO reported ZERO hydrogen bonds, while
+    Discovery Studio reported several. Discovery Studio was right.
+
+    Optimising those hydrogens properly needs Reduce or PDBFixer/OpenMM, which
+    is a heavy dependency this deployment deliberately keeps isolated. The
+    standard alternative, and what Discovery Studio effectively does, is the
+    heavy-atom criterion: a donor/acceptor pair within ~3.5 Å is a hydrogen
+    bond. For a rotatable hydroxyl that is the more honest test anyway, because
+    the crystal structure never determined where that hydrogen points.
+
+    Kept conservative: same-sign charged pairs are skipped (two cations close
+    together is a clash, not a bond), and anything ProLIF already reported for
+    that residue and ligand atom is skipped, so nothing is counted twice.
+    """
+    conf = lig_mol.GetConformer()
+    seen = [(r["resnr"], r["reschain"], r["lig_xyz"]) for r in existing]
+    found = []
+    for atom in lig_mol.GetAtoms():
+        if atom.GetSymbol() not in ("N", "O"):
+            continue
+        lp = conf.GetAtomPosition(atom.GetIdx())
+        lxyz = (lp.x, lp.y, lp.z)
+        lchg = atom.GetFormalCharge()
+        for pa in polar_atoms:
+            px, py, pz = pa["xyz"]
+            d = math.sqrt((lxyz[0] - px) ** 2 + (lxyz[1] - py) ** 2 + (lxyz[2] - pz) ** 2)
+            if d > cutoff or d < 2.2:          # < 2.2 Å is a clash, not a bond
+                continue
+            if lchg and pa["charge"] and (lchg > 0) == (pa["charge"] > 0):
+                continue                        # like charges: not a hydrogen bond
+            dup = False
+            for resnr, chain, xyz in seen:
+                if resnr == pa["resi"] and chain == pa["chain"] and xyz:
+                    if ((lxyz[0] - xyz[0]) ** 2 + (lxyz[1] - xyz[1]) ** 2
+                            + (lxyz[2] - xyz[2]) ** 2) < 0.36:      # within 0.6 Å
+                        dup = True
+                        break
+            if dup:
+                continue
+            seen.append((pa["resi"], pa["chain"], lxyz))
+            found.append({
+                "type": "H-bond", "restype": pa["resn"], "resnr": pa["resi"],
+                "reschain": pa["chain"],
+                "tag": f'{pa["resn"]}{pa["resi"]}({pa["chain"]})',
+                "lig_xyz": lxyz, "prot_xyz": (px, py, pz),
+                "distance": float(d), "color": _COLORS["H-bond"],
+            })
+    return found
+
+
 def prepare_receptor_context(receptor_pdb):
     """Protonate + charge the receptor and build the ProLIF fingerprint ONCE, so a
     batch of ligands can reuse it instead of re-preparing the whole protein for
@@ -292,8 +381,13 @@ def prepare_receptor_context(receptor_pdb):
         prot_h = _protonate_protein(receptor_pdb)
         if prot_h is None:
             return None
+        conf = prot_h.GetConformer()
         return {"prot_plf": plf.Molecule.from_rdkit(prot_h),
-                "prot_conf": prot_h.GetConformer(),
+                "prot_conf": conf,
+                # precomputed once per receptor: the polar atoms the geometric
+                # H-bond pass needs, so a batch of ligands doesn't rescan the
+                # whole protein each time
+                "polar": _polar_protein_atoms(prot_h, conf),
                 "fp": plf.Fingerprint(_PROLIF_INTERACTIONS)}
     except Exception:
         return None
@@ -342,6 +436,10 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
 
     # ── everything below derives from ONE canonical list, so CSV == 2D == 3D ──
     recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_conf)
+    # Supplement ProLIF's angle-based H-bonds with the heavy-atom criterion —
+    # see _geometric_hbonds for why the angle test under-reports here.
+    if ctx.get("polar"):
+        recs = recs + _geometric_hbonds(lig_h, ctx["polar"], recs)
 
     def _by(t):
         return [r for r in recs if r["type"] == t]

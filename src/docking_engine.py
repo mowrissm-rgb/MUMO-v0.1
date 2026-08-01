@@ -209,10 +209,32 @@ def _mol_from_smiles_at_ph(smiles, ph=7.4):
         variants = protonate_smiles(smiles, ph_min=ph, ph_max=ph, precision=1.0)
         if not variants:
             return None
-        m = Chem.MolFromSmiles(variants[0])       # dominant protonation state at this pH
-        if m is None:
+
+        # variants[0] is NOT "the dominant state" — that assumption was wrong and
+        # it badly mis-modelled polyphenols. dimorphite returns every plausible
+        # microstate in the pH window, unordered, and for quercetin it returns
+        # THIRTY-TWO with a fully-deprotonated one first. Taking [0] meant
+        # quercetin was docked and analysed as a −4 anion with four of its five
+        # hydroxyls stripped. A molecule with no O–H cannot donate a hydrogen
+        # bond, which is exactly why MUMO reported zero H-bonds for poses that
+        # plainly have them while Discovery Studio reported several.
+        #
+        # Reality at pH 7.4: quercetin's first phenol (pKa ~6.4) is substantially
+        # ionised, the second (~8.5) only partly, the rest not at all. Aspirin's
+        # carboxylic acid (pKa 3.5) IS fully ionised and must stay so. Choosing
+        # the LEAST-ionised offered state keeps aspirin's carboxylate — its only
+        # variant — while refusing to invent extra charge on a polyphenol.
+        best, best_score = None, None
+        for smi in variants:
+            m = Chem.MolFromSmiles(smi)
+            if m is None:
+                continue
+            score = sum(abs(a.GetFormalCharge()) for a in m.GetAtoms())
+            if best_score is None or score < best_score:
+                best, best_score = m, score
+        if best is None:
             return None
-        return Chem.AddHs(m)
+        return Chem.AddHs(best)
     except Exception:
         return None
 
