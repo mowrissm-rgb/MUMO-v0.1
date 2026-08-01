@@ -526,12 +526,24 @@ def generate_2d_interaction_svg(complex_pdb_path, records, lig_mol=None):
             placed.append([key, res_atom[key], math.atan2(ap.y - cy, ap.x - cx)])
         placed.sort(key=lambda z: z[2])
         n = len(placed)
-        # neighbouring discs must not touch; the angle needed shrinks as R grows
-        min_gap = min(2 * math.pi / max(n, 1), 2.5 * DISC_R / max(R, 1.0))
-        for _ in range(120):                                 # nudge neighbours apart
+        # neighbouring discs must not touch; the angle needed shrinks as R grows.
+        # 2.8x rather than 2x the disc radius because the "A:189" line under a
+        # label is wider than the disc itself.
+        min_gap = min(2 * math.pi / max(n, 1), 2.8 * DISC_R / max(R, 1.0))
+        for _ in range(160):                                 # nudge neighbours apart
             for i in range(n):
+                if n < 2:
+                    break
                 gap = (placed[(i + 1) % n][2] - placed[i][2]) % (2 * math.pi)
-                if 0 < gap < min_gap:
+                # `gap < min_gap`, NOT `0 < gap < min_gap`. Two residues that
+                # contact the SAME ligand atom get the SAME angle, so their gap
+                # is exactly 0 — and the old strict `0 <` skipped precisely that
+                # case, leaving the two discs stacked on top of each other with
+                # their labels overprinted. A real docking hit this immediately
+                # (Asp189 and Gly219 both bind the amidine nitrogen); the
+                # synthetic test never did, because it gave every residue its
+                # own atom.
+                if gap < min_gap:
                     push = (min_gap - gap) / 2.0
                     placed[i][2] -= push
                     placed[(i + 1) % n][2] += push
