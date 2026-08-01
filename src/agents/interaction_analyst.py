@@ -28,6 +28,7 @@ HOW IT WORKS
 """
 
 import os
+import re
 
 # ── Resilient imports ────────────────────────────────────────────────────────
 # Interaction profiling needs RDKit + ProLIF. If either is missing (e.g. a cloud
@@ -469,7 +470,10 @@ def generate_2d_interaction_svg(complex_pdb_path, records, lig_mol=None):
         drawer = rdMolDraw2D.MolDraw2DSVG(W, H)
         opts = drawer.drawOptions()
         opts.setBackgroundColour((1, 1, 1, 1))
-        opts.padding = 0.35                      # shrink molecule → room for residues
+        # Leave room for the residue ring, but not so much that the structure
+        # itself becomes a small mark in the middle of the page — the canvas is
+        # cropped to the real content at the end anyway.
+        opts.padding = 0.22
         opts.bondLineWidth = 2
         drawer.DrawMolecule(mol, highlightAtoms=highlight_atoms,
                             highlightAtomColors=atom_colors)
@@ -481,69 +485,157 @@ def generate_2d_interaction_svg(complex_pdb_path, records, lig_mol=None):
 
         coords = [drawer.GetDrawCoords(i) for i in range(mol.GetNumAtoms())]
 
-        # one marker per residue (keep its first interaction + the atom it touches)
-        seen, order = {}, []
+        # A residue often makes MORE THAN ONE kind of contact — Trp215 can stack
+        # with a ring and also touch it hydrophobically; Asp189 can both salt-
+        # bridge and H-bond. The old drawing kept whichever came first and
+        # silently discarded the rest, so the figure disagreed with the
+        # interaction table printed beside it. Every type is kept now: the disc
+        # takes the strongest, the others appear as small dots beneath it.
+        PRIORITY = ["Salt bridge", "H-bond", "Pi-cation", "Pi-stack",
+                    "Halogen", "Hydrophobic"]
+        res_types, res_atom, order = {}, {}, []
         for idx, restype, resnr, reschain, itype in interactions:
             key = (restype, resnr, reschain)
-            if key not in seen:
-                seen[key] = (idx, itype)
+            if key not in res_types:
+                res_types[key], res_atom[key] = [], idx
                 order.append(key)
+            if itype not in res_types[key]:
+                res_types[key].append(itype)
 
-        cx, cy, R = W / 2.0, H / 2.0, min(W, H) * 0.40
+        DISC_R = 26.0
+        cx, cy = W / 2.0, H / 2.0
+        # Put the ring OUTSIDE the drawn structure instead of at a fixed fraction
+        # of the canvas: at a fixed radius, a large ligand had residue discs
+        # landing on top of its own atoms.
+        reach = max((math.hypot(p.x - cx, p.y - cy) for p in coords), default=0.0)
+        # Deliberately NOT clamped to the RDKit canvas. Clamping is what made
+        # discs land on top of the structure: the ring was forced inward to stay
+        # on a page that gets cropped away at the end anyway. The crop below is
+        # computed FROM these positions, so the ring defines the page rather
+        # than the page constraining the ring.
+        # The +60 is clearance for RDKit's ATOM LABELS: `reach` measures atom
+        # CENTRES, but a drawn "NH2" or "OH" extends well past its centre, so a
+        # ring sized to the centres lands discs on top of the lettering.
+        R = max(min(W, H) * 0.30, reach + DISC_R + 60)
+
         # place each residue in the DIRECTION of the atom it touches (natural,
         # Discovery-Studio-like), then relax any that sit too close together
         placed = []
         for key in order:
-            idx, itype = seen[key]
-            ap = coords[idx]
-            placed.append([key, idx, itype, math.atan2(ap.y - cy, ap.x - cx)])
-        placed.sort(key=lambda z: z[3])
+            ap = coords[res_atom[key]]
+            placed.append([key, res_atom[key], math.atan2(ap.y - cy, ap.x - cx)])
+        placed.sort(key=lambda z: z[2])
         n = len(placed)
-        min_gap = (2 * math.pi / n) if n > 6 else 0.62      # radians between markers
-        for _ in range(80):                                  # nudge neighbours apart
+        # neighbouring discs must not touch; the angle needed shrinks as R grows
+        min_gap = min(2 * math.pi / max(n, 1), 2.5 * DISC_R / max(R, 1.0))
+        for _ in range(120):                                 # nudge neighbours apart
             for i in range(n):
-                gap = (placed[(i + 1) % n][3] - placed[i][3]) % (2 * math.pi)
+                gap = (placed[(i + 1) % n][2] - placed[i][2]) % (2 * math.pi)
                 if 0 < gap < min_gap:
                     push = (min_gap - gap) / 2.0
-                    placed[i][3] -= push
-                    placed[(i + 1) % n][3] += push
+                    placed[i][2] -= push
+                    placed[(i + 1) % n][2] += push
 
-        defs, glows, circles, lines, labels, made = [], [], [], [], [], set()
-        for key, idx, itype, ang in placed:
+        def _solid(t):
+            """Solid = directional polar contact, dashed = everything else —
+            the convention these diagrams are read with."""
+            return t in ("H-bond", "Salt bridge")
+
+        circles, lines, labels, dots, disc_xy = [], [], [], [], []
+        for key, idx, ang in placed:
             restype, resnr, reschain = key
-            s = STYLE[itype]
+            types = sorted(res_types[key],
+                           key=lambda t: PRIORITY.index(t) if t in PRIORITY else 99)
+            primary = types[0]
+            s = STYLE[primary]
             ap = coords[idx]
             rx, ry = cx + R * math.cos(ang), cy + R * math.sin(ang)
+            disc_xy.append((rx, ry))
 
-            gid = "glow_" + itype.replace(" ", "_").replace("-", "_")
-            if gid not in made:
-                made.add(gid)
-                defs.append(
-                    f'<radialGradient id="{gid}" cx="50%" cy="50%" r="50%">'
-                    f'<stop offset="0%" stop-color="{s["glow"]}" stop-opacity="0.55"/>'
-                    f'<stop offset="65%" stop-color="{s["glow"]}" stop-opacity="0.14"/>'
-                    f'<stop offset="100%" stop-color="{s["glow"]}" stop-opacity="0"/>'
-                    f'</radialGradient>')
-
-            dash = '' if itype == "H-bond" else ' stroke-dasharray="6,4"'
+            # stop the connector at the disc EDGE: a line running under a filled
+            # circle and out the far side reads as a drawing mistake
+            dx, dy = rx - ap.x, ry - ap.y
+            dist = math.hypot(dx, dy) or 1.0
+            ex, ey = rx - dx / dist * DISC_R, ry - dy / dist * DISC_R
+            dash = '' if _solid(primary) else ' stroke-dasharray="6,4"'
             lines.append(
-                f'<line x1="{ap.x:.1f}" y1="{ap.y:.1f}" x2="{rx:.1f}" y2="{ry:.1f}" '
-                f'stroke="{s["line"]}" stroke-width="1.9"{dash} opacity="0.9"/>')
-            glows.append(f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="42" fill="url(#{gid})"/>')
+                f'<line x1="{ap.x:.1f}" y1="{ap.y:.1f}" x2="{ex:.1f}" y2="{ey:.1f}" '
+                f'stroke="{s["line"]}" stroke-width="1.8"{dash} opacity="0.85"/>')
+            # A flat disc with a crisp ring. The soft radial "glow" halo this
+            # replaces is the single thing that made the old figure read as a
+            # slide graphic rather than something from a paper.
             circles.append(
-                f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="24" fill="{s["fill"]}" '
-                f'stroke="{s["line"]}" stroke-width="2"/>')
+                f'<circle cx="{rx:.1f}" cy="{ry:.1f}" r="{DISC_R}" fill="{s["fill"]}" '
+                f'stroke="{s["line"]}" stroke-width="1.8"/>')
             labels.append(
-                f'<text x="{rx:.1f}" y="{ry - 2:.1f}" text-anchor="middle" '
-                f'font-family="Arial, sans-serif" font-size="12.5" font-weight="700" '
-                f'fill="#1c2733">{restype}</text>'
-                f'<text x="{rx:.1f}" y="{ry + 11:.1f}" text-anchor="middle" '
-                f'font-family="Arial, sans-serif" font-size="10" '
-                f'fill="#1c2733">{reschain}:{resnr}</text>')
+                f'<text x="{rx:.1f}" y="{ry - 1:.1f}" text-anchor="middle" '
+                f'font-family="Helvetica, Arial, sans-serif" font-size="13" '
+                f'font-weight="700" fill="#16202b">{restype}</text>'
+                f'<text x="{rx:.1f}" y="{ry + 12:.1f}" text-anchor="middle" '
+                f'font-family="Helvetica, Arial, sans-serif" font-size="10.5" '
+                f'fill="#44515f">{reschain}:{resnr}</text>')
+            for j, extra in enumerate(types[1:]):
+                ox = rx - (len(types) - 2) * 4.5 + j * 9.0
+                dots.append(f'<circle cx="{ox:.1f}" cy="{ry + DISC_R - 4.5:.1f}" r="3.2" '
+                            f'fill="{STYLE[extra]["line"]}" stroke="#ffffff" '
+                            f'stroke-width="1"/>')
 
-        overlay = (f'<defs>{"".join(defs)}</defs>'
-                   + "".join(lines) + "".join(glows) + "".join(circles) + "".join(labels))
-        return svg.replace("</svg>", overlay + "</svg>")
+        # ── crop to what was actually drawn ──
+        # The RDKit canvas is sized for the worst case, so the ring of residues
+        # leaves a wide band of empty white — which in a report reads as a
+        # broken image rather than as spacing. Measure the real extent of the
+        # structure plus the discs and trim the page to it.
+        MARGIN = 22.0
+        xs = [p.x for p in coords] + [rx for rx, _ in disc_xy]
+        ys = [p.y for p in coords] + [ry for _, ry in disc_xy]
+        left = min(xs) - DISC_R - 4
+        right = max(xs) + DISC_R + 4
+        top = min(ys) - DISC_R - 6
+        bot = max(ys) + DISC_R + 16          # +16 clears the chain:number line
+        outW = (right - left) + 2 * MARGIN
+        bodyH = (bot - top) + 2 * MARGIN
+        dx, dy = MARGIN - left, MARGIN - top
+
+        # ── legend ── only the types actually present, so nothing is unexplained.
+        # Without this the reader cannot tell what green versus pink means, which
+        # is the difference between a figure and a decoration.
+        present = [t for t in PRIORITY if any(t in v for v in res_types.values())]
+        LEG_H = 56 if present else 0
+        leg = []
+        if present:
+            leg.append(f'<line x1="26" y1="{bodyH:.0f}" x2="{outW - 26:.0f}" '
+                       f'y2="{bodyH:.0f}" stroke="#dde2e8" stroke-width="1"/>')
+            step = (outW - 60) / max(len(present), 1)
+            for i, t in enumerate(present):
+                s = STYLE[t]
+                lx, ly = 34 + i * step, bodyH + 26
+                leg.append(f'<line x1="{lx:.0f}" y1="{ly:.0f}" x2="{lx + 20:.0f}" '
+                           f'y2="{ly:.0f}" stroke="{s["line"]}" stroke-width="2.2"'
+                           + ('' if _solid(t) else ' stroke-dasharray="5,3"') + '/>')
+                leg.append(f'<circle cx="{lx + 30:.0f}" cy="{ly:.0f}" r="6.5" '
+                           f'fill="{s["fill"]}" stroke="{s["line"]}" stroke-width="1.6"/>')
+                leg.append(f'<text x="{lx + 42:.0f}" y="{ly + 4:.0f}" '
+                           f'font-family="Helvetica, Arial, sans-serif" font-size="12" '
+                           f'fill="#2b3642">{t}</text>')
+
+        newH = bodyH + LEG_H
+        # The molecule and the ring are shifted together so their coordinates stay
+        # consistent with each other; the legend is placed in the trimmed page's
+        # own coordinates, outside that group.
+        body = ("".join(lines) + "".join(circles) + "".join(labels) + "".join(dots))
+        svg = re.sub(r"(<svg[^>]*?)width='[\d.]+(px)?'", rf"\1width='{outW:.0f}px'", svg, count=1)
+        svg = re.sub(r'(<svg[^>]*?)width="[\d.]+(px)?"', rf'\1width="{outW:.0f}px"', svg, count=1)
+        svg = re.sub(r"(<svg[^>]*?)height='[\d.]+(px)?'", rf"\1height='{newH:.0f}px'", svg, count=1)
+        svg = re.sub(r'(<svg[^>]*?)height="[\d.]+(px)?"', rf'\1height="{newH:.0f}px"', svg, count=1)
+        svg = re.sub(r"viewBox='0 0 [\d.]+ [\d.]+'",
+                     f"viewBox='0 0 {outW:.0f} {newH:.0f}'", svg, count=1)
+        svg = re.sub(r'viewBox="0 0 [\d.]+ [\d.]+"',
+                     f'viewBox="0 0 {outW:.0f} {newH:.0f}"', svg, count=1)
+        # open a translate group right after the <svg ...> tag
+        m = re.search(r"<svg[^>]*>", svg)
+        svg = (svg[:m.end()] + f'<g transform="translate({dx:.1f},{dy:.1f})">'
+               + svg[m.end():])
+        return svg.replace("</svg>", body + "</g>" + "".join(leg) + "</svg>")
     except Exception as e:
         print(f"Error generating 2D SVG: {e}")
         return ""

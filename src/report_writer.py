@@ -69,8 +69,13 @@ def png_from_3d(complex_pdb_path, ia, browser, options=None, width=900, height=5
     rendered pose — the same view shown in-app, captured as a static image.
     Raises on failure (e.g. the CDN 3Dmol.js load times out) so the caller can
     report the real reason instead of silently omitting the image."""
-    from viz import render_complex_html
-    html = render_complex_html(complex_pdb_path, ia, options=options, width=width, height=height)
+    from viz import render_complex_html, REPORT_3D
+    # A printed figure gets the publication preset, not the interactive viewer's
+    # defaults — see REPORT_3D for why the two must differ.
+    opts = dict(REPORT_3D)
+    if options:
+        opts.update(options)
+    html = render_complex_html(complex_pdb_path, ia, options=opts, width=width, height=height)
     page = browser.new_page(viewport={"width": width, "height": height + 20})
     try:
         page.set_content(f"<html><body style='margin:0;'>{html}</body></html>")

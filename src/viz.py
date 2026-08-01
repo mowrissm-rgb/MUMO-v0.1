@@ -30,7 +30,54 @@ DEFAULTS = {
     "background":     "#ffffff",      # clean white "figure panel" look (like a journal figure)
     "spin":           False,
     "pocket_only":    False,          # False = whole protein; True = binding-site crop (lighter)
+    "surface_scope":  "protein",      # protein | pocket — where the surface is drawn
+    "frame":          "card",         # card = rounded + shadow (in-app) | plain = flat (figure)
 }
+
+# The look used for the STATIC figure in the .docx report — deliberately not the
+# same as the interactive viewer's.
+#
+# On screen, dashed contact lines and floating residue labels are useful: the
+# user can rotate, and a label that overlaps from one angle reads fine from
+# another. Frozen into a single printed image they are the opposite — a dozen
+# dark label boxes and dashed cylinders pile up over the pocket and the figure
+# reads as clutter rather than as a pose. A journal figure shows the BINDING
+# MODE; the contacts belong in the 2D diagram and the interaction table, where
+# they can be read precisely.
+#
+# So: muted protein so the eye goes to the ligand, a translucent surface to make
+# the pocket legible as a cavity, the ligand bright, and nothing else.
+REPORT_3D = {
+    "protein_style":   "cartoon+surface",
+    # Ghosted, not solid. At the zoom a pose figure needs, an opaque ribbon
+    # passing in FRONT of the ligand hides it completely — the first attempt at
+    # this figure was a grey ribbon tangle with the ligand buried inside. At
+    # ~0.4 the fold still reads as context while the ligand shows through.
+    "protein_color":   "grey",
+    "protein_opacity": 0.38,
+    "surface_color":   "#aebdd0",       # cool grey-blue; prints cleanly on white
+    "surface_opacity": 0.55,
+    # Sticks, not ball-and-stick: at report size the spheres read as a plastic
+    # model kit, while sticks are what a structural paper actually prints.
+    "ligand_style":    "stick",
+    "ligand_carbon":   "greenCarbon",
+    "ligand_radius":   0.17,
+    "show_residues":   False,           # no residue sticks competing with the ligand
+    "show_interactions": False,         # no dashed contact lines
+    "show_labels":     False,           # no floating text boxes
+    # Tuned by rendering a real complex (3PTB) across a zoom sweep: below ~0.5
+    # the ligand becomes a speck in a field of protein; this frames it as the
+    # subject with the cavity around it.
+    "zoom":            0.70,
+    "background":      "#ffffff",
+    "spin":            False,
+    "pocket_only":     False,
+    # Surface over the WHOLE protein at this zoom is an opaque blob with a
+    # ligand somewhere inside it. Restricted to residues lining the site, it
+    # reads as the cavity the ligand sits in — which is the point of the figure.
+    "surface_scope":   "pocket",
+    "frame":           "plain",         # a rounded card with a drop shadow reads
+}                                       # as a UI screenshot, not a figure
 
 
 def _hex(c):
@@ -187,9 +234,17 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     else:  # surface only
         js.append('v.setStyle({}, {});')
     if pstyle in ("surface", "cartoon+surface"):
+        # Which atoms get a surface. "pocket" = only residues lining the site,
+        # which is what makes a printed figure read as a cavity rather than a
+        # solid lump; "protein" = the classic whole-molecule surface.
+        if o.get("surface_scope") == "pocket":
+            surf_sel = ('{within:{distance:8.0, sel:{resn:"LIG"}}, '
+                        'not:{resn:"LIG"}}')
+        else:
+            surf_sel = '{resn:"LIG", invert:true}'
         js.append(f'v.addSurface($3Dmol.SurfaceType.VDW, '
                   f'{{opacity:{o["surface_opacity"]}, color:"{o["surface_color"]}"}}, '
-                  f'{{resn:"LIG", invert:true}});')
+                  f'{surf_sel});')
 
     # ── ligand representation ──
     cs = o["ligand_carbon"]; lr = o.get("ligand_radius", 0.22); lstyle = o["ligand_style"]
@@ -238,9 +293,12 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     js.append('v.render();')
     js.append('window.__mumoReady = true;')  # lets a headless screenshotter (report export) know the scene is drawn
 
+    _frame = ("border-radius:4px;border:1px solid rgba(0,0,0,0.16);"
+              if o.get("frame") == "plain" else
+              "border-radius:14px;border:1px solid rgba(0,0,0,0.10);"
+              "box-shadow:0 4px 14px rgba(0,0,0,0.18);")
     return f"""<div id="mumoview" style="width:100%;height:{height}px;position:relative;
-         border-radius:14px;border:1px solid rgba(0,0,0,0.10);overflow:hidden;
-         box-shadow:0 4px 14px rgba(0,0,0,0.18);"></div>
+         overflow:hidden;{_frame}"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 <!-- 3dmol.org's own CDN measured as a hard connection timeout (>10s, never
      responds) from this network path — every 3D screenshot in a report was
