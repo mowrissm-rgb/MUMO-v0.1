@@ -25,16 +25,17 @@ def resolve_receptor(tgt, data_dir):
 
 
 def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
-                  exhaustiveness=12, n_replicas=2, seed=42):
+                  exhaustiveness=None, n_replicas=2, seed=42):
     """
     Prepare the receptor once and dock every ligand.
 
-    Accuracy strategy (industrial-standard, but cloud-friendly):
-      • A FOCUSED single-ligand dock runs deep (exhaustiveness 16) and is repeated
-        across `n_replicas` seeds → reproducible best score reported as mean ± SD
-        with a confidence flag.
-      • A multi-ligand BATCH screen runs fast (exhaustiveness 8, 1 replica) so a
-        whole shortlist still finishes quickly; promote a hit, then re-dock it alone.
+    Search depth (`exhaustiveness`) defaults to None, meaning "choose by screen
+    size" — see the selection below. Passing a number overrides it outright.
+
+    That override used to be a lie: the parameter existed, callers passed it,
+    and the body ignored it in favour of a hard-coded value. A caller asking for
+    a shallow 4 silently got the deep setting, which made the two impossible to
+    compare and hid how slow a deep run really was.
 
     Returns (rows, viz, meta).
     """
@@ -101,15 +102,28 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
 
     single = len(ligands) == 1
     n_lig = len(ligands)
-    # FAST by default on free CPU (2 vCPU): 1 replica + low exhaustiveness + a tight
-    # focused search box (set in target_analyst) + few output modes. Vina time scales
-    # with exhaustiveness x box-volume x ligand-flexibility, so on big proteins with
-    # large flexible ligands all three matter. (A future "deep/accurate" toggle can
-    # re-enable replicas + higher exhaustiveness for users who want max rigour.)
+    # Vina time scales with exhaustiveness x box-volume x ligand-flexibility, so
+    # on a 2-vCPU free tier all three matter — but 4 was too shallow to be
+    # defensible. Vina's own default is 8 and published work uses 16-32; at 4 the
+    # search does not converge, which both adds run-to-run noise and blurs the
+    # pocket-specific part of the score (measured across a 108-docking matrix:
+    # only 7.7% of score variance came from WHICH TARGET it was).
+    #
+    # 16 is the publication-grade setting and is what a reported affinity should
+    # be computed at. The cost is real and roughly linear — about 4x the runtime
+    # of the old setting — so it is capped for very large screens, where the
+    # point is to RANK a shortlist rather than to publish each number, and where
+    # a 4x wait would otherwise make the run unusable on free CPU. Promote a hit
+    # and re-dock it alone to get the deep number.
     eff_rep = 1
-    # exhaustiveness 4 everywhere for speed (Vina finds the pocket fine in a tight
-    # focused box; deeper search is a GPU-era "accurate" toggle).
-    eff_exh = 4
+    if exhaustiveness is not None:
+        eff_exh = int(exhaustiveness)          # explicit caller override
+    elif n_lig <= 25:
+        eff_exh = 16                           # publication-grade
+    elif n_lig <= 60:
+        eff_exh = 12
+    else:
+        eff_exh = 8                            # still Vina's own default, never below
     status(f"Receptor ready ({pocket}). Docking {n_lig} ligand(s) "
            f"— exhaustiveness {eff_exh}, {eff_rep} replica(s)…")
 
