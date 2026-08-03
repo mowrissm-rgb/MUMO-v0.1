@@ -34,6 +34,35 @@ def _resolve_executable(name, hint_dir=None):
                 return candidate
     return None
 
+# The heavy (non-hydrogen) atoms every standard residue must have to be
+# complete. Used to spot half-modelled side chains before Meeko chokes on them.
+# OXT is excluded deliberately: it exists only on a C-terminus, so requiring it
+# would condemn every other residue in the chain.
+_RESIDUE_HEAVY_ATOMS = {
+    "ALA": {"N", "CA", "C", "O", "CB"},
+    "ARG": {"N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"},
+    "ASN": {"N", "CA", "C", "O", "CB", "CG", "OD1", "ND2"},
+    "ASP": {"N", "CA", "C", "O", "CB", "CG", "OD1", "OD2"},
+    "CYS": {"N", "CA", "C", "O", "CB", "SG"},
+    "GLN": {"N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "NE2"},
+    "GLU": {"N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "OE2"},
+    "GLY": {"N", "CA", "C", "O"},
+    "HIS": {"N", "CA", "C", "O", "CB", "CG", "ND1", "CD2", "CE1", "NE2"},
+    "ILE": {"N", "CA", "C", "O", "CB", "CG1", "CG2", "CD1"},
+    "LEU": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2"},
+    "LYS": {"N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ"},
+    "MET": {"N", "CA", "C", "O", "CB", "CG", "SD", "CE"},
+    "PHE": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"},
+    "PRO": {"N", "CA", "C", "O", "CB", "CG", "CD"},
+    "SER": {"N", "CA", "C", "O", "CB", "OG"},
+    "THR": {"N", "CA", "C", "O", "CB", "OG1", "CG2"},
+    "TRP": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "NE1", "CE2",
+            "CE3", "CZ2", "CZ3", "CH2"},
+    "TYR": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"},
+    "VAL": {"N", "CA", "C", "O", "CB", "CG1", "CG2"},
+}
+
+
 def clean_protein_pdb(input_path, output_path):
     """
     Cleans a protein PDB file by:
@@ -43,10 +72,7 @@ def clean_protein_pdb(input_path, output_path):
     """
     print(f"[Prep] Cleaning protein PDB file: {input_path}")
     
-    STANDARD_AMINOS = {
-        "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE",
-        "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL"
-    }
+    STANDARD_AMINOS = set(_RESIDUE_HEAVY_ATOMS)
     
     SOLVENTS_AND_SALTS = {
         "HOH", "WAT", "SOL", "TIP", "DOD", "CL", "NA", "SO4", "PO4", "ACT", "GOL", "EDT", "DMS"
@@ -108,20 +134,61 @@ def clean_protein_pdb(input_path, output_path):
             raise ValueError("The PDB file does not contain any standard protein chains.")
 
 
-    # Second pass: write only standard protein ATOM records
+    # Second pass: which residues are STRUCTURALLY COMPLETE?
+    #
+    # Crystal structures routinely contain residues with disordered side chains
+    # modelled only part-way — an ASP with just N/CA/C/O/CB, for instance.
+    # Meeko has no template for a half-residue and reports
+    # "No template matched for residue_key='A:10' ... heavy_miss=3". That alone
+    # is survivable, but it cascades: if the untemplated residue is one half of
+    # a DISULFIDE, its partner is left with a bond to nothing and Meeko dies
+    # outright with "Expected 2 paddings for (A:69, A:101) ... but got 1",
+    # which takes the entire docking run with it.
+    #
+    # So incomplete residues are removed here, before Meeko ever sees them.
+    # They are REMOVED rather than truncated to alanine: mutating a half-built
+    # ASP into an ALA would silently delete a charge from the pocket and change
+    # the chemistry being reported. A gap in the backbone is honest; an invented
+    # residue is not. Whatever is dropped is printed so it is never silent.
+    seen_atoms = {}
+    for line in open(input_path, 'r'):
+        if line.startswith("ATOM"):
+            res_name = line[17:20].strip()
+            if line[21] in valid_chains and res_name in STANDARD_AMINOS:
+                alt = line[16]
+                if alt not in (" ", "A"):
+                    continue                      # alternate conformer B/C/...
+                key = (line[21], line[22:27])
+                seen_atoms.setdefault(key, (res_name, set()))[1].add(line[12:16].strip())
+
+    incomplete = set()
+    for key, (res_name, atoms) in seen_atoms.items():
+        need = _RESIDUE_HEAVY_ATOMS.get(res_name)
+        if need and not need.issubset(atoms):
+            incomplete.add(key)
+
+    if incomplete:
+        shown = ", ".join(f"{c}:{r.strip()}" for c, r in sorted(incomplete)[:8])
+        print(f"[Prep] Removing {len(incomplete)} residue(s) with missing atoms "
+              f"(disordered side chains Meeko cannot build): {shown}"
+              + (" …" if len(incomplete) > 8 else ""))
+
+    # Third pass: write only standard, complete protein ATOM records
     atom_count = 0
     with open(input_path, 'r') as infile, open(output_path, 'w') as outfile:
         for line in infile:
             if line.startswith("ATOM"):
                 res_name = line[17:20].strip()
                 chain_id = line[21]
-                if chain_id in valid_chains and res_name in STANDARD_AMINOS:
+                if (chain_id in valid_chains and res_name in STANDARD_AMINOS
+                        and (chain_id, line[22:27]) not in incomplete
+                        and line[16] in (" ", "A")):
                     outfile.write(line)
                     atom_count += 1
             elif line.startswith("TER") or line.startswith("END"):
                 # Retain chain termination and structure end markers
                 outfile.write(line)
-                
+
     print(f"[Prep] Cleaned protein saved to: {output_path} ({atom_count} atoms written)")
 
 def parse_untemplated_residues(text):
@@ -140,10 +207,24 @@ def parse_untemplated_residues(text):
     import re as _re
     if not text:
         return []
-    m = _re.search(r"unknown residues:\s*\{([^}]*)\}", str(text))
-    if not m:
-        return []
-    keys = _re.findall(r"['\"]\s*([A-Za-z0-9]*:-?\d+[A-Za-z]?)\s*['\"]", m.group(1))
+    text = str(text)
+    keys = []
+    m = _re.search(r"unknown residues:\s*\{([^}]*)\}", text)
+    if m:
+        keys = _re.findall(r"['\"]\s*([A-Za-z0-9]*:-?\d+[A-Za-z]?)\s*['\"]", m.group(1))
+    # Meeko has a SECOND, differently-worded failure for the same underlying
+    # problem: "No template matched for residue_key='A:10'". The old pattern
+    # only knew the first wording, so this one was never retried — it went
+    # straight to a hard error and killed the run. It appears for residues with
+    # missing atoms, and if one is half of a disulfide the run then dies with
+    # "Expected 2 paddings for (A:69, A:101)".
+    keys += _re.findall(r"residue_key=['\"]([A-Za-z0-9]*:-?\d+[A-Za-z]?)['\"]", text)
+    # ...and the padding failure names its pair as a plain tuple.
+    for a, b in _re.findall(r"paddings for \(([^,]+),\s*([^)]+)\)", text):
+        for k in (a, b):
+            k = k.strip().strip("'\"")
+            if _re.match(r"^[A-Za-z0-9]*:-?\d+[A-Za-z]?$", k):
+                keys.append(k)
     return sorted(set(keys))
 
 
