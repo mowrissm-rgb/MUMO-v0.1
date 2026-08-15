@@ -836,9 +836,21 @@ def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, dat
         template = Chem.MolFromSmiles(smiles)
         if template is None:
             return None
-        template = Chem.RemoveHs(template)
+        # RemoveAllHs, not RemoveHs. The RCSB component dictionary writes some
+        # ligands with an EXPLICIT hydrogen carrying stereochemistry — benzamidine
+        # is "[H]/N=C(\c1ccccc1)/N" — and RemoveHs refuses to drop an H whose
+        # removal would discard a stereo definition. The template therefore came
+        # out with 10 heavy atoms against the native ligand's 9, the substructure
+        # match failed, and AssignBondOrdersFromTemplate raised "No matching
+        # found". That was caught by the except below and printed as
+        # "native redock skipped", so MUMO's own gold-standard validation was
+        # silently never running — on 3PTB, on 1OYT, on every target whose
+        # ligand happened to be written that way.
+        template = Chem.RemoveAllHs(template)
 
-        native_noH = Chem.RemoveHs(Chem.MolFromPDBBlock(native_block, sanitize=False))
+        # RemoveAllHs on both sides too: the atom COUNTS must agree for the
+        # substructure match, so a stray explicit H anywhere breaks it.
+        native_noH = Chem.RemoveAllHs(Chem.MolFromPDBBlock(native_block, sanitize=False))
         native_fixed = AllChem.AssignBondOrdersFromTemplate(template, native_noH)
 
         # Re-dock the native ligand into the prepared receptor
@@ -853,7 +865,7 @@ def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, dat
         # Read the best docked pose via meeko (no OpenBabel)
         pmol = PDBQTMolecule.from_file(res["out_pdbqt"], skip_typing=True)
         docked_raw = RDKitMolCreate.from_pdbqt_mol(pmol)[0]
-        docked_noH = Chem.RemoveHs(docked_raw)
+        docked_noH = Chem.RemoveAllHs(docked_raw)
         docked_fixed = AllChem.AssignBondOrdersFromTemplate(template, docked_noH)
 
         rmsd = rdMolAlign.CalcRMS(docked_fixed, native_fixed)    # no alignment: same box frame
