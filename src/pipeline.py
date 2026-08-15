@@ -135,14 +135,20 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
 
     # Gold-standard validation: if the structure has a co-crystal ligand, redock it
     # and report RMSD to the real pose (only experimental complexes — not AlphaFold).
-    # This is a WHOLE extra dock, so run it shallow (exhaustiveness 4) — it only needs
-    # to confirm the setup, not to be publication-grade, and it must not double the
-    # user's wait.
+    #
+    # This RMSD is the number that substantiates the whole run — it is what a
+    # reviewer looks at first and what gets quoted in a methods paper. It was
+    # previously run at exhaustiveness 4 with the reasoning that it "only needs
+    # to confirm the setup, not to be publication-grade". That was backwards:
+    # the one dock in the run that IS publication-grade evidence is this one.
+    # Vina's own default of 8 costs roughly 20-30s per target and reproduces
+    # crystal poses well (measured: 3PTB 0.40 A, 1STP 0.68 A, 1AZM 1.08 A).
     validation = None
     if "co-crystal" in pocket.lower():
         status("Validating setup: re-docking the native co-crystal ligand…")
         validation = validate_native_redock(pdb_path, receptor, vina, center, size,
-                                            data_dir, exhaustiveness=min(eff_exh, 4), seed=seed)
+                                            data_dir, exhaustiveness=max(8, min(eff_exh, 16)),
+                                            seed=seed)
 
     rows, viz, reliability_by = [], {}, {}
     for k, lig in enumerate(ligands):
