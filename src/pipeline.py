@@ -25,12 +25,13 @@ def resolve_receptor(tgt, data_dir):
 
 
 def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
-                  exhaustiveness=None, n_replicas=2, seed=42):
+                  exhaustiveness=None, n_replicas=None, seed=42):
     """
     Prepare the receptor once and dock every ligand.
 
-    Search depth (`exhaustiveness`) defaults to None, meaning "choose by screen
-    size" — see the selection below. Passing a number overrides it outright.
+    Search depth (`exhaustiveness`) and `n_replicas` both default to None,
+    meaning "choose by screen size" — see the selection below. Passing a number
+    overrides either outright.
 
     That override used to be a lie: the parameter existed, callers passed it,
     and the body ignored it in favour of a hard-coded value. A caller asking for
@@ -115,7 +116,6 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     # point is to RANK a shortlist rather than to publish each number, and where
     # a 4x wait would otherwise make the run unusable on free CPU. Promote a hit
     # and re-dock it alone to get the deep number.
-    eff_rep = 1
     if exhaustiveness is not None:
         eff_exh = int(exhaustiveness)          # explicit caller override
     elif n_lig <= 25:
@@ -124,6 +124,32 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
         eff_exh = 12
     else:
         eff_exh = 8                            # still Vina's own default, never below
+
+    # REPLICATES. Vina's search is stochastic, so ONE run with a fixed seed is a
+    # single sample dressed up as an answer: no error bar, and no way to tell a
+    # converged result from a coin flip.
+    #
+    # This is not theoretical. Re-docking erlotinib into 1M17 flips between
+    # 1.52 A (correct pose) and 7.92 A (wrong pose) under trivial changes to the
+    # search box — non-monotonic, i.e. search noise rather than geometry. With
+    # eff_rep = 1 hardcoded, MUMO reported whichever one it happened to land on
+    # and looked equally confident either way.
+    #
+    # Three replicas with DIFFERENT seeds gives the best-of-three (a better
+    # estimate, since Vina's score is a minimisation) plus the spread, which
+    # dock_with_replicas already turns into mean +/- SD and a confidence flag.
+    # That machinery has existed all along and was simply never engaged.
+    #
+    # Scaled by screen size for the same reason as exhaustiveness: a shortlist
+    # being ranked does not need the error bar that a reported number does.
+    if n_replicas is not None:
+        eff_rep = max(1, int(n_replicas))      # explicit caller override
+    elif n_lig <= 10:
+        eff_rep = 3                            # reportable: best-of-3 + spread
+    elif n_lig <= 30:
+        eff_rep = 2                            # enough to expose an unstable pose
+    else:
+        eff_rep = 1                            # large screen: rank first, re-dock hits
     status(f"Receptor ready ({pocket}). Docking {n_lig} ligand(s) "
            f"— exhaustiveness {eff_exh}, {eff_rep} replica(s)…")
 

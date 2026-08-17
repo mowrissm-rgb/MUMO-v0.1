@@ -793,7 +793,7 @@ def reliability_assessment(res, validation=None):
 
 
 def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, data_dir,
-                           exhaustiveness=16, seed=42):
+                           exhaustiveness=16, seed=42, n_replicas=3):
     """
     GOLD-STANDARD validation. If the target structure carries a co-crystallised ligand,
     re-dock THAT ligand into the same box and measure how close the predicted pose is to
@@ -860,7 +860,12 @@ def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, dat
                                  os.path.join(data_dir, "_native_out"),
                                  os.path.join(data_dir, "_native_cfg"),
                                  center, size, exhaustiveness=exhaustiveness,
-                                 n_replicas=1, base_seed=seed)
+                                 # Replicated on purpose. A single seed made this
+                                 # number a coin flip: erlotinib into 1M17 landed
+                                 # on either 1.52 A or 7.92 A depending on nothing
+                                 # meaningful. Best-of-N by score is both the
+                                 # better estimate and the honest one.
+                                 n_replicas=max(1, int(n_replicas)), base_seed=seed)
 
         # Read the best docked pose via meeko (no OpenBabel)
         pmol = PDBQTMolecule.from_file(res["out_pdbqt"], skip_typing=True)
