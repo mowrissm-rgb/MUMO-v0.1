@@ -1,0 +1,38 @@
+name: mumo
+# Conda environment for deploying MUMO on Streamlit Community Cloud (Linux).
+# conda-forge / bioconda give us the native tools (Vina, OpenBabel, RDKit)
+# pre-built, so nothing has to compile on the cloud.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - rdkit
+  - autodock-vina      # provides the 'vina' command on PATH
+  - xtb                # GFN2-xTB semi-empirical QM (HOMO/LUMO). A COMMAND-LINE
+                       # BINARY, run as a subprocess and never imported, so it
+                       # carries none of the in-process ABI risk that openmm did.
+  - blast              # bioconda — self-hosted BLAST+ (blastp/makeblastdb), public domain
+  - numpy
+  - scipy              # required by meeko (meeko declares no deps, so we add them)
+  - gemmi              # required by meeko's receptor preparation
+  - pandas
+  - lxml
+  # NOTE: openmm + openff-toolkit + openmmforcefields were REMOVED — adding them
+  # destabilised the native stack (numpy/MKL/libstdc++ ABI conflict) and caused
+  # SEGFAULTS (exit 139) in ProLIF/MDAnalysis during interaction analysis, taking
+  # the whole Space down. The MD feature needs an isolated env/subprocess (or GPU);
+  # do not re-add these to the shared conda env without isolation.
+  - pip
+  - pip:
+      - streamlit
+      - meeko
+      - prolif                      # protein-ligand interaction fingerprints (Apache-2.0) — replaced GPL PLIP+OpenBabel; pulls in MDAnalysis
+      - py3Dmol
+      - requests
+      - supabase                    # login + persistent cloud chat history
+      - python-docx                 # .docx report export + reading uploaded Word files (MIT)
+      - playwright                  # headless Chromium: rasterizes SVG/3D views into the report (Apache-2.0)
+      - matplotlib                  # frontier-orbital diagrams — drawn directly, no browser needed (PSF/BSD-style)
+      - pypdf                       # reading uploaded PDF reports (pure-Python, BSD)
+      - openpyxl                    # reading uploaded .xlsx spreadsheets (pure-Python, MIT)

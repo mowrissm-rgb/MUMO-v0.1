@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment (never commit this — it's Windows-specific & huge)
+.venv/
+
+# Generated data / docking outputs (regenerated at runtime)
+data/
+
+# Downloaded / large binaries (Linux vina is fetched at runtime; keep repo light)
+bin/vina
+bin/p2rank_2.5.1/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit API keys
+mumo_config.json
+.streamlit/secrets.toml
+src/refdata/rama8000.npz

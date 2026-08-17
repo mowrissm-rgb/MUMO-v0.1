@@ -1,0 +1,503 @@
+"""
+MUMO — Report charts (pure SVG, no plotting library)
+Multi-Agent Drug Discovery & Development AI Platform
+Author: Mowriss & Claude (research partner)
+
+WHY HAND-WRITTEN SVG
+--------------------
+These figures go into the .docx report, which already rasterizes SVG through a
+headless Chromium (report_writer.svg_to_png). Emitting SVG therefore needs NO
+new dependency — and this codebase has twice been taken down by adding heavy
+native packages to the shared conda env, so "no new deps" is worth real effort.
+
+DESIGN RULES APPLIED (and why)
+------------------------------
+* ONE hue for every bar, never a darker-where-bigger ramp. Ligands and residues
+  are nominal categories — their order comes FROM the value being plotted, so
+  shading by magnitude would encode bar length twice and burn the only free
+  channel on information the length already carries.
+* Horizontal bars, because compound names are long and unwrappable.
+* Bars capped at 22px with the band's remainder left as air; 4px rounded data
+  end, square at the baseline; hairline solid gridlines one step off the
+  surface. The data is the only thing allowed to be loud.
+* Values sit at the bar tip in ink, never in the series color — a coloured hue
+  that works as a fill is not legible as text.
+* No legend: a single series is already named by the title, so a one-swatch box
+  would only restate it.
+* Surface is white to match the document page the figure lands on; the palette
+  was validated against that surface, not the default off-white.
+
+A one-bar bar chart is not a chart, so the affinity figure is skipped when there
+is only one ligand — the summary table already states that number.
+"""
+
+from collections import Counter
+
+# ── palette (validated against a #ffffff surface) ──────────────────────────
+SERIES = "#2a78d6"      # categorical slot 1, the single hue for every bar
+# Ordinal ramp for the contact map: one hue, light→dark. On a light surface an
+# ordinal step must still clear 2:1 against it, so the pale step is 250 — not
+# the near-white end of the ramp, which is only legal for continuous scales.
+SEQ_LIGHT = "#86b6ef"   # blue step 250 — "contact"
+SEQ_STRONG = "#2a78d6"  # blue step 450 — "hydrogen bond"
+NEUTRAL = "#f0efec"     # "no contact": present as a cell, recedes as a value
+SURFACE = "#ffffff"     # the docx page
+INK = "#0b0b0b"         # primary text
+INK_SECOND = "#52514e"  # subtitles
+INK_MUTED = "#898781"   # axis + category labels
+GRID = "#e1e0d9"        # hairline gridline
+AXIS = "#c3c2b7"        # baseline
+
+FONT = ('-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, '
+        'Roboto, Helvetica, Arial, sans-serif')
+
+BAR_H = 22        # ≤24px cap
+BAND_H = 32       # leftover (10px) is deliberate air, and exceeds the 2px gap
+PAD_L = 268       # MAX gutter for category labels (see _gutter)
+PAD_L_MIN = 92    # MIN gutter, so short labels don't strand an empty band
+PAD_R = 96        # room for the value at each bar tip (+ any H-bond annotation)
+PAD_T = 68        # title + subtitle
+PAD_B = 58        # axis labels, then the caption clear of them
+MARGIN = 28       # left margin for title / subtitle / caption
+CHAR_W = 6.05     # ≈ average advance of 11.5px sans, for truncation only
+
+
+def _gutter(labels):
+    """Width of the category-label column, sized to the labels actually present.
+
+    Fixing this at the width long compound names need would strand a wide empty
+    band beside short ones (residue codes are ~6 characters), which reads as a
+    layout mistake. Clamped at both ends: never so narrow that labels crowd the
+    baseline, never so wide that it eats the plot.
+    """
+    longest = max((len(str(x)) for x in labels), default=0)
+    return int(max(PAD_L_MIN, min(PAD_L, longest * CHAR_W + 24)))
+
+
+def _esc(s):
+    """XML-escape. Compound names really do contain & and < (e.g. '<0.1')."""
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _truncate(text, max_px):
+    """Shorten to fit a pixel width, with an ellipsis.
+
+    SVG has no text metrics available at build time, so this estimates from an
+    average advance. It errs short — a slightly early ellipsis is fine, a label
+    overflowing into the plot is not.
+    """
+    s = str(text)
+    limit = max(4, int(max_px / CHAR_W))
+    return s if len(s) <= limit else s[:limit - 1].rstrip(" ,-") + "…"
+
+
+def _nice_ticks(vmax, target=5):
+    """Round axis ticks to clean numbers (0 / 2 / 4 …) covering vmax.
+
+    Ticks carry every value that isn't directly labelled, so they have to land
+    on numbers a reader can hold in their head, not on the raw data maximum.
+    """
+    import math
+    if vmax <= 0:
+        return [0], 1.0
+    raw = vmax / max(1, target)
+    mag = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1
+    step = 10 * mag
+    for m in (1, 2, 2.5, 5, 10):
+        if raw <= m * mag:
+            step = m * mag
+            break
+    top = math.ceil(vmax / step) * step
+    n = int(round(top / step))
+    return [i * step for i in range(n + 1)], top
+
+
+def _bar_path(x0, y, w, h, r=4):
+    """A bar with a rounded DATA end and a square baseline end.
+
+    Rounding only the growing end is what keeps a row of bars reading as
+    measurements from a common baseline rather than as floating pills.
+    """
+    r = max(0.0, min(float(r), float(w)))
+    if w <= 0.5:
+        return ""
+    if r <= 0.5:
+        return f"M{x0:.1f},{y:.1f} h{w:.1f} v{h:.1f} h-{w:.1f} Z"
+    return (f"M{x0:.1f},{y:.1f} "
+            f"H{x0 + w - r:.1f} "
+            f"A{r:.1f},{r:.1f} 0 0 1 {x0 + w:.1f},{y + r:.1f} "
+            f"V{y + h - r:.1f} "
+            f"A{r:.1f},{r:.1f} 0 0 1 {x0 + w - r:.1f},{y + h:.1f} "
+            f"H{x0:.1f} Z")
+
+
+def _frame(width, height, title, subtitle):
+    """Opening SVG + title block, shared by both figures.
+
+    Title, subtitle and caption all hang off the same left margin rather than
+    off the plot edge, so the text block stays aligned as the gutter flexes.
+    """
+    return [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+        f'height="{height}" viewBox="0 0 {width} {height}" '
+        f'font-family=\'{FONT}\'>',
+        f'<rect width="{width}" height="{height}" fill="{SURFACE}"/>',
+        f'<text x="{MARGIN}" y="30" font-size="17" font-weight="600" '
+        f'fill="{INK}">{_esc(title)}</text>',
+        f'<text x="{MARGIN}" y="50" font-size="12.5" '
+        f'fill="{INK_SECOND}">{_esc(subtitle)}</text>',
+    ]
+
+
+def _axis(out, x0, plot_w, y_top, y_bot, ticks, top, unit="", negate=False):
+    """Hairline vertical gridlines + tick labels, drawn UNDER the bars.
+
+    `negate` labels the scale as it truly runs for docking scores — 0, -2, -4 …
+    — while the bars still grow rightward by magnitude. Vina affinities are
+    negative and more-negative is tighter binding, so this is the axis a reader
+    of a docking paper expects; without it the scale silently reports
+    magnitudes that are the opposite sign to every number in the table.
+    """
+    for t in ticks:
+        x = x0 + (t / top) * plot_w if top else x0
+        out.append(f'<line x1="{x:.1f}" y1="{y_top}" x2="{x:.1f}" y2="{y_bot}" '
+                   f'stroke="{GRID}" stroke-width="1"/>')
+        lab = ("0" if (negate and t == 0) else
+               (f"−{t:g}{unit}" if negate else f"{t:g}{unit}"))
+        out.append(f'<text x="{x:.1f}" y="{y_bot + 18}" font-size="11" '
+                   f'fill="{INK_MUTED}" text-anchor="middle">{lab}</text>')
+    out.append(f'<line x1="{x0}" y1="{y_top}" x2="{x0}" y2="{y_bot}" '
+               f'stroke="{AXIS}" stroke-width="1"/>')
+
+
+# ── colour scale ───────────────────────────────────────────────────────────
+# Bar colour encodes affinity as well as bar length. Length alone already shows
+# strength, but the report caption promises a colour scale and a reader
+# comparing two targets side by side reads colour faster than length. Anchors
+# sampled from viridis, which stays legible in greyscale and for colour-blind
+# readers — the reason it is the default in most scientific plotting.
+_VIRIDIS = [(68, 1, 84), (59, 82, 139), (33, 145, 140), (94, 201, 98), (253, 231, 37)]
+
+
+def _viridis(t):
+    """t in 0..1 -> "rgb(r,g,b)" along the viridis ramp."""
+    t = max(0.0, min(1.0, float(t)))
+    seg = t * (len(_VIRIDIS) - 1)
+    i = min(int(seg), len(_VIRIDIS) - 2)
+    f = seg - i
+    a, b = _VIRIDIS[i], _VIRIDIS[i + 1]
+    return "rgb(%d,%d,%d)" % tuple(int(a[k] + (b[k] - a[k]) * f) for k in range(3))
+
+
+def _colourbar(out, x, y_top, y_bot, vmin, vmax, label="kcal/mol", grad_id="affgrad"):
+    """A vertical colour legend, so the bar colours mean something."""
+    out.append(f'<defs><linearGradient id="{grad_id}" x1="0" y1="1" x2="0" y2="0">')
+    for k in range(11):
+        out.append(f'<stop offset="{k*10}%" stop-color="{_viridis(k/10)}"/>')
+    out.append('</linearGradient></defs>')
+    out.append(f'<rect x="{x}" y="{y_top}" width="14" height="{y_bot - y_top}" '
+               f'fill="url(#{grad_id})" stroke="{AXIS}" stroke-width="0.5"/>')
+    for k in range(5):
+        frac = k / 4
+        yy = y_bot - frac * (y_bot - y_top)
+        val = vmin + frac * (vmax - vmin)
+        out.append(f'<text x="{x + 20}" y="{yy + 3.5:.1f}" font-size="10" '
+                   f'fill="{INK_MUTED}">{val:.2f}</text>')
+    out.append(f'<text x="{x + 8}" y="{y_top - 8}" font-size="10" '
+               f'fill="{INK_MUTED}" text-anchor="middle">{label}</text>')
+
+
+def affinity_chart_svg(rows, width=900):
+    """Binding affinity per ligand, strongest first.
+
+    Vina affinities are negative and more-negative means tighter binding, which
+    inverts the usual "longer bar = more" intuition. The bars are drawn from
+    magnitude so length still reads as strength, while every label keeps its
+    real signed value and the subtitle states the convention outright.
+
+    Returns an SVG string, or None when there is nothing worth plotting.
+    """
+    # A multi-target screen docks the SAME ligand against several proteins, so
+    # "lupeol" alone would label two different bars identically. Qualify the
+    # label with its target whenever more than one appears in this data;
+    # single-target reports (the overwhelming majority) see no change at all.
+    targets = {r.get("Target") for r in (rows or []) if r.get("Target")}
+    multi_target = len(targets) > 1
+
+    pairs = []
+    for r in rows or []:
+        try:
+            v = float(r.get("Best affinity (kcal/mol)"))
+        except (TypeError, ValueError):
+            continue            # "FAILED" and blanks simply aren't plottable
+        if v < 0:
+            lig = str(r.get("Ligand", "?"))
+            label = f"{lig} ({r['Target']})" if multi_target and r.get("Target") else lig
+            pairs.append((label, v))
+    if len(pairs) < 2:
+        return None             # one bar is not a chart — the table says it
+
+    pairs.sort(key=lambda p: p[1])          # most negative (strongest) first
+    mags = [abs(v) for _, v in pairs]
+    ticks, top = _nice_ticks(max(mags))
+
+    pad_l = _gutter([_truncate(lbl, PAD_L - 24) for lbl, _ in pairs])
+    CBAR = 74                    # room on the right for the colour legend
+    plot_w = width - pad_l - PAD_R - CBAR
+    height = PAD_T + len(pairs) * BAND_H + PAD_B
+    y_top, y_bot = PAD_T, PAD_T + len(pairs) * BAND_H
+
+    # Name the target in the title. On a report with one chart per target,
+    # five identically-titled figures are impossible to tell apart.
+    only_target = next(iter(targets)) if len(targets) == 1 else None
+    title = (f"{only_target} — docked ligand binding affinities" if only_target
+             else "Binding affinity by ligand")
+    out = _frame(width, height, title,
+                 "More negative = stronger predicted binding (AutoDock Vina, kcal/mol)")
+    _axis(out, pad_l, plot_w, y_top, y_bot, ticks, top, negate=True)
+
+    for i, (label, v) in enumerate(pairs):
+        y = y_top + i * BAND_H + (BAND_H - BAR_H) / 2
+        w = (abs(v) / top) * plot_w if top else 0
+        # Strongest binder = brightest end of the ramp. mags is ordered
+        # strongest-first, so normalising against min/max (not mags[0]/mags[-1])
+        # is what keeps this the right way round — inverted, the colour would
+        # contradict the caption underneath.
+        _lo, _hi = min(mags), max(mags)
+        shade = _viridis((abs(v) - _lo) / ((_hi - _lo) or 1))
+        out.append(f'<path d="{_bar_path(pad_l, y, w, BAR_H)}" fill="{shade}"/>')
+        out.append(f'<text x="{pad_l - 10}" y="{y + BAR_H / 2 + 4:.1f}" '
+                   f'font-size="11.5" fill="{INK_MUTED}" text-anchor="end">'
+                   f'{_esc(_truncate(label, pad_l - 22))}</text>')
+        out.append(f'<text x="{pad_l + w + 8:.1f}" y="{y + BAR_H / 2 + 4:.1f}" '
+                   f'font-size="11.5" font-weight="600" fill="{INK}">'
+                   f'−{abs(v):.1f}</text>')
+
+    # legend bottom = dark = weakest, top = bright = strongest, matching the bars
+    _colourbar(out, pad_l + plot_w + 34, y_top, y_bot, -min(mags), -max(mags))
+    out.append(f'<text x="{MARGIN}" y="{height - 12}" font-size="11" '
+               f'fill="{INK_MUTED}">Longer bar and brighter colour = more '
+               f'negative ΔG = tighter predicted binding.</text>')
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def contact_heatmap_svg(rows, width=960, top_n=14, target_name=None):
+    """Ligand × residue contact matrix — which ligands touch which residues.
+
+    This is the figure a multi-ligand docking study is actually about: the two
+    bar charts each collapse one axis (per-ligand strength, per-residue
+    popularity), and only the matrix shows the PATTERN — whether the ligands
+    share a binding mode or split into groups that engage different parts of
+    the pocket. It is genuinely two-dimensional data, which is why it earns a
+    grid where a 3-D bar would only be adding a decorative axis to a single
+    number per ligand.
+
+    Cells are an ORDINAL scale of contact specificity, one hue, light→dark:
+    no contact → contact → hydrogen bond. Absent cells keep a neutral wash
+    rather than nothing so the grid still reads as a matrix, and every step is
+    named in a scale legend, since here colour carries meaning on its own.
+
+    Rows are ordered by affinity and columns by contact frequency, matching the
+    two bar charts, so a reader moving between figures keeps their bearings.
+
+    `rows` must all belong to ONE pocket, for the same reason as
+    `residue_frequency_svg` — `build_figures` enforces this by calling this
+    function once per target on a multi-target screen; `target_name` only
+    changes the printed title.
+
+    Returns an SVG string, or None when the data can't support a matrix.
+    """
+    def _split(v):
+        return [x.strip() for x in str(v or "").split(";") if x.strip() and x.strip() != "-"]
+
+    ligands, contacts = [], Counter()
+    for r in rows or []:
+        res = set(_split(r.get("All interacting residues")))
+        if not res:
+            continue
+        try:
+            aff = float(r.get("Best affinity (kcal/mol)"))
+        except (TypeError, ValueError):
+            aff = 0.0
+        ligands.append({"label": str(r.get("Ligand", "?")), "aff": aff, "res": res,
+                        "hb": set(_split(r.get("H-bond residues")))})
+        for x in res:
+            contacts[x] += 1
+    if len(ligands) < 2 or len(contacts) < 2:
+        return None
+
+    ligands.sort(key=lambda d: d["aff"])                       # strongest first
+    cols = [r for r, _ in sorted(contacts.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]]
+
+    # Cells widen when there are few residues, so a 5-column map fills its
+    # figure instead of huddling against the labels; capped so a 2-column map
+    # doesn't turn into slabs. The figure is then sized to its content rather
+    # than padded out to a fixed width, which is what left it looking lopsided.
+    CELL_H, GAP = 26, 2
+    CELL_W = int(max(38, min(64, 430 / max(1, len(cols)))))
+    COL_LABEL_H = 56
+    pad_l = _gutter([_truncate(l["label"], PAD_L - 24) for l in ligands])
+    grid_w = len(cols) * CELL_W
+    width = max(pad_l + grid_w + MARGIN + 24, 680)
+    y_top = PAD_T + COL_LABEL_H
+    grid_h = len(ligands) * CELL_H
+    height = y_top + grid_h + 74                               # + legend + caption
+
+    title = "Ligand × residue contact map" + (f" — {target_name}" if target_name else "")
+    out = _frame(width, height, title,
+                 f"Which of the {len(ligands)} ligands contact which binding-site "
+                 f"residues, and where those contacts are hydrogen bonds")
+
+    # column headers, rotated so 7-character residue codes don't collide
+    for j, res in enumerate(cols):
+        cx = pad_l + j * CELL_W + CELL_W / 2
+        out.append(f'<text x="{cx:.1f}" y="{y_top - 8}" font-size="11" '
+                   f'fill="{INK_MUTED}" text-anchor="start" '
+                   f'transform="rotate(-45 {cx:.1f} {y_top - 8})">{_esc(res)}</text>')
+
+    for i, lig in enumerate(ligands):
+        y = y_top + i * CELL_H
+        out.append(f'<text x="{pad_l - 10}" y="{y + CELL_H / 2 + 4:.1f}" '
+                   f'font-size="11.5" fill="{INK_MUTED}" text-anchor="end">'
+                   f'{_esc(_truncate(lig["label"], pad_l - 22))}</text>')
+        for j, res in enumerate(cols):
+            x = pad_l + j * CELL_W
+            if res in lig["hb"]:
+                fill = SEQ_STRONG
+            elif res in lig["res"]:
+                fill = SEQ_LIGHT
+            else:
+                fill = NEUTRAL
+            # the 2px inset IS the separator — never a stroke around a mark
+            out.append(f'<rect x="{x + GAP / 2:.1f}" y="{y + GAP / 2:.1f}" '
+                       f'width="{CELL_W - GAP}" height="{CELL_H - GAP}" '
+                       f'rx="2" fill="{fill}"/>')
+
+    # scale legend — colour carries meaning here, so it is never colour-alone
+    ly = y_top + grid_h + 26
+    lx = MARGIN
+    for fill, name in ((NEUTRAL, "no contact"), (SEQ_LIGHT, "contact"),
+                       (SEQ_STRONG, "hydrogen bond")):
+        out.append(f'<rect x="{lx}" y="{ly - 9}" width="12" height="12" rx="2" fill="{fill}"/>')
+        out.append(f'<text x="{lx + 18}" y="{ly + 1}" font-size="11" '
+                   f'fill="{INK_SECOND}">{name}</text>')
+        lx += 20 + len(name) * CHAR_W + 22
+
+    out.append(f'<text x="{MARGIN}" y="{height - 12}" font-size="11" '
+               f'fill="{INK_MUTED}">Rows ordered by affinity (strongest first); '
+               f'columns by how many ligands contact the residue.</text>')
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def build_figures(rows):
+    """Every figure for a docking report, correctly scoped to what the data
+    actually supports.
+
+    A single-target report gets exactly the three figures this module has
+    always produced (affinity, residue frequency, contact map) — untouched.
+
+    A MULTI-target screen is different: pooling residues from two unrelated
+    proteins into one "contact frequency" ranking states a shared pocket that
+    does not exist, and a heatmap would show the same ligand name twice with
+    no way to tell which run is which. So on a multi-target screen the residue
+    and contact-map figures are drawn ONCE PER TARGET instead of once overall;
+    only the affinity chart still spans every target (with the label patched
+    to say which target each bar belongs to), because ranking every ligand
+    against every target IS the point of a screen.
+
+    Returns a list of (title, svg) pairs, skipping any figure the data can't
+    support (e.g. a target with only one ligand gets no frequency chart) —
+    never a figure with a placeholder or empty plot.
+    """
+    rows = rows or []
+    figures = [("Binding affinity", affinity_chart_svg(rows))]
+
+    targets = sorted({r.get("Target") for r in rows if r.get("Target")})
+    if len(targets) <= 1:
+        figures.append(("Residue contact frequency", residue_frequency_svg(rows)))
+        figures.append(("Ligand × residue contact map", contact_heatmap_svg(rows)))
+    else:
+        for t in targets:
+            sub = [r for r in rows if r.get("Target") == t]
+            figures.append((f"Residue contact frequency — {t}",
+                            residue_frequency_svg(sub, target_name=t)))
+            figures.append((f"Ligand × residue contact map — {t}",
+                            contact_heatmap_svg(sub, target_name=t)))
+    return [(title, svg) for title, svg in figures if svg]
+
+
+def residue_frequency_svg(rows, width=900, top_n=14, target_name=None):
+    """How many ligands contact each binding-site residue.
+
+    A residue touched by most of the series is the pocket's real anchor point,
+    which is exactly what a reader wants from a multi-ligand run and what a
+    per-ligand table buries. H-bond counts are tallied separately so the
+    subtitle can say how many of the contacts are hydrogen bonds.
+
+    `rows` must all belong to ONE pocket. Pooling residues from two different
+    proteins' binding sites into one ranking is not a display nicety to skip —
+    residue 27 in one protein has no relationship to residue 27 in another, so
+    a mixed chart implies a shared pocket that does not exist. `build_figures`
+    is what enforces this, calling this function once per target on a
+    multi-target screen; `target_name` only changes the printed title.
+
+    Returns an SVG string, or None when there is nothing worth plotting.
+    """
+    def _split(v):
+        return [x.strip() for x in str(v or "").split(";") if x.strip() and x.strip() != "-"]
+
+    contacts, hbond = Counter(), Counter()
+    n_lig = 0
+    for r in rows or []:
+        res = _split(r.get("All interacting residues"))
+        if not res:
+            continue
+        n_lig += 1
+        for x in set(res):                  # per LIGAND, not per contact
+            contacts[x] += 1
+        for x in set(_split(r.get("H-bond residues"))):
+            hbond[x] += 1
+    if len(contacts) < 2:
+        return None
+
+    ranked = sorted(contacts.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]
+    ticks, top = _nice_ticks(max(c for _, c in ranked))
+
+    pad_l = _gutter([r for r, _ in ranked])
+    plot_w = width - pad_l - PAD_R
+    height = PAD_T + len(ranked) * BAND_H + PAD_B
+    y_top, y_bot = PAD_T, PAD_T + len(ranked) * BAND_H
+
+    shown = f"top {len(ranked)} of {len(contacts)}" if len(contacts) > len(ranked) \
+        else f"all {len(contacts)}"
+    title = ("Binding-site residue contact frequency" + (f" — {target_name}" if target_name else ""))
+    out = _frame(width, height, title,
+                 f"How many of the {n_lig} docked ligands contact each residue "
+                 f"({shown} residues)")
+    _axis(out, pad_l, plot_w, y_top, y_bot, ticks, top)
+
+    counts = [c for _, c in ranked]
+    lo, hi = min(counts), max(counts)
+    for i, (res, n) in enumerate(ranked):
+        y = y_top + i * BAND_H + (BAND_H - BAR_H) / 2
+        w = (n / top) * plot_w if top else 0
+        # colour by how many ligands touch this residue, so the residues the
+        # whole series converges on stand out at a glance
+        shade = _viridis((n - lo) / ((hi - lo) or 1))
+        out.append(f'<path d="{_bar_path(pad_l, y, w, BAR_H)}" fill="{shade}"/>')
+        out.append(f'<text x="{pad_l - 10}" y="{y + BAR_H / 2 + 4:.1f}" '
+                   f'font-size="11.5" fill="{INK_MUTED}" text-anchor="end">'
+                   f'{_esc(_truncate(res, pad_l - 22))}</text>')
+        hb = hbond.get(res, 0)
+        tip = f"{n}" + (f"  ({hb} H-bond)" if hb else "")
+        out.append(f'<text x="{pad_l + w + 8:.1f}" y="{y + BAR_H / 2 + 4:.1f}" '
+                   f'font-size="11.5" font-weight="600" fill="{INK}">{_esc(tip)}</text>')
+
+    out.append(f'<text x="{MARGIN}" y="{height - 12}" font-size="11" '
+               f'fill="{INK_MUTED}">A residue contacted by many ligands is a '
+               f'likely anchor point of the pocket.</text>')
+    out.append("</svg>")
+    return "\n".join(out)

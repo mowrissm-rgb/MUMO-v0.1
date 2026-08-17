@@ -1,0 +1,983 @@
+# MUMO Docking Engine (Phase 1 POC)
+# Multi-Agent Drug Discovery & Development AI Platform
+# Author: Antigravity AI Partner & Mowriss
+
+import os
+import sys
+import re
+import shutil
+import subprocess
+from rdkit import Chem
+from rdkit.Chem import AllChem
+from meeko import MoleculePreparation, PDBQTWriterLegacy
+
+
+def _resolve_executable(name, hint_dir=None):
+    """
+    Find a command-line tool across operating systems.
+    Order:
+      (1) on the system PATH,
+      (2) next to the Python interpreter (conda/venv 'bin' or 'Scripts' folder) —
+          this is where pip/conda console scripts like mk_prepare_receptor live,
+      (3) inside the optional hint_dir.
+    Checks both 'name' and 'name.exe'. Works on Windows (local) and Linux (cloud).
+    """
+    found = shutil.which(name)
+    if found:
+        return found
+    search_dirs = [os.path.dirname(sys.executable)]
+    if hint_dir:
+        search_dirs.append(hint_dir)
+    for d in search_dirs:
+        for candidate in (os.path.join(d, name), os.path.join(d, name + ".exe")):
+            if os.path.exists(candidate):
+                return candidate
+    return None
+
+# The heavy (non-hydrogen) atoms every standard residue must have to be
+# complete. Used to spot half-modelled side chains before Meeko chokes on them.
+# OXT is excluded deliberately: it exists only on a C-terminus, so requiring it
+# would condemn every other residue in the chain.
+_RESIDUE_HEAVY_ATOMS = {
+    "ALA": {"N", "CA", "C", "O", "CB"},
+    "ARG": {"N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"},
+    "ASN": {"N", "CA", "C", "O", "CB", "CG", "OD1", "ND2"},
+    "ASP": {"N", "CA", "C", "O", "CB", "CG", "OD1", "OD2"},
+    "CYS": {"N", "CA", "C", "O", "CB", "SG"},
+    "GLN": {"N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "NE2"},
+    "GLU": {"N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "OE2"},
+    "GLY": {"N", "CA", "C", "O"},
+    "HIS": {"N", "CA", "C", "O", "CB", "CG", "ND1", "CD2", "CE1", "NE2"},
+    "ILE": {"N", "CA", "C", "O", "CB", "CG1", "CG2", "CD1"},
+    "LEU": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2"},
+    "LYS": {"N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ"},
+    "MET": {"N", "CA", "C", "O", "CB", "CG", "SD", "CE"},
+    "PHE": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"},
+    "PRO": {"N", "CA", "C", "O", "CB", "CG", "CD"},
+    "SER": {"N", "CA", "C", "O", "CB", "OG"},
+    "THR": {"N", "CA", "C", "O", "CB", "OG1", "CG2"},
+    "TRP": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "NE1", "CE2",
+            "CE3", "CZ2", "CZ3", "CH2"},
+    "TYR": {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"},
+    "VAL": {"N", "CA", "C", "O", "CB", "CG1", "CG2"},
+}
+
+
+def clean_protein_pdb(input_path, output_path):
+    """
+    Cleans a protein PDB file by:
+    1. Identifying which chains contain standard protein amino acids.
+    2. Excluding chains that contain non-standard residues (which are typically co-crystallized inhibitors, like Chain C in 6LU7).
+    3. Excluding water molecules (HOH/WAT) and other crystallization agents.
+    """
+    print(f"[Prep] Cleaning protein PDB file: {input_path}")
+    
+    STANDARD_AMINOS = set(_RESIDUE_HEAVY_ATOMS)
+    
+    SOLVENTS_AND_SALTS = {
+        "HOH", "WAT", "SOL", "TIP", "DOD", "CL", "NA", "SO4", "PO4", "ACT", "GOL", "EDT", "DMS"
+    }
+    
+    # First pass: how many real amino-acid RESIDUES does each chain have?
+    #
+    # This used to ask "does the chain contain any non-standard residue?" and
+    # throw the whole chain away if so. That was wrong twice over, and it
+    # silently destroyed entire dockings:
+    #
+    #   On 1OYT (thrombin) the catalytic chain H carries a bound calcium and
+    #   the co-crystal inhibitor FSN. It was therefore dropped ENTIRELY — 2,019
+    #   atoms, the whole binding site — leaving only the 222-atom light chain L,
+    #   which passed the rule. The grid box still pointed at the real pocket, so
+    #   Vina docked every ligand into EMPTY SPACE and returned 0.000 kcal/mol
+    #   for all twelve of them. Twelve different molecules, one identical score.
+    #
+    # It is also redundant: the second pass below already writes only standard
+    # amino-acid atoms, so an ion or inhibitor sitting inside a protein chain is
+    # filtered out anyway. The chain-level test could only ever do harm.
+    #
+    # What the rule was actually for was excluding PEPTIDE-INHIBITOR chains
+    # (6LU7 chain C is seven residues). That is a question of size, not of
+    # purity — so ask about size.
+    chain_residues = {}
+    chain_aa_count = {}
+    with open(input_path, 'r') as infile:
+        for line in infile:
+            if line.startswith("ATOM") or line.startswith("HETATM"):
+                res_name = line[17:20].strip()
+                chain_id = line[21]
+                chain_residues.setdefault(chain_id, set()).add(res_name)
+                if res_name in STANDARD_AMINOS:
+                    chain_aa_count.setdefault(chain_id, set()).add(line[22:27])
+
+    MIN_CHAIN_RESIDUES = 25          # below this it is a peptide, not a domain
+    valid_chains, dropped_chains = [], []
+    for chain_id, residues in chain_residues.items():
+        n_aa = len(chain_aa_count.get(chain_id, ()))
+        if n_aa >= MIN_CHAIN_RESIDUES:
+            valid_chains.append(chain_id)
+        else:
+            dropped_chains.append((chain_id, n_aa, residues))
+
+    print(f"[Prep] Protein chains kept: "
+          f"{[(c, len(chain_aa_count.get(c, ()))) for c in valid_chains]}")
+    for chain_id, n_aa, residues in dropped_chains:
+        print(f"[Prep] Dropping chain '{chain_id}': only {n_aa} amino-acid "
+              f"residues (peptide/ligand chain, not a protein domain)")
+
+    if not valid_chains:
+        # Everything is small — keep whatever has amino acids rather than
+        # producing an empty receptor.
+        print("[Warning] No chain reached the size threshold. Keeping every "
+              "chain that has standard amino acids.")
+        valid_chains = [c for c, r in chain_residues.items() if r & STANDARD_AMINOS]
+        if not valid_chains:
+            raise ValueError("The PDB file does not contain any standard protein chains.")
+
+
+    # Second pass: which residues are STRUCTURALLY COMPLETE?
+    #
+    # Crystal structures routinely contain residues with disordered side chains
+    # modelled only part-way — an ASP with just N/CA/C/O/CB, for instance.
+    # Meeko has no template for a half-residue and reports
+    # "No template matched for residue_key='A:10' ... heavy_miss=3". That alone
+    # is survivable, but it cascades: if the untemplated residue is one half of
+    # a DISULFIDE, its partner is left with a bond to nothing and Meeko dies
+    # outright with "Expected 2 paddings for (A:69, A:101) ... but got 1",
+    # which takes the entire docking run with it.
+    #
+    # So incomplete residues are removed here, before Meeko ever sees them.
+    # They are REMOVED rather than truncated to alanine: mutating a half-built
+    # ASP into an ALA would silently delete a charge from the pocket and change
+    # the chemistry being reported. A gap in the backbone is honest; an invented
+    # residue is not. Whatever is dropped is printed so it is never silent.
+    seen_atoms = {}
+    for line in open(input_path, 'r'):
+        if line.startswith("ATOM"):
+            res_name = line[17:20].strip()
+            if line[21] in valid_chains and res_name in STANDARD_AMINOS:
+                alt = line[16]
+                if alt not in (" ", "A"):
+                    continue                      # alternate conformer B/C/...
+                key = (line[21], line[22:27])
+                seen_atoms.setdefault(key, (res_name, set()))[1].add(line[12:16].strip())
+
+    incomplete = set()
+    for key, (res_name, atoms) in seen_atoms.items():
+        need = _RESIDUE_HEAVY_ATOMS.get(res_name)
+        if need and not need.issubset(atoms):
+            incomplete.add(key)
+
+    if incomplete:
+        shown = ", ".join(f"{c}:{r.strip()}" for c, r in sorted(incomplete)[:8])
+        print(f"[Prep] Removing {len(incomplete)} residue(s) with missing atoms "
+              f"(disordered side chains Meeko cannot build): {shown}"
+              + (" …" if len(incomplete) > 8 else ""))
+
+    # Third pass: write only standard, complete protein ATOM records
+    atom_count = 0
+    with open(input_path, 'r') as infile, open(output_path, 'w') as outfile:
+        for line in infile:
+            if line.startswith("ATOM"):
+                res_name = line[17:20].strip()
+                chain_id = line[21]
+                if (chain_id in valid_chains and res_name in STANDARD_AMINOS
+                        and (chain_id, line[22:27]) not in incomplete
+                        and line[16] in (" ", "A")):
+                    outfile.write(line)
+                    atom_count += 1
+            elif line.startswith("TER") or line.startswith("END"):
+                # Retain chain termination and structure end markers
+                outfile.write(line)
+
+    print(f"[Prep] Cleaned protein saved to: {output_path} ({atom_count} atoms written)")
+
+def parse_untemplated_residues(text):
+    """Residue keys Meeko could not build a chemical template for.
+
+    Meeko fails with "Template generation failed for unknown residues:
+    {'A:209', 'B:224', ...}" whenever the structure contains something outside
+    its protein template set — nucleotides in a protein-DNA complex, sugars,
+    modified residues. Its own error text recommends re-running with
+    --delete_residues, so the keys are worth extracting rather than showing the
+    user a wall of residue ids they cannot act on.
+
+    Returns a sorted list like ["A:209", "B:224"], or [] if that isn't the
+    failure. Pure and testable — no Meeko import needed.
+    """
+    import re as _re
+    if not text:
+        return []
+    text = str(text)
+    keys = []
+    m = _re.search(r"unknown residues:\s*\{([^}]*)\}", text)
+    if m:
+        keys = _re.findall(r"['\"]\s*([A-Za-z0-9]*:-?\d+[A-Za-z]?)\s*['\"]", m.group(1))
+    # Meeko has a SECOND, differently-worded failure for the same underlying
+    # problem: "No template matched for residue_key='A:10'". The old pattern
+    # only knew the first wording, so this one was never retried — it went
+    # straight to a hard error and killed the run. It appears for residues with
+    # missing atoms, and if one is half of a disulfide the run then dies with
+    # "Expected 2 paddings for (A:69, A:101)".
+    keys += _re.findall(r"residue_key=['\"]([A-Za-z0-9]*:-?\d+[A-Za-z]?)['\"]", text)
+    # ...and the padding failure names its pair as a plain tuple.
+    for a, b in _re.findall(r"paddings for \(([^,]+),\s*([^)]+)\)", text):
+        for k in (a, b):
+            k = k.strip().strip("'\"")
+            if _re.match(r"^[A-Za-z0-9]*:-?\d+[A-Za-z]?$", k):
+                keys.append(k)
+    return sorted(set(keys))
+
+
+def prepare_receptor(cleaned_pdb_path, output_pdbqt_path, venv_bin_dir):
+    """
+    Converts a cleaned PDB receptor into the PDBQT format required by AutoDock Vina.
+    Uses Meeko's mk_prepare_receptor tool to add atom types and gasteiger charges.
+
+    Retries once, dropping residues Meeko has no template for. Many real PDB
+    entries are protein-DNA or protein-sugar complexes (1NFK, for instance, is
+    NF-kB bound to DNA), and Meeko's templates cover protein only — so the first
+    attempt fails on the nucleotides. Deleting them is exactly what Meeko's own
+    error recommends, and the deleted residues are reported back so the user
+    knows what was removed rather than silently docking a modified receptor.
+    """
+    print(f"[Prep] Preparing receptor using Meeko...")
+    # Call Meeko as a Python module ('python -m meeko.cli.mk_prepare_receptor').
+    # This is bulletproof across OSes — no need to locate a console-script file,
+    # which Meeko names inconsistently (e.g. 'mk_prepare_receptor.py').
+    output_dir = os.path.dirname(output_pdbqt_path)
+    output_basename = os.path.join(output_dir, "temp_receptor")
+
+    cmd = [
+        sys.executable, "-m", "meeko.cli.mk_prepare_receptor",
+        "--read_pdb", cleaned_pdb_path,
+        "-o", output_basename,
+        "-p",                      # Write PDBQT file
+        "--allow_bad_res",         # skip residues with missing atoms instead of failing
+        "--default_altloc", "A",   # pick conformation 'A' where atoms have alternates
+    ]
+
+    def _run(command):
+        print(f"[Exec] Running command: {' '.join(command)}")
+        r = subprocess.run(command, capture_output=True, text=True)
+        return r, ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+
+    result, details = _run(cmd)
+    deleted = []
+
+    if result.returncode != 0:
+        bad = parse_untemplated_residues(details)
+        if bad:
+            # Meeko's own advice: skip what it cannot template. Usually the DNA
+            # or sugar chains of a complex, which are not the docking target.
+            print(f"[Prep] Meeko has no template for {len(bad)} residues "
+                  f"— retrying without them.")
+            retry = cmd + ["--delete_residues", ",".join(bad)]
+            result, details = _run(retry)
+            deleted = bad
+
+    if result.returncode != 0:
+        # Meeko prints its real error to stdout. Keep the HEAD as well as the
+        # tail: the explanation is at the front, and truncating to the last 600
+        # characters left users staring at a bare list of residue ids.
+        msg = details or "(no output captured)"
+        if len(msg) > 1200:
+            msg = msg[:700] + "\n  …\n" + msg[-400:]
+        print("[Error] Receptor preparation failed!")
+        print(msg)
+        raise RuntimeError(f"Receptor preparation failed: {msg}")
+
+    # Meeko writes output as <output_basename>.pdbqt
+    expected_output = f"{output_basename}.pdbqt"
+    if os.path.exists(expected_output):
+        if os.path.exists(output_pdbqt_path):
+            os.remove(output_pdbqt_path)
+        os.rename(expected_output, output_pdbqt_path)
+        print(f"[Prep] Prepared receptor saved to: {output_pdbqt_path}")
+    else:
+        raise FileNotFoundError(f"Expected prepared receptor file not found: {expected_output}")
+    # Callers surface this: a receptor that quietly lost residues is worse than
+    # an error, because the result still looks perfectly valid.
+    return deleted
+
+def _mol_from_smiles_at_ph(smiles, ph=7.4):
+    """
+    Protonate a SMILES at physiological pH using dimorphite-dl (Apache-2.0), returning
+    an RDKit mol with explicit hydrogens and the correct formal charges (e.g. -COOH ->
+    -COO-, -NH2 -> -NH3+ at pH 7.4). Returns None on any failure so the caller can fall
+    back to the plain RDKit path. (Replaces the GPL OpenBabel path — patent-clean.)
+    """
+    try:
+        from dimorphite_dl import protonate_smiles
+        variants = protonate_smiles(smiles, ph_min=ph, ph_max=ph, precision=1.0)
+        if not variants:
+            return None
+
+        # variants[0] is NOT "the dominant state" — that assumption was wrong and
+        # it badly mis-modelled polyphenols. dimorphite returns every plausible
+        # microstate in the pH window, unordered, and for quercetin it returns
+        # THIRTY-TWO with a fully-deprotonated one first. Taking [0] meant
+        # quercetin was docked and analysed as a −4 anion with four of its five
+        # hydroxyls stripped. A molecule with no O–H cannot donate a hydrogen
+        # bond, which is exactly why MUMO reported zero H-bonds for poses that
+        # plainly have them while Discovery Studio reported several.
+        #
+        # Reality at pH 7.4: quercetin's first phenol (pKa ~6.4) is substantially
+        # ionised, the second (~8.5) only partly, the rest not at all. Aspirin's
+        # carboxylic acid (pKa 3.5) IS fully ionised and must stay so. Choosing
+        # the LEAST-ionised offered state keeps aspirin's carboxylate — its only
+        # variant — while refusing to invent extra charge on a polyphenol.
+        best, best_score = None, None
+        for smi in variants:
+            m = Chem.MolFromSmiles(smi)
+            if m is None:
+                continue
+            score = sum(abs(a.GetFormalCharge()) for a in m.GetAtoms())
+            if best_score is None or score < best_score:
+                best, best_score = m, score
+        if best is None:
+            return None
+        return Chem.AddHs(best)
+    except Exception:
+        return None
+
+
+def prepare_ligand(smiles, output_pdbqt_path, ph=7.4, n_confs=4, seed=42, max_rot=10):
+    """
+    Convert a SMILES into a docking-ready PDBQT, with industrial-grade preparation:
+      1. PROTONATE at physiological pH (default 7.4) so acids/bases carry the right
+         charge — correct hydrogen bonds and salt bridges. (OpenBabel; RDKit fallback)
+      2. Generate SEVERAL 3D conformers with ETKDGv3 and keep the LOWEST-ENERGY one
+         (MMFF94) — a better, more reproducible starting geometry than a single embed.
+      3. Meeko assigns Vina atom types, Gasteiger charges and rotatable bonds.
+
+    SPEED — torsion cap for very flexible ligands (`max_rot`): Vina's runtime scales
+    steeply with the number of ACTIVE torsions (rotatable bonds). Big, floppy GC-MS
+    molecules — long-chain fatty acids, terpenoids — carry 12-16 rotors and dominate
+    the wall-clock. When a ligand exceeds `max_rot` rotatable bonds we rigidify its
+    ACYCLIC sp3 C–C single bonds (the aliphatic-chain rotors, which mostly just wag a
+    tail and contribute little to the binding pose), leaving the scaffold/functional
+    rotors free. e.g. palmitic acid drops 15 → 2 active torsions — a ~7x smaller
+    search — with negligible effect on where the head group actually binds. Compact
+    drug-like ligands (< max_rot rotors) are left completely untouched.
+    """
+    print(f"[Prep] Preparing ligand '{smiles}' (protonated at pH {ph})...")
+
+    mol = _mol_from_smiles_at_ph(smiles, ph)
+    if mol is None:                                   # fallback: plain RDKit prep
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise ValueError(f"Invalid SMILES string provided: {smiles}")
+        mol = Chem.AddHs(mol)
+
+    # ETKDGv3 multi-conformer embedding (deterministic via fixed seed)
+    params = AllChem.ETKDGv3()
+    params.randomSeed = seed
+    conf_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=max(1, n_confs), params=params))
+    if not conf_ids:
+        print("[Warning] ETKDG embedding failed. Trying robust random-coords embedding...")
+        if AllChem.EmbedMolecule(mol, useRandomCoords=True, randomSeed=seed) != 0:
+            raise RuntimeError("Failed to generate 3D coordinates for the ligand.")
+        conf_ids = [0]
+
+    # MMFF94-optimise every conformer and keep the lowest-energy geometry
+    best_cid = conf_ids[0]
+    try:
+        results = AllChem.MMFFOptimizeMoleculeConfs(mol)      # [(converged, energy), ...]
+        energies = [(cid, e) for cid, (_conv, e) in zip(conf_ids, results)]
+        best_cid = min(energies, key=lambda t: t[1])[0]
+    except Exception:
+        print("[Warning] Conformer optimisation skipped; using the first conformer.")
+
+    # Keep ONLY the best conformer for Meeko
+    best_mol = Chem.Mol(mol)
+    best_mol.RemoveAllConformers()
+    best_mol.AddConformer(mol.GetConformer(best_cid), assignId=True)
+
+    # Torsion cap: only for ligands floppier than `max_rot`. Rigidify acyclic
+    # sp3 C–C rotors (the chain wags) so the scaffold stays flexible but the
+    # search space shrinks dramatically — the single biggest speed lever for the
+    # large GC-MS ligands the user docks. `rigidify_bonds_indices` are positions
+    # INTO each SMARTS match (0-based), paired one-to-one with the SMARTS list.
+    from rdkit.Chem import rdMolDescriptors
+    prep_kwargs = {}
+    try:
+        n_rot = rdMolDescriptors.CalcNumRotatableBonds(best_mol)
+    except Exception:
+        n_rot = 0
+    if n_rot > max_rot:
+        prep_kwargs["rigidify_bonds_smarts"] = ["[CX4;!R]-[CX4;!R]"]
+        prep_kwargs["rigidify_bonds_indices"] = [[0, 1]]
+        print(f"[Prep] {n_rot} rotatable bonds (> {max_rot}) — rigidifying acyclic "
+              f"sp3 C–C chain rotors to keep docking fast.")
+
+    preparator = MoleculePreparation(**prep_kwargs)
+    mol_setups = preparator.prepare(best_mol)
+    if not mol_setups:
+        raise RuntimeError("Meeko preparation failed: No setups generated.")
+
+    pdbqt_string, is_ok, error_msg = PDBQTWriterLegacy.write_string(mol_setups[0])
+    if not is_ok:
+        raise RuntimeError(f"Meeko writing to PDBQT string failed: {error_msg}")
+
+    with open(output_pdbqt_path, 'w') as f:
+        f.write(pdbqt_string)
+    print(f"[Prep] Prepared ligand saved to: {output_pdbqt_path}")
+
+def run_docking(vina_path, receptor_pdbqt, ligand_pdbqt, output_pdbqt, config_path,
+                center, size, exhaustiveness=16, num_modes=9, energy_range=3.0,
+                seed=42, cpu=None):
+    """
+    Writes a configuration file for AutoDock Vina and runs the docking simulation.
+    - center / size: (x, y, z) of the search-box centre and dimensions.
+    - exhaustiveness: search depth (Vina default 8; we default to 16 for accuracy).
+    - num_modes / energy_range: how many poses to keep and the energy window.
+    - seed: FIXED so a given input always reproduces the same result (reproducibility
+      is an industrial-standard requirement).
+    """
+    print(f"[Dock] Creating Vina configuration file: {config_path}")
+
+    # Grid Box settings: In drug discovery, the grid box center and size define the search space.
+    # We restrict search to the active site to find the most therapeutic binding conformation.
+    config_content = f"""receptor = {receptor_pdbqt}
+ligand = {ligand_pdbqt}
+
+center_x = {center[0]}
+center_y = {center[1]}
+center_z = {center[2]}
+
+size_x = {size[0]}
+size_y = {size[1]}
+size_z = {size[2]}
+
+exhaustiveness = {int(exhaustiveness)}
+num_modes = {int(num_modes)}
+energy_range = {energy_range}
+seed = {int(seed)}
+"""
+    if cpu:
+        config_content += f"cpu = {int(cpu)}\n"
+    config_content += f"out = {output_pdbqt}\n"
+    with open(config_path, 'w') as f:
+        f.write(config_content)
+
+    # If the given vina path doesn't exist, look for 'vina' on the PATH (cloud/Linux).
+    if not os.path.exists(vina_path):
+        vina_path = _resolve_executable("vina") or vina_path
+
+    print(f"[Dock] Running AutoDock Vina...")
+    cmd = [
+        vina_path,
+        "--config", config_path
+    ]
+    
+    print(f"[Exec] Running command: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    # Save log file of the Vina run
+    log_path = output_pdbqt.replace(".pdbqt", "_vina.log")
+    with open(log_path, 'w') as f:
+        f.write(result.stdout)
+        f.write(result.stderr)
+        
+    if result.returncode != 0:
+        print("[Error] AutoDock Vina execution failed!")
+        print(result.stderr)
+        raise RuntimeError(f"AutoDock Vina failed: {result.stderr}")
+        
+    print(f"[Dock] Docking completed successfully. Log saved to: {log_path}")
+    return log_path
+
+def parse_docking_results(log_path):
+    """
+    Parses the AutoDock Vina log file to extract the best binding affinity score.
+    Binding affinity is measured in kcal/mol (kilocalories per mole of complex).
+    A more negative score represents a stronger thermodynamic attraction (higher affinity)
+    between the drug candidate and target.
+    """
+    scores = []
+    print(f"[Results] Parsing docking scores from log: {log_path}")
+    with open(log_path, 'r') as f:
+        start_reading = False
+        for line in f:
+            if "mode |   affinity" in line:
+                start_reading = True
+                continue
+            if start_reading and line.strip() == "":
+                # If we've started reading and hit an empty line or end of table, stop.
+                # However, make sure we have actually read some scores first.
+                if scores:
+                    break
+            if start_reading:
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        mode = int(parts[0])
+                        affinity = float(parts[1])
+                        scores.append((mode, affinity))
+                    except ValueError:
+                        # Skip header separator lines (e.g. ----- or containing '|')
+                        continue
+                    
+    if not scores:
+        raise RuntimeError("No docking scores were parsed from the log file.")
+
+    # The first mode is the best pose found by Vina
+    best_mode, best_score = scores[0]
+
+    # A binding affinity of ~0 is not a weak result — it means the ligand felt
+    # NOTHING, i.e. it was docked into empty space. That happens when the grid
+    # box and the prepared receptor disagree, and it is silent: Vina exits 0 and
+    # prints a normal-looking table of zeros. Reported as a number it is worse
+    # than useless, because every ligand gets the SAME 0.000 and the whole
+    # screen looks like it ran. On 1OYT this produced twelve identical scores
+    # for twelve different molecules. Refuse it here so the caller marks the
+    # ligand FAILED with a reason instead of publishing a fake affinity.
+    if best_score > -0.5:
+        raise RuntimeError(
+            f"Docking produced a non-binding score ({best_score} kcal/mol). The "
+            f"ligand found no contact with the receptor, which normally means "
+            f"the search box does not cover the prepared protein.")
+
+    print(f"[Results] Best Docking Score (Mode {best_mode}): {best_score} kcal/mol")
+    return best_score, scores
+
+
+def _extract_top_pose(multi_pdbqt, out_pdbqt):
+    """Write the first (top-ranked) MODEL of a docked PDBQT to a single-model file
+    (Vina's --score_only rejects multi-MODEL ligands). Falls back to the whole file
+    if it isn't multi-model."""
+    lines, inside = [], False
+    for ln in open(multi_pdbqt):
+        if ln.startswith("MODEL"):
+            if inside:
+                break
+            inside = True
+            continue
+        if ln.startswith("ENDMDL"):
+            break
+        lines.append(ln)
+    if not lines:
+        lines = open(multi_pdbqt).readlines()
+    with open(out_pdbqt, "w") as f:
+        f.writelines(lines)
+    return out_pdbqt
+
+
+def score_pose(vina_path, receptor_pdbqt, pose_pdbqt, scoring="vinardo"):
+    """Rescore ONE docked pose with a chosen scoring function (Vina --score_only).
+
+    Returns (affinity_or_None, error_or_None).
+
+    The error is returned rather than swallowed because of exactly how this
+    failed before: Vina 1.1.2 does not support `--scoring vinardo` or
+    `--autobox` (both landed in 1.2.0), so on a 1.1.2 container every call
+    errored, the exception was discarded, and every report showed a bare "—"
+    in the Vinardo and Consensus columns with nothing anywhere explaining
+    why. A whole feature was dead for months and looked like missing data.
+    """
+    if not os.path.exists(vina_path):
+        vina_path = _resolve_executable("vina") or vina_path
+    cmd = [vina_path, "--receptor", receptor_pdbqt, "--ligand", pose_pdbqt,
+           "--scoring", scoring, "--score_only", "--autobox"]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
+    for ln in (result.stdout or "").splitlines():
+        if "Estimated Free Energy of Binding" in ln:
+            m = re.search(r":\s*(-?\d+\.\d+)", ln)
+            if m:
+                return round(float(m.group(1)), 3), None
+    # Ran, but produced no score — surface Vina's own words, which is what
+    # names an unsupported flag on a too-old build. Vina prints a large
+    # citation banner (rows of '#') before anything useful, so pull out the
+    # line that actually says something rather than shipping 200 characters
+    # of decoration into a report cell.
+    raw = ((result.stderr or "") + "\n" + (result.stdout or "")).splitlines()
+    meaningful = [re.sub(r"\s+", " ", ln).strip() for ln in raw
+                  if ln.strip() and not set(ln.strip()) <= {"#"}]
+    detail = next((ln for ln in meaningful if "error" in ln.lower()),
+                  meaningful[0] if meaningful else "")
+    return None, (detail[:180] or f"exit {result.returncode}")
+
+
+def consensus_rescore(vina_path, receptor_pdbqt, best_out_pdbqt, vina_best,
+                      second="vinardo"):
+    """Consensus second opinion on the reported best pose. Rescore the top pose with a
+    different scoring function and judge agreement. Returns
+    {"vinardo": float|None, "consensus": str}."""
+    vinardo, err = None, None
+    try:
+        top = _extract_top_pose(best_out_pdbqt,
+                                best_out_pdbqt.replace(".pdbqt", "_top.pdbqt"))
+        vinardo, err = score_pose(vina_path, receptor_pdbqt, top, scoring=second)
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+    if vinardo is None:
+        if err:
+            print(f"[consensus] {second} rescoring unavailable: {err}")
+        # Say WHY in the cell itself, so an empty column is never mistaken for
+        # "this structure had nothing to report".
+        return {"vinardo": None,
+                "consensus": f"unavailable ({err})" if err else "—"}
+    # Vinardo runs weaker in magnitude than Vina; treat both-favourable as agreement.
+    agree = (vina_best <= -5.0 and vinardo <= -3.5) or (vina_best > -5.0 and vinardo > -3.5)
+    return {"vinardo": vinardo,
+            "consensus": "Both functions agree" if agree else "Functions disagree — interpret with care"}
+
+
+def pose_consistency(log_path, rmsd_threshold=2.0):
+    """POSE CLUSTERING signal. Vina reports each pose's RMSD from the best pose; count
+    how many of the returned poses land within `rmsd_threshold` Å of the best one. A
+    binding mode that many poses converge on is far more reproducible/trustworthy than
+    a lone best pose. Returns {n_poses, n_clustered, consistency (fraction), verdict}."""
+    n_total, n_near, reading = 0, 0, False
+    try:
+        for ln in open(log_path):
+            if "mode" in ln and "affinity" in ln:
+                reading = True
+                continue
+            if reading:
+                parts = ln.split()
+                if len(parts) >= 4:
+                    try:
+                        int(parts[0]); rmsd_lb = float(parts[2])
+                        n_total += 1
+                        if rmsd_lb <= rmsd_threshold:
+                            n_near += 1
+                    except ValueError:
+                        continue
+                elif n_total > 0:
+                    break
+    except Exception:
+        return {"n_poses": 0, "n_clustered": 0, "consistency": None, "verdict": "—"}
+    frac = (n_near / n_total) if n_total else 0
+    verdict = ("Tight — poses converge" if frac >= 0.5 else
+               "Scattered poses" if n_total else "—")
+    return {"n_poses": n_total, "n_clustered": n_near,
+            "consistency": round(frac, 2) if n_total else None, "verdict": verdict}
+
+
+def dock_with_replicas(vina_path, receptor_pdbqt, ligand_pdbqt, out_prefix, cfg_prefix,
+                       center, size, exhaustiveness=16, n_replicas=1, base_seed=42,
+                       num_modes=6):
+    """
+    Run Vina n_replicas times with DIFFERENT seeds to measure reproducibility/precision.
+    Returns a dict:
+      best_score : most-negative best affinity across replicas (the reported hit)
+      modes      : all poses of that best replica
+      out_pdbqt  : the best replica's output file (used for interactions + 3D view)
+      mean, sd   : mean and standard deviation of the per-replica best affinity
+      n          : number of replicas actually run
+      confidence : "High"/"Medium"/"Lower" from the spread (or "Single run")
+    """
+    import statistics
+    n_replicas = max(1, int(n_replicas))
+    runs, bests = [], []
+    for i in range(n_replicas):
+        outp = f"{out_prefix}_r{i}.pdbqt"
+        cfg = f"{cfg_prefix}_r{i}.txt"
+        log = run_docking(vina_path, receptor_pdbqt, ligand_pdbqt, outp, cfg,
+                          center, size, exhaustiveness=exhaustiveness,
+                          num_modes=num_modes, seed=base_seed + i)
+        best, modes = parse_docking_results(log)
+        runs.append((best, modes, outp, log))
+        bests.append(best)
+
+    best_run = min(runs, key=lambda r: r[0])
+    mean = sum(bests) / len(bests)
+    sd = statistics.pstdev(bests) if len(bests) > 1 else 0.0
+    if len(bests) == 1:
+        confidence = "Single run"
+    elif sd <= 0.5:
+        confidence = "High"
+    elif sd <= 1.0:
+        confidence = "Medium"
+    else:
+        confidence = "Lower"
+
+    # CONSENSUS scoring: independent second opinion (Vinardo) on the reported best pose
+    cons = consensus_rescore(vina_path, receptor_pdbqt, best_run[2], best_run[0])
+    # POSE CLUSTERING: how many of the returned poses converge on the best binding mode
+    pc = pose_consistency(best_run[3])
+
+    return {"best_score": best_run[0], "modes": best_run[1], "out_pdbqt": best_run[2],
+            "mean": round(mean, 3), "sd": round(sd, 3), "n": len(bests),
+            "confidence": confidence, "all_best": bests,
+            "vinardo": cons["vinardo"], "consensus": cons["consensus"],
+            "pose_consistency": pc["consistency"], "pose_verdict": pc["verdict"],
+            "n_poses": pc["n_poses"], "n_clustered": pc["n_clustered"]}
+
+
+def estimate_ki(delta_g, temperature=298.15):
+    """Convert a docking binding free energy ΔG (kcal/mol) into an estimated
+    binding constant Ki via ΔG = R·T·ln(Ki). Returns a friendly string with an
+    auto-chosen unit (pM … M), or '—'. This is an ESTIMATE — Vina scores are
+    approximate free energies, so treat Ki as an order-of-magnitude guide."""
+    try:
+        import math
+        R = 1.98720425e-3            # gas constant, kcal/(mol·K)
+        ki_molar = math.exp(float(delta_g) / (R * temperature))   # ΔG<0 → Ki<1 M
+    except Exception:
+        return "—"
+    for factor, unit in ((1e12, "pM"), (1e9, "nM"), (1e6, "µM"), (1e3, "mM"), (1.0, "M")):
+        val = ki_molar * factor
+        if val < 1000:
+            return f"{val:.2f} {unit}"
+    return f"{ki_molar:.2e} M"
+
+
+def ligand_efficiency(delta_g, n_heavy_atoms):
+    """Ligand efficiency = −ΔG / (number of heavy atoms), in kcal/mol per heavy
+    atom. It rewards potency achieved with a SMALL molecule; ~0.3 or higher is
+    usually considered efficient. Returns a float, or None if unknown."""
+    try:
+        if n_heavy_atoms and int(n_heavy_atoms) > 0:
+            return round(-float(delta_g) / int(n_heavy_atoms), 3)
+    except Exception:
+        pass
+    return None
+
+
+def reliability_assessment(res, validation=None):
+    """Roll the independent quality signals — replica precision, Vina/Vinardo
+    consensus, pose clustering, and (if available) native-redock RMSD — into ONE
+    overall reliability verdict with a plain-language reason. Purely aggregates
+    numbers already computed; adds no new docking work.
+    Returns {"reliability": "High"|"Medium"|"Low", "reason": str}."""
+    strong, avail, factors = 0, 0, []
+
+    sd, n = res.get("sd"), res.get("n", 1)
+    if n and n > 1:
+        avail += 1
+        if sd is not None and sd <= 0.5:
+            strong += 1; factors.append("reproducible across replicas")
+        elif sd is not None and sd <= 1.0:
+            factors.append("moderate replica spread")
+        else:
+            factors.append("high replica spread")
+
+    cons = (res.get("consensus") or "").lower()
+    if cons and cons != "—":
+        avail += 1
+        if "disagree" in cons:            # check 'disagree' first — it contains 'agree'
+            factors.append("scoring functions disagree")
+        elif "agree" in cons:
+            strong += 1; factors.append("two scoring functions agree")
+
+    pc = res.get("pose_consistency")
+    if pc is not None:
+        avail += 1
+        if pc >= 0.5:
+            strong += 1; factors.append("poses converge on one binding mode")
+        else:
+            factors.append("poses are scattered")
+
+    if validation:
+        avail += 1
+        if validation.get("passed"):
+            strong += 1; factors.append(f"setup validated (native redock {validation.get('rmsd','?')} Å)")
+        else:
+            factors.append(f"native redock high ({validation.get('rmsd','?')} Å)")
+
+    # verdict scaled to how many signals we actually had: mostly-strong = High
+    if avail == 0:
+        score = "Single run"
+    elif strong >= max(3, avail):          # essentially all signals strong
+        score = "High"
+    elif strong >= 2 or (avail <= 2 and strong >= 1):
+        score = "Medium"
+    else:
+        score = "Low"
+    return {"reliability": score, "reason": "; ".join(factors) or "single run — limited signals"}
+
+
+def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, data_dir,
+                           exhaustiveness=16, seed=42, n_replicas=3):
+    """
+    GOLD-STANDARD validation. If the target structure carries a co-crystallised ligand,
+    re-dock THAT ligand into the same box and measure how close the predicted pose is to
+    the experimental one (heavy-atom RMSD, no alignment — same receptor frame).
+    RMSD < 2.0 Å is the accepted "correct redocking" threshold — direct evidence the
+    docking setup reproduces reality on this target.
+
+    Returns {"rmsd": float, "resname": str, "passed": bool} or None if there is no usable
+    co-crystal ligand or the check can't be completed (always non-fatal).
+    """
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import AllChem, rdMolAlign
+        from meeko import PDBQTMolecule, RDKitMolCreate
+
+        NOT_LIG = {"HOH", "WAT", "SOL", "DOD", "TIP", "CL", "NA", "K", "MG", "CA", "ZN",
+                   "MN", "SO4", "PO4", "ACT", "GOL", "EDO", "PEG", "DMS", "IOD", "BR",
+                   "FMT", "NO3"}
+        groups = {}
+        with open(raw_pdb_path) as f:
+            for ln in f:
+                if ln.startswith("HETATM"):
+                    resn = ln[17:20].strip()
+                    if resn in NOT_LIG:
+                        continue
+                    groups.setdefault((resn, ln[21], ln[22:26].strip()), []).append(ln)
+        if not groups:
+            return None
+        (resn, _, _), lines = max(groups.items(), key=lambda kv: len(kv[1]))
+        if len(lines) < 6:
+            return None
+
+        native_block = "".join(lines)
+
+        # The native ligand's bonds → SMILES: look it up in the RCSB chemical
+        # component dictionary by its 3-letter code (no OpenBabel bond perception).
+        smiles = _rcsb_ligand_smiles(resn)
+        if not smiles:
+            return None
+        template = Chem.MolFromSmiles(smiles)
+        if template is None:
+            return None
+        # RemoveAllHs, not RemoveHs. The RCSB component dictionary writes some
+        # ligands with an EXPLICIT hydrogen carrying stereochemistry — benzamidine
+        # is "[H]/N=C(\c1ccccc1)/N" — and RemoveHs refuses to drop an H whose
+        # removal would discard a stereo definition. The template therefore came
+        # out with 10 heavy atoms against the native ligand's 9, the substructure
+        # match failed, and AssignBondOrdersFromTemplate raised "No matching
+        # found". That was caught by the except below and printed as
+        # "native redock skipped", so MUMO's own gold-standard validation was
+        # silently never running — on 3PTB, on 1OYT, on every target whose
+        # ligand happened to be written that way.
+        template = Chem.RemoveAllHs(template)
+
+        # RemoveAllHs on both sides too: the atom COUNTS must agree for the
+        # substructure match, so a stray explicit H anywhere breaks it.
+        native_noH = Chem.RemoveAllHs(Chem.MolFromPDBBlock(native_block, sanitize=False))
+        native_fixed = AllChem.AssignBondOrdersFromTemplate(template, native_noH)
+
+        # Re-dock the native ligand into the prepared receptor
+        ligf = os.path.join(data_dir, "_native_lig.pdbqt")
+        prepare_ligand(smiles, ligf, seed=seed)
+        res = dock_with_replicas(vina, receptor_pdbqt, ligf,
+                                 os.path.join(data_dir, "_native_out"),
+                                 os.path.join(data_dir, "_native_cfg"),
+                                 center, size, exhaustiveness=exhaustiveness,
+                                 # Replicated on purpose. A single seed made this
+                                 # number a coin flip: erlotinib into 1M17 landed
+                                 # on either 1.52 A or 7.92 A depending on nothing
+                                 # meaningful. Best-of-N by score is both the
+                                 # better estimate and the honest one.
+                                 n_replicas=max(1, int(n_replicas)), base_seed=seed)
+
+        # Read the best docked pose via meeko (no OpenBabel)
+        pmol = PDBQTMolecule.from_file(res["out_pdbqt"], skip_typing=True)
+        docked_raw = RDKitMolCreate.from_pdbqt_mol(pmol)[0]
+        docked_noH = Chem.RemoveAllHs(docked_raw)
+        docked_fixed = AllChem.AssignBondOrdersFromTemplate(template, docked_noH)
+
+        rmsd = rdMolAlign.CalcRMS(docked_fixed, native_fixed)    # no alignment: same box frame
+        return {"rmsd": round(float(rmsd), 2), "resname": resn, "passed": bool(rmsd < 2.0)}
+    except Exception as e:
+        print(f"[Validate] native redock skipped: {e}")
+        return None
+
+
+def _rcsb_ligand_smiles(resname):
+    """Fetch a ligand's canonical SMILES from the RCSB chemical component
+    dictionary by its 3-letter PDB code — the permissive replacement for
+    OpenBabel's bond perception. Returns a SMILES string or None."""
+    try:
+        import requests
+        r = requests.get(f"https://data.rcsb.org/rest/v1/core/chemcomp/{resname}", timeout=20)
+        if r.status_code != 200:
+            return None
+        desc = r.json().get("rcsb_chem_comp_descriptor", {})
+        return desc.get("SMILES_stereo") or desc.get("SMILES")
+    except Exception:
+        return None
+
+
+def main():
+    """
+    Main entry point for command-line execution.
+    Demonstrates running a complete docking workflow.
+    """
+    print("=== MUMO Docking Engine PoC ===")
+    
+    # Simple defaults for demonstration
+    # We expect files to be located in the 'data' directory
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(base_dir, "data")
+    bin_dir = os.path.join(base_dir, "bin")
+    venv_bin_dir = os.path.join(base_dir, ".venv", "Scripts")
+    
+    # Ensure data directory exists
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # AutoDock Vina executable path
+    vina_path = os.path.join(bin_dir, "vina.exe")
+    
+    # Let's check arguments or run a demo
+    if len(sys.argv) < 3:
+        print("\nUsage:")
+        print("  python src/docking_engine.py <protein.pdb> <ligand_smiles> [center_x center_y center_z] [size_x size_y size_z]")
+        print("\nExample (running with dummy data configuration):")
+        print("  python src/docking_engine.py data/target.pdb \"CC(=O)Oc1ccccc1C(=O)O\" 15.0 20.0 15.0 20.0 20.0 20.0\n")
+        return
+        
+    protein_pdb = sys.argv[1]
+    ligand_smiles = sys.argv[2]
+    
+    # Grid Box Center (defaults to coordinates 0,0,0 if not provided)
+    center = (0.0, 0.0, 0.0)
+    if len(sys.argv) >= 6:
+        center = (float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5]))
+        
+    # Grid Box Size (defaults to 20x20x20 Angstroms if not provided)
+    size = (20.0, 20.0, 20.0)
+    if len(sys.argv) >= 9:
+        size = (float(sys.argv[6]), float(sys.argv[7]), float(sys.argv[8]))
+        
+    # Intermediate files
+    protein_name = os.path.splitext(os.path.basename(protein_pdb))[0]
+    cleaned_pdb = os.path.join(data_dir, f"{protein_name}_cleaned.pdb")
+    receptor_pdbqt = os.path.join(data_dir, f"{protein_name}_prepared.pdbqt")
+    ligand_pdbqt = os.path.join(data_dir, "ligand_prepared.pdbqt")
+    output_pdbqt = os.path.join(data_dir, "docking_output.pdbqt")
+    config_path = os.path.join(data_dir, "vina_config.txt")
+    
+    try:
+        # Step 1: Clean protein PDB
+        clean_protein_pdb(protein_pdb, cleaned_pdb)
+        
+        # Step 2: Prepare protein receptor PDBQT
+        prepare_receptor(cleaned_pdb, receptor_pdbqt, venv_bin_dir)
+        
+        # Step 3: Prepare ligand PDBQT
+        prepare_ligand(ligand_smiles, ligand_pdbqt)
+        
+        # Step 4: Run AutoDock Vina
+        log_path = run_docking(
+            vina_path=vina_path,
+            receptor_pdbqt=receptor_pdbqt,
+            ligand_pdbqt=ligand_pdbqt,
+            output_pdbqt=output_pdbqt,
+            config_path=config_path,
+            center=center,
+            size=size
+        )
+        
+        # Step 5: Parse and output binding affinity
+        best_score, all_scores = parse_docking_results(log_path)
+        
+        print("\n" + "="*40)
+        print("DOCKING SIMULATION COMPLETED")
+        print(f"Target: {protein_pdb}")
+        print(f"Ligand SMILES: {ligand_smiles}")
+        print(f"Best Binding Energy: {best_score} kcal/mol")
+        print("="*40)
+        
+    except Exception as e:
+        print(f"\n[Failure] An error occurred during the docking run: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

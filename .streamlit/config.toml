@@ -1,0 +1,19 @@
+# MUMO ships a dark cinematic theme (near-black canvas, light-blue accent),
+# matching the React landing/login pages. These values drive native widget
+# theming (inputs, tables, menus, selectboxes, tabs); mumo_chat.py's own CSS
+# block layers the rest of the look on top.
+
+[theme]
+base = "dark"
+primaryColor = "#6fb8ec"             # light blue accent (buttons, focus, highlights)
+backgroundColor = "#0a0d0f"          # main canvas — near-black
+secondaryBackgroundColor = "#0d1114" # sidebar + widgets
+textColor = "#eef5fa"                # near-white
+font = "sans serif"
+
+[server]
+headless = true
+port = 8501
+
+[browser]
+gatherUsageStats = false

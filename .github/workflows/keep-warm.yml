@@ -1,0 +1,50 @@
+# Keeps the MUMO Space awake, and tells us when it isn't.
+#
+# Free Hugging Face Spaces sleep after a stretch of inactivity, and waking one
+# means a full container start — which for this image is not quick. A cheap
+# request every few hours avoids that entirely.
+#
+# It doubles as uptime monitoring: if the Space is down or stuck in a runtime
+# error, this job fails and GitHub emails you. That is worth as much as the
+# warming, given this app's history of dying quietly after a deploy.
+name: keep-warm
+
+on:
+  schedule:
+    # Every 6 hours. Well inside the sleep window, and light enough to be a
+    # good citizen on a free tier.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}          # so it can be run by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the app
+        run: |
+          URL="https://mowriss-mumo.hf.space/"
+          echo "pinging $URL"
+          # A sleeping Space cold-starts, so the first attempt can legitimately
+          # be slow or fail. Retry before calling it down.
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 "$URL" || echo 000)
+            echo "attempt $attempt -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "awake"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::MUMO did not return 200 after 5 attempts — it may be asleep, crashed, or in a runtime error."
+          exit 1
+
+      - name: Report the Space runtime stage
+        if: always()
+        run: |
+          # Runs even when the ping failed, so a failure email carries the
+          # actual reason (RUNTIME_ERROR vs BUILD_ERROR vs simply asleep)
+          # rather than just "no 200".
+          stage=$(curl -s --max-time 60 "https://huggingface.co/api/spaces/Mowriss/mumo" \
+                  | python3 -c "import sys,json;print((json.load(sys.stdin).get('runtime') or {}).get('stage','unknown'))" 2>/dev/null || echo unknown)
+          echo "Space runtime stage: $stage"
+          echo "### MUMO Space stage: \`$stage\`" >> "$GITHUB_STEP_SUMMARY"

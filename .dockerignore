@@ -1,0 +1,17 @@
+# keep the image lean + avoid shipping Windows/dev-only cruft
+.git
+.venv
+**/__pycache__
+**/*.pyc
+node_modules
+graphify-out
+.claude
+.devcontainer
+# Windows-only vina binary — Linux uses the conda `vina` on PATH
+bin/vina.exe
+# local test scratch
+test_2d_diagram.py
+test_inspect.py
+test_rdkit.py
+test_rdkit_draw.py
+test_interaction_2d.svg

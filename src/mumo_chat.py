@@ -1,0 +1,3687 @@
+"""
+MUMO — Conversational Interface
+Multi-Agent Drug Discovery & Development AI Platform
+Author: Mowriss & Claude (research partner)
+
+A chat-first MUMO: you talk, MUMO asks clarifying questions (how many ligands?
+how many targets? which report style? confirm the target), waits for your
+answers, then runs the pipeline and opens the results in the right-hand panel.
+
+Layout:  [ left sidebar = chat history ]  [ chat ]  [ results panel ]
+Theme follows the user (light → dark text, dark → light text). No forced colors.
+"""
+
+import os, sys, re
+import json as _json
+import streamlit as st
+import streamlit.components.v1 as components
+import pandas as pd
+import requests
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from llm_client import get_llm
+from setup_env import ensure_vina
+import auth_store as authdb
+# NOTE: the heavy scientific stack (RDKit, AutoDock Vina, OpenBabel, PLIP,
+# Meeko, gemmi) is imported LAZILY inside the functions that need it —
+# brain, agents.*, pipeline, viz — NOT here at module top. Importing them
+# eagerly cost ~15-30s on every cold start and rendered a blank page while
+# they loaded. Deferring them lets the chat UI appear in ~1-2s; the heavy
+# libs load only when the user actually runs an analysis/docking job.
+
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA = os.path.join(BASE, "data"); os.makedirs(DATA, exist_ok=True)
+VENV = os.path.join(BASE, ".venv", "Scripts" if os.name == "nt" else "bin")
+VINA = ensure_vina()
+
+st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
+
+ACCENT = "#6fb8ec"   # light blue — matches the React landing/login pages' accent
+ACCENT2 = "#2f7fc4"  # gradient end stop (used on buttons/bubbles for the same look)
+
+# ── themes ────────────────────────────────────────────────────────────────
+# Every surface colour is a token so the two modes differ ONLY in these values
+# and the stylesheet below is written once against var(--…). The light mode is
+# a designed set, not an inversion: the accent darkens (#6fb8ec is too pale to
+# read as text on white), borders switch from white-alpha to black-alpha, and
+# the text on the accent gradient flips to white so the button stays legible
+# against its darker end stop.
+THEMES = {
+    "dark": {
+        "bg": "#0a0d0f", "sidebar": "#0d1114",
+        "ink": "#eef5fa", "ink_strong": "#f2f7fa", "ink_2": "#cdd8df",
+        "muted": "#93a0aa",
+        "glass": "rgba(255,255,255,0.03)",
+        "border": "rgba(255,255,255,0.08)",
+        "border_2": "rgba(255,255,255,0.10)",
+        "border_3": "rgba(255,255,255,0.12)",
+        "input_bg": "rgba(255,255,255,0.04)",
+        "scroll": "rgba(255,255,255,0.14)",
+        # Chat-box chrome is deliberately NOT the accent: everything in that
+        # control except its background is plain white here / plain black in
+        # light mode, so the box reads identically in both themes.
+        "chrome": "#ffffff",
+        "chrome_soft": "rgba(255,255,255,0.62)",
+        "chrome_faint": "rgba(255,255,255,0.30)",
+        "accent": ACCENT,
+        "accent_wash": "rgba(111,184,236,0.10)",
+        "select": "rgba(111,184,236,0.28)",
+        "on_accent": "#051520",
+        "viewer_bg": "#0b0d12",
+        "shadow": "rgba(0,0,0,0.30)", "shadow_panel": "rgba(0,0,0,0.60)",
+    },
+    "light": {
+        "bg": "#f6f8fa", "sidebar": "#eceff3",
+        "ink": "#16212b", "ink_strong": "#0d1720", "ink_2": "#35424e",
+        "muted": "#5d6b78",
+        "glass": "rgba(0,0,0,0.025)",
+        "border": "rgba(0,0,0,0.10)",
+        "border_2": "rgba(0,0,0,0.12)",
+        "border_3": "rgba(0,0,0,0.16)",
+        "input_bg": "rgba(0,0,0,0.03)",
+        "scroll": "rgba(0,0,0,0.18)",
+        "chrome": "#000000",
+        "chrome_soft": "rgba(0,0,0,0.62)",
+        "chrome_faint": "rgba(0,0,0,0.28)",
+        # Darker than ACCENT2: #2f7fc4 is only 3.98:1 on this background, which
+        # fails AA for the 11px label it styles. #2569a6 gives 5.40:1.
+        "accent": "#2569a6",
+        "accent_wash": "rgba(47,127,196,0.10)",
+        "select": "rgba(47,127,196,0.22)",
+        # The user bubble's gradient is the SAME in both themes, so its text
+        # must be too. White measures 2.16:1 against the gradient's light end
+        # (#6fb8ec) — unreadable. The dark ink is 4.37:1 at worst.
+        "on_accent": "#051520",
+        "viewer_bg": "#ffffff",
+        "shadow": "rgba(0,0,0,0.10)", "shadow_panel": "rgba(0,0,0,0.18)",
+    },
+}
+
+# Resolved before any CSS is written, and before `ss` is aliased further down —
+# st.session_state is usable immediately.
+if st.session_state.get("theme") not in THEMES:
+    st.session_state["theme"] = "dark"
+T = THEMES[st.session_state["theme"]]
+
+# Looping background videos for the cinematic intro landing page. Single
+# constants so a MUMO-specific clip can be swapped in with one edit each.
+INTRO_HERO_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
+                    "hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4")
+INTRO_FEAT_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
+                    "hf_20260418_094631_d30ab262-45ee-4b7d-99f3-5d5848c8ef13.mp4")
+# The flower clip shown on the login page (page 2). It spins on Log in / Sign up.
+FLOWER_VIDEO = ("https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/"
+                "hf_20260616_212935_bbf608da-62d1-4f25-9be4-c346e4d09cc8.mp4")
+
+# The React landing/login (deployed on Vercel) is now the ONE front door for the
+# whole product. Streamlit is chat-only: an unauthenticated visitor is bounced to
+# the React login, which authenticates with Supabase and hands off back here via a
+# ?rt=<refresh_token> URL param (see auth_store.restore_session). Streamlit's own
+# render_intro()/render_login_gate() are kept below but no longer reached.
+LANDING_URL = "https://mumo-landing.vercel.app"
+LANDING_LOGIN_URL = f"{LANDING_URL}/login"
+
+# ── MUMO product theme — dark cinematic, matching the React landing/login ──
+st.markdown(f"""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {{ --accent: {T['accent']}; --accent2: {ACCENT2};
+  --bg: {T['bg']}; --sidebar: {T['sidebar']};
+  --ink: {T['ink']}; --ink-strong: {T['ink_strong']}; --ink-2: {T['ink_2']};
+  --muted: {T['muted']}; --glass: {T['glass']};
+  --border: {T['border']}; --border-2: {T['border_2']}; --border-3: {T['border_3']};
+  --input-bg: {T['input_bg']}; --scroll: {T['scroll']};
+  --chrome: {T['chrome']}; --chrome-soft: {T['chrome_soft']};
+  --chrome-faint: {T['chrome_faint']};
+  --accent-wash: {T['accent_wash']}; --select: {T['select']};
+  --on-accent: {T['on_accent']}; --shadow: {T['shadow']};
+  --shadow-panel: {T['shadow_panel']}; }}
+html, body {{ background: var(--bg); }}
+.stApp {{ background: var(--bg) !important; }}
+.block-container {{ padding-top: 1.6rem; max-width: 900px; }}
+html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color: var(--ink);
+    -webkit-font-smoothing: antialiased; }}
+::selection {{ background: var(--select); }}
+::-webkit-scrollbar {{ width:9px; }}
+::-webkit-scrollbar-thumb {{ background: var(--scroll); border-radius:6px; }}
+::-webkit-scrollbar-track {{ background:transparent; }}
+/* soft glass surface — same liquid-glass treatment as the React cards */
+.liquid {{ background: var(--glass); backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); border:1px solid var(--border-2);
+    box-shadow: 0 1px 2px var(--shadow); }}
+/* Sidebar — dark glass */
+[data-testid="stSidebar"] {{
+    background: var(--sidebar) !important; border-right: 1px solid var(--border);
+}}
+[data-testid="stSidebar"] .stButton button {{
+    background: var(--glass);
+    border: 1px solid var(--border);
+    color: var(--ink-2); border-radius: 12px;
+    text-align: left; justify-content: flex-start; font-weight: 600; font-size: 13px;
+}}
+[data-testid="stSidebar"] .stButton button:hover {{
+    border-color: var(--accent); color: var(--ink-strong);
+    background: var(--accent-wash);
+}}
+.mumo-brand {{ display:flex; align-items:center; gap:.5rem; margin:.2rem 0 1rem .1rem; }}
+.mumo-brand .wm {{
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
+    font-size:1.35rem; color: var(--ink-strong);
+}}
+.mumo-hero-logo {{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:.2rem; }}
+.mumo-session {{
+    padding:11px 12px; border-radius:11px; border-left:2px solid var(--border-2);
+    color: var(--muted); font-size:11px; margin:2px 0 8px;
+}}
+/* Chat bubbles */
+.mumo-msg-user {{ display:flex; justify-content:flex-end; margin:10px 0; }}
+.mumo-msg-user .bubble {{
+    max-width:78%; background-image: linear-gradient(90deg, {ACCENT} 0%, {ACCENT2} 100%); color: var(--on-accent);
+    border-radius:18px 18px 4px 18px; padding:13px 18px;
+    font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(47,127,196,.45);
+}}
+.mumo-msg-assistant {{ max-width:88%; margin:14px 0; }}
+.mumo-msg-assistant .label {{
+    font:600 11px 'Inter',sans-serif; letter-spacing:.8px; color: var(--accent);
+    margin-bottom:6px; text-transform:uppercase;
+}}
+.mumo-msg-assistant .body {{
+    font:17px/1.65 'IBM Plex Serif',serif; color: var(--ink);
+}}
+.mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
+/* The chat box is monochrome by design, in BOTH themes: background aside,
+   every part of it (border, caret, text, placeholder, "+", send arrow) is
+   plain white on dark and plain black on light. It used to mix the accent
+   with Streamlit's own defaults, which made the control look like it came
+   from a different app depending on the theme. */
+[data-testid="stChatInput"] {{
+    border: 1px solid var(--chrome-faint) !important;
+    border-radius: 14px !important; background: var(--input-bg) !important;
+}}
+[data-testid="stChatInput"]:focus-within {{ border-color: var(--chrome) !important; }}
+[data-testid="stChatInput"] [data-baseweb="textarea"],
+[data-testid="stChatInput"] [data-baseweb="base-input"],
+[data-testid="stChatInput"] div {{
+    background: transparent !important; color: var(--chrome) !important;
+}}
+[data-testid="stChatInput"] textarea {{
+    color: var(--chrome) !important; caret-color: var(--chrome) !important;
+}}
+[data-testid="stChatInput"] textarea::placeholder {{ color: var(--chrome-soft) !important; }}
+/* Streamlit never themes its own send button — left alone it keeps a slate
+   icon on a slate chip, which is close to invisible on the dark background. */
+[data-testid="stChatInputSubmitButton"] {{ background: transparent !important; }}
+[data-testid="stChatInputSubmitButton"] svg {{
+    fill: var(--chrome) !important; color: var(--chrome) !important;
+}}
+[data-testid="stChatInputSubmitButton"]:disabled svg {{
+    fill: var(--chrome-soft) !important; color: var(--chrome-soft) !important;
+}}
+[data-testid="stChatInputSubmitButton"]:hover {{ background: var(--glass) !important; }}
+/* The native file-attach control, restyled to the "+" the user asked for.
+   The clickable element is the inner <button aria-label="Upload a file">, and
+   its icon is what gives it its size — so the glyph is hidden with
+   visibility:hidden (which KEEPS its layout box) rather than display:none
+   (which collapsed the button to 0x0, making it invisible AND unclickable).
+   A min-size floor guarantees a real hit target regardless, and the "+" is
+   drawn over the button. Verified in a real browser: the button has non-zero
+   size and clicking it opens the file picker. */
+[data-testid="stChatInputFileUploadButton"] button {{
+    position: relative; min-width: 2rem; min-height: 2rem;
+    background: transparent !important;
+}}
+[data-testid="stChatInputFileUploadButton"] button svg {{ visibility: hidden; }}
+[data-testid="stChatInputFileUploadButton"] button::after {{
+    content: "+"; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font: 400 24px/1 'Inter', system-ui, sans-serif; color: var(--chrome);
+    pointer-events: none;
+}}
+[data-testid="stChatInputFileUploadButton"] button:hover::after {{ opacity: .7; }}
+[data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
+[data-testid="stBottom"] > div {{ background: transparent !important; }}
+[data-testid="stHeader"] {{ background: transparent !important; }}
+/* Welcome hero */
+.mumo-hero {{
+    text-align:center; margin: 8vh auto 0; padding: 2rem;
+    max-width: 680px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap: 14px;
+}}
+.mumo-hero-title {{
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
+    font-size: 3.2rem; line-height:1; color: var(--ink-strong);
+}}
+.mumo-hero-sub {{
+    margin: 0 auto; max-width: 460px;
+    font-size: 1.05rem; font-weight:400; color: var(--muted); line-height:1.6;
+}}
+/* Results panel */
+.mumo-panel-header {{
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600;
+    font-size:19px; color: var(--ink-strong);
+}}
+.mumo-panel-sub {{ font:12.5px 'Inter',sans-serif; color: var(--muted); margin-bottom:14px; }}
+/* Native Streamlit content (report narratives, tables, metrics, buttons) is
+   colored by .streamlit/config.toml's [theme] block, which is fixed to dark
+   and has NO connection to MUMO's own light/dark toggle above. Left alone,
+   a plain st.markdown() heading or st.caption() stays near-white regardless
+   of the toggle — invisible the moment the panel behind it turns light. Every
+   rule below re-points that native text at MUMO's OWN theme tokens instead.
+   (One exception CSS cannot reach: st.dataframe draws its cells on a single
+   <canvas> via a JS grid library that reads Streamlit's native theme directly
+   — no DOM text exists there for a stylesheet to color. Report tables render
+   through st.dataframe, so their cell text stays dark-theme-colored in light
+   mode; only this widget is affected, not the headings/captions around it.) */
+[data-testid="stHeadingWithActionElements"] h1,
+[data-testid="stHeadingWithActionElements"] h2,
+[data-testid="stHeadingWithActionElements"] h3,
+[data-testid="stHeadingWithActionElements"] h4,
+[data-testid="stHeadingWithActionElements"] h5,
+[data-testid="stHeadingWithActionElements"] h6 {{ color: var(--ink-strong) !important; }}
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] strong,
+[data-testid="stMarkdownContainer"] em {{ color: var(--ink) !important; }}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {{
+    color: var(--muted) !important;
+}}
+[data-testid="stMetricLabel"] {{ color: var(--muted) !important; }}
+[data-testid="stMetricValue"] {{ color: var(--ink-strong) !important; }}
+/* Buttons OUTSIDE the sidebar (Generate/Download report, expand/collapse
+   panel, run picker) — the sidebar already has its own, more specific rule
+   above and is unaffected by this. */
+.stButton button, .stDownloadButton button {{
+    background: var(--glass) !important; color: var(--ink-strong) !important;
+    border: 1px solid var(--border-2) !important;
+}}
+.stButton button:hover, .stDownloadButton button:hover {{
+    border-color: var(--accent) !important; background: var(--accent-wash) !important;
+}}
+[data-testid="stSelectbox"] div[data-baseweb="select"] {{
+    background: var(--input-bg) !important; border-color: var(--border-2) !important;
+}}
+[data-testid="stSelectbox"] div[data-baseweb="select"] * {{ color: var(--ink) !important; }}
+</style>
+""", unsafe_allow_html=True)
+
+# ── session ──
+ss = st.session_state
+ss.setdefault("messages", [])     # [{role, content}]
+ss.setdefault("stage", "start")
+ss.setdefault("convo", {})
+ss.setdefault("results", None)    # {rdf, viz, meta}
+ss.setdefault("run_now", False)
+ss.setdefault("history", [])      # [{title, messages, results}] — local fallback, no login
+ss.setdefault("panel_open", False)  # is the right results drawer open?
+ss.setdefault("panel_expanded", False)  # is the right drawer widened?
+ss.setdefault("active_conversation_id", None)  # Supabase conversation row, once logged in
+ss.setdefault("entered", False)  # has the visitor clicked past the intro landing page?
+ss.setdefault("auth_mode", None)  # None | "login" | "signup" — which form the flower page reveals
+ss.setdefault("job_id", None)     # id of an in-flight background docking job (subprocess)
+ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in session
+ss.setdefault("upload_pending", None)  # in-flight file-upload choice flow
+ss.setdefault("awaiting_ligand", None)  # a dock that stalled for lack of a resolvable ligand — {target, …}
+ss.setdefault("pending_actions", [])   # steps queued behind a running dock
+ss.setdefault("stored_runs", [])       # every docking run in this conversation
+ss.setdefault("run_index", 0)          # which stored run the panel is showing
+ss.setdefault("asked_last_turn", False)  # did we just ask a clarifying question?
+
+# how to name each follow-up step when telling the user what happens next
+_ACTION_NAMES = {"analyze": "run the ADMET analysis",
+                 "qm": "compute the frontier orbitals (HOMO/LUMO)",
+                 "string": "build the interaction network",
+                 "blast": "run the BLAST search",
+                 "dock": "run the docking"}
+_llm = get_llm()
+
+
+def _trace(stage):
+    """Print a flushed breadcrumb marking a stage of the main process.
+
+    A native segfault (exit 139) kills the interpreter outright: no traceback,
+    no exception, nothing Python can catch or log after the fact. What DOES
+    survive is whatever already reached stdout, because Hugging Face keeps the
+    tail of it in the Space's error message. So the only way to learn where the
+    app died is to say where it is BEFORE it gets there — hence flush=True,
+    which matters more than the message: a buffered line is lost in the crash.
+
+    Placed at the boundaries where the main process enters native code (RDKit,
+    Playwright, the 3D viewer), since that is where every one of this app's
+    crashes has come from.
+    """
+    try:
+        print(f"[mumo] {stage}", flush=True)
+    except Exception:
+        pass
+
+
+def theme_bg():
+    """Background for the 3D pose viewer — follows MUMO's OWN theme toggle.
+
+    It used to read Streamlit's theme, which the user's switch doesn't change,
+    so a light-mode app kept rendering a black viewer panel.
+    """
+    return THEMES[st.session_state.get("theme", "dark")]["viewer_bg"]
+
+
+def _theme_bg_legacy():
+    """3D background follows the app theme: dark → black, light → white."""
+    try:
+        return "#0b0d12" if st.context.theme.type == "dark" else "#ffffff"
+    except Exception:
+        return "#0b0d12"
+
+
+def _persist(role, content):
+    """Mirror a message to Supabase (no-op if not logged in / not configured).
+    Creates the conversation row lazily on the first message of a session."""
+    user = authdb.current_user()
+    if not user:
+        return
+    try:
+        if not ss.active_conversation_id:
+            title = content if role == "user" else "New session"
+            ss.active_conversation_id = authdb.create_conversation(user["id"], title)
+        authdb.save_message(ss.active_conversation_id, user["id"], role, content)
+        authdb.touch_conversation(ss.active_conversation_id)
+    except Exception:
+        pass  # cloud storage is best-effort — never break the chat over it
+
+
+def say(text):
+    ss.messages.append({"role": "assistant", "content": text})
+    _persist("assistant", text)
+
+
+def mol_logo(width=20, height=26, gid="mg"):
+    """MUMO's swirl brand mark — two interleaved strokes in the accent color."""
+    return (
+        f'<svg width="{width}" height="{height}" viewBox="0 0 40 64" '
+        'xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;">'
+        f'<path d="M8 4C8 20 32 20 32 32C32 44 8 44 8 60" fill="none" stroke="{ACCENT}" stroke-width="4"/>'
+        f'<path d="M32 4C32 20 8 20 8 32C8 44 32 44 32 60" fill="none" stroke="{ACCENT}" '
+        'stroke-width="4" opacity="0.55"/></svg>'
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# LOGIN GATE — only enforced if Supabase secrets are configured; otherwise the
+# app runs exactly as before, local-only (no login, no cross-device history).
+# ════════════════════════════════════════════════════════════════════════════
+authdb.restore_session()
+
+
+def render_login_gate():
+    """Page 2 — the flower login page. A circular flower video sits centre
+    stage with a quote beneath it and two buttons (Log in / Sign up). Clicking
+    either one does two things at once: the flower spins (a one-shot CSS
+    rotation that replays because Streamlit re-renders the element on rerun),
+    and the matching email/password form is revealed inline right below — no
+    page change. Submitting proceeds to chat."""
+    mode = ss.auth_mode
+    spin = "spin" if mode else ""
+    st.markdown(f"""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+.stApp {{ background: radial-gradient(1100px 700px at 50% 8%, #0d1417 0%, #050506 60%) !important; }}
+[data-testid="stHeader"] {{ background: transparent !important; }}
+.block-container {{ max-width: 560px !important; padding-top: 4vh !important; }}
+html, body, [class*="css"] {{ color: #fff; }}
+.flower-page {{ text-align: center; color: #fff; }}
+.fbrand {{ display:inline-flex; align-items:center; gap:8px; margin-bottom:14px;
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-weight:600; font-size:22px; color:#fff; }}
+.flower {{ width: 300px; height: 300px; margin: 4px auto 0; border-radius: 50%; overflow: hidden;
+    box-shadow: 0 0 70px -12px rgba(63,198,216,0.45), inset 0 0 0 1px rgba(255,255,255,0.08); }}
+.flower video {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
+.flower.spin video {{ animation: flowerSpin 1.4s cubic-bezier(.2,.75,.2,1); }}
+@keyframes flowerSpin {{ from {{ transform: rotate(0deg) scale(1.06); }} to {{ transform: rotate(360deg) scale(1); }} }}
+.fquote {{ font-family:'IBM Plex Serif',serif; font-style:italic; font-size:22px; color:#eef3f6;
+    margin-top: 26px; line-height:1.35; }}
+.fquote-sub {{ font-size:14px; color: rgba(255,255,255,0.55); margin-top:8px; margin-bottom: 8px; }}
+/* native buttons (mode chooser) */
+.stButton button {{ background: rgba(255,255,255,0.06) !important; color:#fff !important;
+    border: 1px solid rgba(255,255,255,0.18) !important; border-radius: 999px !important;
+    font-family:'Inter',sans-serif !important; font-weight:600 !important; padding: 12px 0 !important;
+    transition: transform .15s ease, filter .15s ease, border-color .15s ease !important; }}
+.stButton button:hover {{ border-color: {ACCENT} !important; background: rgba(15,154,173,0.14) !important; }}
+.stButton button:active {{ transform: scale(0.96); }}
+.stButton button[kind="primary"] {{ background: {ACCENT} !important; color:#03242a !important;
+    border: none !important; box-shadow: 0 12px 30px -12px {ACCENT} !important; }}
+/* form inputs (dark) */
+.stTextInput label {{ color: rgba(255,255,255,0.72) !important;
+    font-family:'Inter',sans-serif !important; font-size:13px !important; }}
+.stTextInput input {{ background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.16) !important; color:#fff !important; border-radius:12px !important; }}
+.stTextInput input:focus {{ border-color: {ACCENT} !important; box-shadow: 0 0 0 1px {ACCENT} !important; }}
+[data-testid="stForm"] {{ border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 18px !important;
+    background: rgba(255,255,255,0.02) !important; padding: 18px 20px !important; }}
+[data-testid="stFormSubmitButton"] button {{ background: {ACCENT} !important; color:#03242a !important;
+    border: none !important; border-radius: 12px !important; font-weight: 700 !important;
+    font-family:'Inter',sans-serif !important; box-shadow: 0 10px 24px -10px {ACCENT}; }}
+[data-testid="stFormSubmitButton"] button:hover {{ filter: brightness(1.1); }}
+@media (max-width: 600px) {{ .flower {{ width: 240px; height: 240px; }} .fquote {{ font-size:19px; }} }}
+</style>
+<div class="flower-page">
+  <div class="fbrand">{mol_logo(20, 26, 'mgFlower')}<span>mumo</span></div>
+  <div class="flower {spin}">
+    <video autoplay loop muted playsinline preload="auto"><source src="{FLOWER_VIDEO}" type="video/mp4"></video>
+  </div>
+  <div class="fquote">"Every cure begins with a single question."</div>
+  <div class="fquote-sub">Sign in to begin your discovery.</div>
+</div>
+""", unsafe_allow_html=True)
+
+    if mode is None:
+        cta = st.columns([1, 1])
+        with cta[0]:
+            if st.button("Log in", key="go_login", type="primary", use_container_width=True):
+                ss.auth_mode = "login"
+                st.rerun()
+        with cta[1]:
+            if st.button("Sign up", key="go_signup", use_container_width=True):
+                ss.auth_mode = "signup"
+                st.rerun()
+
+    elif mode == "login":
+        with st.form("login_form"):
+            email = st.text_input("Email", key="li_email")
+            pw = st.text_input("Password", type="password", key="li_pw")
+            if st.form_submit_button("Log in", use_container_width=True):
+                try:
+                    authdb.sign_in(email.strip(), pw)
+                    st.rerun()
+                except Exception as e:
+                    if "confirm" in str(e).lower():
+                        st.error("Your email isn't confirmed yet — check your inbox (and spam folder) for the confirmation link.")
+                        ss.unconfirmed_email = email.strip()
+                    else:
+                        st.error(f"Couldn't log in: {e}")
+        if ss.get("unconfirmed_email"):
+            if st.button("Resend confirmation email", key="resend_conf", use_container_width=True):
+                try:
+                    authdb.resend_confirmation(ss.unconfirmed_email)
+                    st.success("Confirmation email resent — give it a minute to arrive.")
+                except Exception as e:
+                    st.error(f"Couldn't resend: {e}")
+        if st.button("New here? Create an account", key="to_signup", use_container_width=True):
+            ss.auth_mode = "signup"
+            st.rerun()
+
+    else:  # signup
+        with st.form("signup_form"):
+            email2 = st.text_input("Email", key="su_email")
+            pw2 = st.text_input("Password", type="password", key="su_pw", help="At least 6 characters.")
+            if st.form_submit_button("Create account", use_container_width=True):
+                try:
+                    authdb.sign_up(email2.strip(), pw2)
+                    st.success("Account created — check your email to confirm, then log in.")
+                    ss.auth_mode = "login"
+                except Exception as e:
+                    st.error(f"Couldn't sign up: {e}")
+        if st.button("Already have an account? Log in", key="to_login", use_container_width=True):
+            ss.auth_mode = "login"
+            st.rerun()
+
+
+def render_intro():
+    """Page 1 of 3 — a cinematic, scroll-driven landing page that introduces
+    MUMO and drug discovery, then hands off to the login page via the Start
+    button. Full-bleed looping video backgrounds (raw <video>, which survives
+    Streamlit's markdown sanitizer), a liquid-glass design system, and
+    CSS-only scroll-reveal animations (animation-timeline: view()) since JS is
+    stripped from injected markdown."""
+    st.markdown(f"""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* full-bleed dark canvas, no Streamlit chrome */
+.stApp {{ background: #000 !important; }}
+[data-testid="stHeader"] {{ background: transparent !important; }}
+.stMain {{ align-items: stretch !important; }}
+.block-container {{ max-width: 100% !important; width: 100% !important;
+    padding: 0 !important; }}
+.mumo-intro *, .mumo-intro {{ box-sizing: border-box; }}
+.mumo-intro {{ font-family: 'Barlow', sans-serif; color: #fff; }}
+/* liquid glass */
+.lg {{ position: relative; overflow: hidden; background: rgba(255,255,255,0.02);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.12); border-radius: 22px; }}
+.lg::before {{ content:""; position:absolute; inset:0; border-radius:inherit; padding:1.4px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0.12) 25%,
+        rgba(255,255,255,0) 45%, rgba(255,255,255,0) 60%, rgba(255,255,255,0.12) 80%, rgba(255,255,255,0.45));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; pointer-events:none; }}
+/* sections */
+.mumo-sec {{ position: relative; min-height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column; }}
+.mumo-sec > video {{ position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; object-position: top; z-index: 0; }}
+.mumo-sec .veil {{ position:absolute; inset:0; z-index:1; pointer-events:none;
+    background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.6)); }}
+.mumo-sec .inner {{ position: relative; z-index: 2; flex: 1;
+    display: flex; flex-direction: column; padding: 40px clamp(20px, 6vw, 90px); }}
+/* nav */
+.mumo-inav {{ display:flex; align-items:center; justify-content:space-between; }}
+.mumo-inav .brand {{ display:flex; align-items:center; gap:9px;
+    font-family:'IBM Plex Serif',serif; font-style:italic; font-size:26px; color:#fff; }}
+.mumo-inav .navlinks {{ display:flex; gap:6px; padding:6px; }}
+.mumo-inav .navlinks a {{ padding:8px 14px; font-size:14px; font-weight:500;
+    color:rgba(255,255,255,0.9); text-decoration:none; border-radius:999px; }}
+@media (max-width: 820px) {{ .mumo-inav .navlinks {{ display:none; }} }}
+/* hero content */
+.mumo-hero-c {{ flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; }}
+.mumo-pill {{ display:inline-flex; align-items:center; gap:9px; padding:5px 14px 5px 5px;
+    font-size:13.5px; color:rgba(255,255,255,0.92); margin-bottom:26px;
+    animation: fadeUp .8s .3s both; }}
+.mumo-pill .new {{ background:#fff; color:#000; font-weight:600; font-size:11.5px;
+    padding:3px 10px; border-radius:999px; }}
+.mumo-huge {{ font-family:'IBM Plex Serif',serif; font-style:italic;
+    font-size: clamp(3rem, 8vw, 5.4rem); line-height:0.86; letter-spacing:-3px;
+    color:#fff; max-width: 15ch; margin:0; }}
+.mumo-huge .w {{ display:inline-block; margin-right:0.24em; opacity:0;
+    animation: blurWord .7s both; filter: blur(10px); }}
+.mumo-subh {{ margin-top:22px; max-width: 54ch; font-weight:300;
+    font-size: clamp(0.95rem, 1.4vw, 1.05rem); line-height:1.5; color:rgba(255,255,255,0.92);
+    animation: fadeUp .8s .9s both; }}
+.mumo-cue {{ margin-top:34px; font-size:12px; letter-spacing:2px; text-transform:uppercase;
+    color:rgba(255,255,255,0.6); animation: fadeUp .8s 1.2s both; }}
+.mumo-cue .dot {{ display:block; width:22px; height:36px; border:1.5px solid rgba(255,255,255,0.4);
+    border-radius:20px; margin:12px auto 0; position:relative; }}
+.mumo-cue .dot::after {{ content:""; position:absolute; left:50%; top:7px; width:3px; height:7px;
+    border-radius:3px; background:#fff; transform:translateX(-50%); animation: cue 1.6s infinite; }}
+/* capabilities */
+.mumo-kick {{ font-size:14px; color:rgba(255,255,255,0.75); margin-bottom:20px; }}
+.mumo-h2 {{ font-family:'IBM Plex Serif',serif; font-style:italic;
+    font-size: clamp(2.6rem, 7vw, 5.4rem); line-height:0.9; letter-spacing:-2px; margin:0; }}
+.mumo-cards {{ display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-top:56px; }}
+@media (max-width: 900px) {{ .mumo-cards {{ grid-template-columns: 1fr; }} }}
+.mumo-card {{ padding:24px; min-height:340px; display:flex; flex-direction:column; }}
+.mumo-card .ico {{ width:44px; height:44px; border-radius:12px; display:flex;
+    align-items:center; justify-content:center; font-size:22px; }}
+.mumo-card .tags {{ display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; max-width:64%; }}
+.mumo-card .tags span {{ font-size:11px; color:rgba(255,255,255,0.9); padding:4px 10px; border-radius:999px; }}
+.mumo-card .top {{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }}
+.mumo-card h3 {{ font-family:'IBM Plex Serif',serif; font-style:italic; font-size:2rem;
+    letter-spacing:-1px; margin:0 0 10px; }}
+.mumo-card p {{ font-size:14px; font-weight:300; line-height:1.5; color:rgba(255,255,255,0.9);
+    max-width:34ch; margin:0; }}
+/* cta section */
+.mumo-cta-c {{ flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; }}
+.mumo-cta-c .kick {{ font-size:14px; color:rgba(255,255,255,0.75); margin-bottom:20px; }}
+.mumo-cta-c h2 {{ font-family:'IBM Plex Serif',serif; font-style:italic;
+    font-size: clamp(2.4rem, 6vw, 4.4rem); line-height:0.92; letter-spacing:-2px; margin:0 0 14px; max-width:16ch; }}
+.mumo-cta-c p {{ font-weight:300; max-width:46ch; color:rgba(255,255,255,0.9); line-height:1.5; margin:0 0 8px; }}
+/* scroll reveal (CSS-only; ignored gracefully where unsupported -> just visible) */
+.reveal {{ animation: revealUp linear both; animation-timeline: view();
+    animation-range: entry 6% cover 34%; }}
+@keyframes revealUp {{ from {{ opacity:0; filter:blur(10px); transform:translateY(46px); }}
+    to {{ opacity:1; filter:blur(0); transform:none; }} }}
+@keyframes fadeUp {{ from {{ opacity:0; transform:translateY(18px); }} to {{ opacity:1; transform:none; }} }}
+@keyframes blurWord {{ 0% {{ opacity:0; filter:blur(10px); transform:translateY(30px); }}
+    50% {{ opacity:.6; filter:blur(4px); transform:translateY(-4px); }}
+    100% {{ opacity:1; filter:blur(0); transform:translateY(0); }} }}
+@keyframes cue {{ 0% {{ opacity:0; transform:translate(-50%,0); }} 50% {{ opacity:1; }}
+    100% {{ opacity:0; transform:translate(-50%,10px); }} }}
+/* Start button (native st.button, restyled + press effect) */
+.st-key-enter_mumo {{ padding: 0 0 90px; background:#000; }}
+.st-key-enter_mumo button {{
+    background: {ACCENT} !important; color:#03242a !important; border:none !important;
+    font-family:'Barlow',sans-serif !important; font-weight:600 !important; font-size:17px !important;
+    padding: 16px 46px !important; border-radius:999px !important;
+    box-shadow: 0 14px 40px -12px {ACCENT} !important; transition: transform .18s ease, filter .18s ease !important; }}
+.st-key-enter_mumo button:hover {{ filter:brightness(1.1); transform: translateY(-2px); }}
+.st-key-enter_mumo button:active {{ transform: scale(0.94); filter:brightness(0.92); }}
+</style>
+
+<div class="mumo-intro">
+  <!-- SECTION 1 — HERO -->
+  <section class="mumo-sec">
+    <video autoplay muted playsinline loop preload="auto"><source src="{INTRO_HERO_VIDEO}" type="video/mp4"></video>
+    <div class="veil"></div>
+    <div class="inner">
+      <div class="mumo-inav">
+        <div class="brand">{mol_logo(20, 26, 'mgIntro')}<span>mumo</span></div>
+        <div class="navlinks lg"><a>Platform</a><a>Discovery</a><a>Docking</a><a>Reports</a><a>About</a></div>
+        <div style="width:44px"></div>
+      </div>
+      <div class="mumo-hero-c">
+        <div class="mumo-pill lg"><span class="new">New</span> AI that goes from disease to docked molecule</div>
+        <h1 class="mumo-huge">
+          <span class="w" style="animation-delay:.0s">Discover</span>
+          <span class="w" style="animation-delay:.1s">medicine,</span>
+          <span class="w" style="animation-delay:.2s">faster</span>
+          <span class="w" style="animation-delay:.3s">than</span>
+          <span class="w" style="animation-delay:.4s">ever.</span>
+        </h1>
+        <p class="mumo-subh">MUMO is a multi-agent AI drug-discovery partner. Name a disease, a target,
+        or a molecule — it finds the target, scouts the strongest ligands, runs real molecular docking,
+        and hands you a full report. From a single sentence to a validated hit.</p>
+        <div class="mumo-cue">Scroll to explore<span class="dot"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 2 — CAPABILITIES -->
+  <section class="mumo-sec">
+    <video autoplay muted playsinline loop preload="auto"><source src="{INTRO_FEAT_VIDEO}" type="video/mp4"></video>
+    <div class="veil"></div>
+    <div class="inner">
+      <div class="reveal">
+        <div class="mumo-kick">// What MUMO does</div>
+        <h2 class="mumo-h2">Drug discovery,<br>evolved.</h2>
+      </div>
+      <div class="mumo-cards">
+        <div class="mumo-card lg reveal">
+          <div class="top"><div class="ico lg">🎯</div>
+            <div class="tags"><span class="lg">Disease → gene</span><span class="lg">Open Targets</span><span class="lg">Ranked</span></div></div>
+          <div style="flex:1"></div>
+          <h3>Target Finder</h3>
+          <p>Give MUMO a disease and it pinpoints the most relevant protein target, backed by
+          curated genetics — no need to know the gene yourself.</p>
+        </div>
+        <div class="mumo-card lg reveal">
+          <div class="top"><div class="ico lg">🧪</div>
+            <div class="tags"><span class="lg">ChEMBL</span><span class="lg">SMILES</span><span class="lg">Drug-likeness</span></div></div>
+          <div style="flex:1"></div>
+          <h3>Ligand Scout</h3>
+          <p>It scouts the strongest known binders from millions of bioactive molecules, or takes the
+          exact compound you name, and screens them for drug-like properties.</p>
+        </div>
+        <div class="mumo-card lg reveal">
+          <div class="top"><div class="ico lg">⚛️</div>
+            <div class="tags"><span class="lg">AutoDock Vina</span><span class="lg">3D pose</span><span class="lg">Validated</span></div></div>
+          <div style="flex:1"></div>
+          <h3>Molecular Docking</h3>
+          <p>Real physics-based docking with reproducible scoring, interaction maps and a 3D pose —
+          the same result you'd get from a wet-lab computational pipeline.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 3 — CTA -->
+  <section class="mumo-sec" style="min-height:82vh;">
+    <video autoplay muted playsinline loop preload="auto"><source src="{INTRO_HERO_VIDEO}" type="video/mp4"></video>
+    <div class="veil" style="background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.4) 40%, #000);"></div>
+    <div class="inner">
+      <div class="mumo-cta-c reveal">
+        <div class="kick">// Begin</div>
+        <h2>Start your journey into drug discovery.</h2>
+        <p>Create an account or log in, then just start talking. MUMO takes it from there.</p>
+      </div>
+    </div>
+  </section>
+</div>
+""", unsafe_allow_html=True)
+
+    c = st.columns([1, 1, 1])
+    with c[1]:
+        if st.button("Get Started  →", key="enter_mumo", use_container_width=True):
+            ss.entered = True
+            st.rerun()
+
+
+
+
+if authdb.is_configured() and not authdb.current_user():
+    # Chat-only: no valid session (and no ?rt= handoff token restored one), so
+    # send the visitor to the single front door — the React login on Vercel.
+    # restore_session() has already run above, so a logged-in user never reaches
+    # here; only genuinely-unauthenticated visitors get bounced (no redirect loop,
+    # because the React login only returns here after a successful sign-in).
+    components.html(
+        f"""
+        <div style="font-family:'Inter',system-ui,sans-serif;color:#93a0aa;
+             text-align:center;padding-top:40vh;">Taking you to sign in…</div>
+        <script>window.top.location.href = "{LANDING_LOGIN_URL}";</script>
+        """,
+        height=300,
+    )
+    st.stop()
+
+
+# ── LLM-driven conversation — the brain reads every reply IN CONTEXT ──
+CONV_SYSTEM = (
+    "You are MUMO — a warm, brilliant drug-discovery partner: part pharmacologist, part "
+    "computational chemist, part toxicologist, and a patient TUTOR. You talk like a smart, "
+    "kind expert helping a curious student.\n\n"
+    "WHAT YOU CAN DO:\n"
+    "1) ANSWER any drug-discovery / pharmacology / chemistry / biology question (what is "
+    "CFTR, what is molecular docking, what is a good binding score, what is ADMET…).\n"
+    "2) TEACH step by step. If the user is unsure, doesn't know a term, or asks "
+    "'how / why / what', walk them through the procedure step by step: say WHAT each step "
+    "does and WHY it matters, define EVERY piece of jargon in plain words, and give the "
+    "background knowledge they need before moving on. Never assume prior knowledge.\n"
+    "3) EXPLAIN RESULTS. When docking results are provided below, use the ACTUAL numbers to "
+    "answer ('is this score good?', 'which ligand is best and why?', 'explain these "
+    "interactions'). Read affinity as: about -7 kcal/mol or lower = strong, -5 to -7 = "
+    "moderate, above -5 = weak.\n"
+    "4) RUN DOCKING. To dock you need a TARGET (gene/protein like CFTR or EGFR, or a "
+    "4-char PDB ID like 6LU7) OR a DISEASE (you derive the target). A LIGAND is optional "
+    "(a drug name like aspirin, a SMILES, or SEVERAL for a comparison); if none is given "
+    "you scout candidates automatically. Report TIER defaults to Standard — don't pester "
+    "for it.\n\n"
+    "HOW TO BEHAVE:\n"
+    "• Read every message IN CONTEXT of the whole conversation and what is already known. "
+    "Remember what the user already told you; never re-ask it.\n"
+    "• Understand messy, vague or multi-part requests. For a comparison "
+    "('compare aspirin and ibuprofen on EGFR') return ligand as a LIST.\n"
+    "• SEVERAL TARGETS are allowed too: 'dock luteolin against CFTR, EGFR and HDAC6' or "
+    "'screen this compound against these 8 targets' → return target as a LIST. Every "
+    "ligand is docked against every target and ranked in ONE table.\n"
+    "• Fix obvious gene typos (CTRF→CFTR, EGRF→EGFR); map plain descriptions to genes "
+    "('lung mucus protein'→MUC5B).\n"
+    "• If a message is random/off-topic ('hi','ok','m'), reply warmly and gently steer "
+    "back. NEVER invent values the user did not give.\n"
+    "• NEVER use emojis. Keep a clean, professional tone in every reply.\n"
+    "• KNOW YOUR LIMITS. You can dock, rescore, profile ADMET, predict metabolism "
+    "(phase I/II), validate backbone geometry (Ramachandran), build STRING networks "
+    "and run BLAST. Users can also ATTACH FILES with the + button next to the message "
+    "box — structure files (PDB, SDF, MOL, MOL2), spreadsheets (CSV/Excel), or GC-MS "
+    "reports (PDF/Word); if someone asks how to give you a structure a name won't "
+    "resolve, or how to load a compound list, point them at that + button. "
+    "You CAN compute frontier molecular orbitals — HOMO, LUMO and the gap — with "
+    "GFN2-xTB, for one ligand or a whole list. Use the \"qm\" action for anything "
+    "phrased as 'homo lumo', 'homo-lomo', 'orbital', 'band gap' or 'electronic "
+    "properties'. Use \"qm\", NOT \"analyze\": analyze is the ADMET and drug-likeness "
+    "screen, and returning it for an orbital request answers a different question "
+    "than the one asked. Never say you cannot do HOMO/LUMO, and never ask the user "
+    "to confirm before running it — just run it.\n"
+    "You CANNOT run full DFT, long molecular-dynamics trajectories, "
+    "retrosynthesis, or anything experimental or clinical. If asked for "
+    "one of those, say plainly that it isn't available and what you can do instead — "
+    "NEVER promise a run you cannot perform. Explaining these topics is always fine; "
+    "it is only claiming to RUN them that is wrong.\n"
+    "• Choose ACTION each turn:\n"
+    "   - 'dock'    : you have a target OR disease and the user wants to run it.\n"
+    "   - 'analyze' : the user only wants a molecule's drug-likeness / ADMET / toxicity, no docking.\n"
+    "   - 'string'  : the user wants a protein–protein INTERACTION NETWORK / STRING analysis / "
+    "functional partners / how targets connect into pathways. Put the protein(s) in 'target' — a "
+    "single gene name, or a LIST of them for a family/set.\n"
+    "   - 'ramachandran': the user wants BACKBONE-GEOMETRY / STRUCTURE VALIDATION of a "
+    "protein - a Ramachandran plot, phi/psi angles, or 'is this structure any good'. Put "
+    "the protein in 'target'.\n"
+    "   - 'metabolism': the user wants PREDICTED METABOLISM / metabolites / "
+    "biotransformation / phase I or phase II fate of a compound. Put the compound in "
+    "'ligand'.\n"
+    "   - 'blast'   : the user wants a BLAST SEQUENCE-SIMILARITY search — 'blast CFTR', 'find "
+    "proteins similar to X', 'sequence search', or they pasted a protein sequence to search. Put "
+    "the gene NAME or the raw SEQUENCE they gave in 'target'.\n"
+    "   - 'chat'    : everything else — answering, teaching, explaining results, or asking "
+    "ONE clarifying question. When unsure, use 'chat'.\n"
+    "• CRITICAL: your 'reply' and your 'actions' MUST match. If your reply says you are "
+    "running, docking, analyzing, blasting, or starting a simulation, the matching action "
+    "MUST be in 'actions' — NEVER say you are running something while returning an empty "
+    "list. If you still need something (e.g. a target), do NOT promise to run it; ASK for "
+    "the missing piece and return [].\n"
+    "• NEVER RE-ASK. Before asking anything, check 'Known so far' and the conversation. If "
+    "the target (or disease) is already known and the user wants it docked, RUN IT — do not "
+    "ask them to confirm, do not ask again in different words, do not ask for optional "
+    "extras. Asking for something you have already been told is the single worst thing you "
+    "can do. Only ask when a REQUIRED piece is genuinely absent: docking needs a target or "
+    "a disease; ADMET needs a ligand; STRING and BLAST need a protein.\n"
+    "• A bare 'yes', 'ok', 'go ahead' or 'run it' means RUN what you were about to run — "
+    "never answer it with another question.\n"
+    "• MULTI-STEP REQUESTS: one message can ask for SEVERAL things. Put every step in "
+    "'actions', IN THE ORDER THE USER ASKED. Examples:\n"
+    "   'dock 1NFK with luteolin and then run the ADME prediction for the ligand'\n"
+    "       -> actions: [\"dock\", \"analyze\"], target 1NFK, ligand luteolin\n"
+    "   'check the admet of quercetin then dock it against EGFR'\n"
+    "       -> actions: [\"analyze\", \"dock\"]\n"
+    "   'dock CFTR with aspirin and show me its interaction network'\n"
+    "       -> actions: [\"dock\", \"string\"]\n"
+    "  Do NOT drop the later steps. Do NOT ask which one to do first — the order is the "
+    "order they wrote. For a pure question or explanation, return [].\n\n"
+    "Reply with ONLY a JSON object, nothing else:\n"
+    '{"actions": [<any of "dock","analyze","qm","metabolism","ramachandran","string","blast", '
+    'in the order '
+    'requested; '
+    '[] for a pure chat/teaching reply>], '
+    '"disease": <string|null>, "target": <gene or 4-char PDB ID|null>, '
+    '"ligand": <drug name, SMILES, or a LIST of them|null>, '
+    '"tier": <"Simple"|"Standard"|"Ambitious"|null>, '
+    '"reply": "<your message — a full helpful/teaching answer, an explanation of the '
+    'results, a short clarifying question, or a brief \'running it now\' note>"}'
+)
+
+
+STRING_REPORT_SYSTEM = (
+    "You are MUMO, explaining a protein–protein interaction network to a pharmacy "
+    "student who is NEW to network pharmacology and has never used STRING before. "
+    "Make it genuinely easy to understand while staying scientifically correct.\n\n"
+    "Write the report in markdown with these sections and headings:\n"
+    "## What this network shows\n(2–3 sentences: what a protein–protein interaction "
+    "network is, and what we're looking at here — in plain words.)\n"
+    "## The main protein\n(what it is and what it does in the body, simply.)\n"
+    "## Key partners and how they connect\n(for the most important partners: what each "
+    "one does, and WHY it works with the main protein — the biological relationship. "
+    "Explain the evidence in plain words: 'experiments' = scientists physically observed "
+    "them interacting; 'databases' = expert-curated knowledge; 'co-expression' = they turn "
+    "on together; 'text-mining' = repeatedly discussed together in the literature.)\n"
+    "## The biology this network is doing\n(explain the enriched pathways/processes in "
+    "plain language: what these proteins achieve together in the cell or body.)\n"
+    "## Why this matters\n(the big-picture takeaway for drug discovery / for this target.)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm, "
+    "encouraging tutor tone. No emojis. Use ONLY the data provided — never invent facts, "
+    "gene names, or numbers."
+)
+
+
+def _string_narrative(data):
+    """Ask MUMO's LLM to explain a STRING network in plain, beginner-friendly terms."""
+    if _llm is None:
+        return ""
+    resolved = data.get("resolved", [])
+    main = ", ".join(data.get("input", []))
+    main_ann = resolved[0].get("annotation", "") if resolved else ""
+    plines = []
+    for p in data.get("partners", [])[:10]:
+        ev = []
+        if p.get("escore", 0) > 0.15: ev.append("experiments")
+        if p.get("dscore", 0) > 0.15: ev.append("databases")
+        if p.get("ascore", 0) > 0.15: ev.append("co-expression")
+        if p.get("tscore", 0) > 0.15: ev.append("text-mining")
+        plines.append(
+            f"- {p['preferredName_B']} (confidence {round(p.get('score', 0), 2)}; "
+            f"evidence: {', '.join(ev) or 'combined'}): {p.get('annotation_B', '')[:220]}")
+    enr = sorted(data.get("enrichment", []), key=lambda e: e.get("fdr", 1.0))[:10]
+    elines = [f"- [{e.get('category', '')}] {e.get('description', '')}" for e in enr]
+    prompt = (f"MAIN PROTEIN(S): {main}\nWHAT IT DOES: {main_ann[:500]}\n\n"
+              f"TOP PARTNERS (name, confidence 0-1, evidence, function):\n"
+              + "\n".join(plines) + "\n\n"
+              "ENRICHED PATHWAYS / FUNCTIONS:\n" + "\n".join(elines) +
+              "\n\nWrite the beginner-friendly network report now.")
+    try:
+        return _llm.chat(STRING_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1200)
+    except Exception:
+        return ""
+
+
+BLAST_REPORT_SYSTEM = (
+    "You are MUMO, explaining a BLAST sequence-similarity result to a pharmacy student who is "
+    "NEW to bioinformatics and has never run BLAST. Make it genuinely easy while staying correct.\n\n"
+    "Markdown sections and headings:\n"
+    "## What BLAST just did\n(2–3 sentences: what BLAST is — searching databases of known "
+    "proteins for sequences similar to the query — and what we searched here.)\n"
+    "## Your protein\n(what the query protein is, briefly.)\n"
+    "## The closest matches and what they mean\n(walk through the top hits: which proteins / "
+    "organisms they are; explain '% identity' = how much of the sequence is literally the same, "
+    "and 'E-value' = the chance the match is a coincidence, where smaller is better and a value "
+    "near 0 means essentially certain. Say what a high-identity match implies biologically — same "
+    "function, conserved across species.)\n"
+    "## What this tells us\n(the takeaway: is the protein well conserved? part of a known family? "
+    "what does that imply for its function or for drug discovery?)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm tutor "
+    "tone. No emojis. Use ONLY the data provided — never invent hits, numbers, or organisms."
+)
+
+
+def _blast_narrative(data):
+    """Ask MUMO's LLM to explain a BLAST result in plain, beginner-friendly terms."""
+    if _llm is None:
+        return ""
+    hits = data.get("hits", [])[:10]
+    hlines = [f"- {h['accession']} ({h.get('sciname', '')}): identity {h['identity']}%, "
+              f"E-value {h['evalue']:.1e} — {h.get('title', '')[:80]}" for h in hits]
+    prompt = (f"QUERY PROTEIN: {data.get('query_name', '')} "
+              f"({data.get('accession', '')}, {data.get('seq_len', '?')} residues)\n"
+              f"DATABASE: {data.get('database', '')} | PROGRAM: {data.get('program', '')}\n\n"
+              "TOP HITS (accession, organism, % identity, E-value, description):\n"
+              + "\n".join(hlines) + "\n\nWrite the beginner-friendly BLAST report now.")
+    try:
+        return _llm.chat(BLAST_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1100)
+    except Exception:
+        return ""
+
+
+ADMET_REPORT_SYSTEM = (
+    "You are MUMO, explaining a drug-likeness / ADMET screen to a pharmacy student who is "
+    "NEW to pharmacokinetics and toxicology prediction. Make it genuinely easy while staying "
+    "scientifically correct.\n\n"
+    "Markdown sections and headings:\n"
+    "## What this screen checks\n(2–3 sentences: what drug-likeness and ADMET — Absorption, "
+    "Distribution, Metabolism, Excretion, Toxicity — mean, and why they matter before a "
+    "molecule can become a medicine.)\n"
+    "## Drug-likeness\n(walk through the rule-based properties provided — e.g. molecular "
+    "weight, LogP, H-bond donors/acceptors — and what a pass/fail on each implies for "
+    "oral-drug potential.)\n"
+    "## ADMET-AI predictions\n(if provided: pick out the notable endpoints — e.g. hERG "
+    "cardiotoxicity, Ames mutagenicity, DILI liver injury, CYP interactions, "
+    "blood-brain-barrier penetration — explain each term the first time it appears, and say "
+    "in plain words whether the predicted values are reassuring or a red flag.)\n"
+    "## Bottom line\n(an overall plain-language verdict on this molecule's drug-likeness and "
+    "safety profile, and what a medicinal chemist would want to investigate next.)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm, "
+    "encouraging tutor tone. No emojis. Use ONLY the data provided — never invent numbers."
+)
+
+
+RAMACHANDRAN_REPORT_SYSTEM = (
+    "You are MUMO, explaining a Ramachandran plot to a pharmacy student who has "
+    "never seen one. Make it genuinely easy to follow while staying correct.\n\n"
+    "Write markdown with these headings:\n"
+    "## What this plot shows\n(2-3 sentences: a protein backbone can only fold "
+    "into certain shapes because atoms bump into each other; phi and psi are the "
+    "two rotation angles at each amino acid, and plotting them shows whether each "
+    "residue sits in a physically sensible position.)\n"
+    "## What this structure looks like\n(read the ACTUAL numbers given: how many "
+    "residues, how many favoured, how many outliers. Say plainly whether the "
+    "structure looks well built. Mention that the clusters correspond to the two "
+    "common shapes — alpha helix and beta sheet.)\n"
+    "## Why this matters for docking\n(a docking score is only as good as the "
+    "structure it was computed in; a distorted backbone near the binding site "
+    "means the pocket shape may be wrong, so the affinities would be unreliable. "
+    "If there are outliers, say they are worth checking against the pocket.)\n"
+    "## How to read these numbers honestly\n(the regions used here are "
+    "approximations, so the favoured percentage is a LOWER bound and the outlier "
+    "count is the more reliable signal; for a publication, validate the structure "
+    "in MolProbity and cite that.)\n\n"
+    "Define every term the first time. No emojis."
+)
+
+
+def _ramachandran_narrative(data):
+    """Plain-language write-up of a structure validation (same pattern as STRING)."""
+    try:
+        res = data.get("result") or {}
+        prompt = (f"Structure: {data.get('target', '')}\n"
+                  f"Source: {res.get('source', 'unknown')}\n"
+                  f"Residues scored: {res.get('n_scored')} of {res.get('n_residues')}\n"
+                  f"Favoured: {res['pct']['favoured']}% ({res['counts']['favoured']})\n"
+                  f"Allowed: {res['pct']['allowed']}% ({res['counts']['allowed']})\n"
+                  f"Outliers: {res['pct']['outlier']}% ({res['counts']['outlier']})\n"
+                  f"Outlier residues: {', '.join((res.get('outliers') or [])[:25]) or 'none'}\n"
+                  f"\nWrite the structure-validation report.")
+        return _llm.chat(RAMACHANDRAN_REPORT_SYSTEM, prompt,
+                         temperature=0.4, max_tokens=1100)
+    except Exception:
+        return ""
+
+
+METABOLISM_REPORT_SYSTEM = (
+    "You are MUMO, explaining predicted drug metabolism to a pharmacy student who "
+    "understands basic chemistry but has never used a metabolite predictor. Make it "
+    "genuinely easy to follow while staying scientifically correct.\n\n"
+    "Write markdown with these headings:\n"
+    "## What this predicts\n(2-3 sentences: what happens to a drug in the body, and "
+    "what phase I and phase II actually mean — phase I adds or exposes a chemical "
+    "handle, usually by oxidation; phase II sticks a large water-soluble group onto "
+    "that handle so the kidneys can remove it.)\n"
+    "## The most likely metabolites\n(walk through the top few: what the change IS in "
+    "plain words, which enzyme family does it, and why it matters — e.g. an ester "
+    "being cleaved, a phenol being glucuronidated. Reference the routes given.)\n"
+    "## What this suggests about the compound\n(is it likely cleared fast or slowly? "
+    "does it form a reactive intermediate such as an epoxide, and is that trapped by "
+    "glutathione? does it depend on one route that could saturate or be blocked?)\n"
+    "## How to read these numbers\n(the score RANKS likelihood, it is NOT a predicted "
+    "amount; rules are literature-derived; this is a hypothesis to test, not a "
+    "measurement.)\n\n"
+    "Define every term the first time. Be honest about uncertainty. No emojis."
+)
+
+
+def _metabolism_narrative(data):
+    """Plain-language write-up of a metabolism prediction (same pattern as STRING)."""
+    try:
+        from agents.metabolism import summarize
+        prompt = (f"Compound: {data.get('lig_label', '')}\n"
+                  f"{summarize(data.get('prediction') or {})}\n\n"
+                  f"Write the metabolism report.")
+        return _llm.chat(METABOLISM_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1200)
+    except Exception:
+        return ""
+
+
+def _admet_narrative(data):
+    """Ask MUMO's LLM to explain a drug-likeness/ADMET screen in plain, beginner-friendly terms."""
+    if _llm is None:
+        return ""
+    dl = data.get("druglikeness", {})
+    adm = data.get("admet_ml") or {}
+    prompt = (f"LIGAND: {data.get('lig_label', '')} ({data.get('lig_smiles', '')})\n\n"
+              "DRUG-LIKENESS PROPERTIES:\n" + _json.dumps(dl, indent=2) + "\n\n")
+    if adm and "_error" not in adm:
+        prompt += "ADMET-AI PREDICTIONS (endpoint: value):\n" + _json.dumps(adm, indent=2) + "\n\n"
+    prompt += "Write the beginner-friendly ADMET report now."
+    try:
+        return _llm.chat(ADMET_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1100)
+    except Exception:
+        return ""
+
+
+def _history_text(n=10, assistant_cap=420, user_cap=900):
+    """Recent turns, with MUMO's own long replies capped.
+
+    The whole window is re-sent on EVERY turn, and MUMO's replies are long —
+    multi-paragraph narratives full of numbers. Re-sending them verbatim was the
+    single largest variable cost in a turn, and the main reason a free daily
+    token quota ran out after roughly twenty-five messages.
+
+    The user's own words are kept nearly whole (they are short, and they carry
+    the intent the planner has to get right). An assistant reply is truncated to
+    its opening, because MUMO states its conclusion first and the rest is
+    supporting detail the model does not need to re-read to stay coherent. The
+    live numbers it might need are supplied separately and in full by
+    _results_context(), so nothing factual depends on this text.
+    """
+    out = []
+    for m in ss.messages[-n:]:
+        text = str(m.get("content") or "")
+        cap = user_cap if m.get("role") == "user" else assistant_cap
+        if len(text) > cap:
+            text = text[:cap].rstrip() + " …[trimmed]"
+        out.append(f'{m["role"]}: {text}')
+    return "\n".join(out)
+
+
+def _resolve_ligands(lig, announce=True):
+    """Resolve a ligand (name/SMILES) OR a list of them into [{label, smiles}].
+
+    MUMO attempts ANY ligand the user gives — no chemistry filtering (see
+    ligand_check's module docstring). The only things dropped here are genuine
+    dead ends: an empty entry, or a name that resolves to no structure at all.
+    A raw SMILES the user types is accepted directly. Whatever is dropped is
+    reported in the chat rather than vanishing silently.
+    """
+    from agents.admet import resolve_ligand  # lazy: pulls in RDKit
+    import ligand_check as lc
+    _trace("resolve-ligands:enter (RDKit)")
+    if not lig:
+        return []
+    # The model often returns a whole list as ONE comma-separated string.
+    # Passing that straight through looked up a 200-character non-existent
+    # compound and reported 'one ligand' that could not be found — which read
+    # as a spelling failure when every name was spelled correctly. The split
+    # is CAS-aware, so 'Phenol, o-(benzylthio)-' stays one ligand.
+    items = lc.split_ligand_names(lig)
+    out, rejected = [], []
+    for x in items:
+        verdict = lc.precheck_name(x)
+        if verdict:
+            rejected.append(verdict)
+            continue
+        name = lc.normalize_name(x)
+        smi, label = resolve_ligand(name)
+        if not smi:
+            rejected.append(lc.unresolved(x))
+            continue
+        verdict = lc.postcheck_structure(name, smi)
+        if verdict:
+            rejected.append(verdict)
+            continue
+        out.append({"label": label, "smiles": smi})
+    if rejected and announce:
+        say(lc.rejection_message(rejected))
+    return out
+
+
+def _results_context():
+    """Summarise the latest results so the brain can discuss them with real numbers."""
+    r = ss.results
+    if not r:
+        return "Docking results so far: none yet."
+    if "druglikeness" in r:
+        return (f"Latest analysis — drug-likeness of {r['lig_label']} "
+                f"({r['lig_smiles']}): {_json.dumps(r['druglikeness'])}")
+    if r.get("kind") == "string" or "partners" in r:
+        names = ", ".join(r.get("input", []))
+        parts = ", ".join(p.get("preferredName_B", "") for p in r.get("partners", [])[:12])
+        return (f"Latest STRING interaction network for {names}. "
+                f"Top functional partners: {parts}. (Full network + report in the side panel.)")
+    if r.get("kind") == "blast" or "hits" in r:
+        hits = r.get("hits", [])[:8]
+        hs = ", ".join(f"{h.get('accession', '')} ({h.get('identity', '?')}%)" for h in hits)
+        return (f"Latest BLAST for {r.get('query_name', 'the query')} "
+                f"({r.get('seq_len', '?')} aa) vs {r.get('database', '')}. Top hits: {hs}.")
+    if r.get("kind") == "ramachandran":
+        _rr = r.get("result") or {}
+        _p = _rr.get("pct", {})
+        return (f"Latest structure validation for {r.get('target', 'the target')}: "
+                f"{_rr.get('n_scored', '?')} residues scored, {_p.get('favoured', '?')}% "
+                f"favoured, {_p.get('outlier', '?')}% outliers. "
+                f"Outliers: {', '.join((_rr.get('outliers') or [])[:8]) or 'none'}.")
+    if r.get("kind") == "metabolism":
+        pred = r.get("prediction") or {}
+        mets = (pred.get("metabolites") or [])[:6]
+        top = "; ".join(f'{m["smiles"]} via {m["name"]}' for m in mets)
+        return (f"Latest metabolism prediction for {r.get('lig_label', 'the compound')}: "
+                f"{len(pred.get('metabolites') or [])} metabolites. Most likely: {top}. "
+                f"(Scores rank likelihood, they are not amounts.)")
+    if r.get("kind") == "md":
+        return (f"Latest stability simulation for {r.get('ligand', 'the ligand')}: "
+                f"ligand moved {r.get('lig_rmsd_min')} Å on minimisation, "
+                f"{r.get('lig_rmsd_relax')} Å on relaxation; energy relieved "
+                f"{r.get('energy_drop')} kcal/mol. Verdict: {r.get('verdict')}. "
+                f"(This is a fast OpenMM refinement, not full MD.)")
+    if "rdf" not in r:
+        return "The latest result is shown in the side panel."
+    rdf = r["rdf"]
+    rows = []
+    for _, row in rdf.head(5).iterrows():
+        ki = row.get("Est. Ki")
+        le = row.get("Ligand efficiency")
+        rel = row.get("Reliability")
+        extra = ""
+        if ki not in (None, "—"):
+            extra += f", est. Ki {ki}"
+        if le not in (None, "—"):
+            extra += f", ligand efficiency {le}"
+        if rel not in (None, "—"):
+            extra += f", reliability {rel}"
+        rows.append(f"- {row['Ligand']}: {row['Best affinity (kcal/mol)']} kcal/mol{extra}, "
+                    f"{row['H-bonds']} H-bonds, {row['Total interactions']} total interactions; "
+                    f"residues: {row['All interacting residues']}")
+    return (f"Latest docking results — target {r['meta']['gene']} "
+            f"(more negative kcal/mol = stronger binding; smaller Ki = tighter):\n" + "\n".join(rows))
+
+
+def _personalization_context():
+    """A short recall of what THIS logged-in user has asked before, across all
+    their past sessions — lets MUMO notice recurring interests instead of
+    treating every conversation as a blank slate."""
+    user = authdb.current_user()
+    if not user:
+        return ""
+    try:
+        topics = authdb.recent_user_topics(user["id"], limit=40)
+    except Exception:
+        return ""
+    topics = [t for t in topics if t and t not in ss.messages[-1:]][:25]
+    if not topics:
+        return ""
+    return ("This user's past questions across earlier sessions (for context only — "
+            "don't repeat them back verbatim, just notice patterns like a target or "
+            "disease they keep returning to):\n- " + "\n- ".join(topics))
+
+
+def converse(msg):
+    """One conversational turn — MUMO can teach, answer, explain results, or dock."""
+    from brain import parse_intent  # lazy imports (heavy scientific stack)
+    # NOTE: agents.admet (RDKit) is deliberately NOT imported here any more. It
+    # moved into _run_sync_action, which only runs when an ADMET step actually
+    # fires — so answering a question no longer drags the native chemistry
+    # stack into the main Streamlit process for nothing.
+    ss.messages.append({"role": "user", "content": msg})
+    _persist("user", msg)
+    c = ss.convo
+
+    # ── a dock left waiting for a ligand structure ──────────────────────────
+    # When a dock stalled only because a named ligand wouldn't resolve, MUMO
+    # remembered the target. A pasted SMILES (or a short corrected name/CAS)
+    # supplies the missing molecule and offers to run against that same target —
+    # no need to restate it. Confirm-first (see confirm_dock) is the safety valve
+    # if a stray message gets mistaken for a ligand.
+    if ss.get("awaiting_ligand"):
+        objs = _ligand_from_message(msg)
+        if objs:
+            _offer_pending_dock(objs)
+            return
+
+    # ── no LLM key: minimal rule-based fallback (dock-only) ──
+    if _llm is None:
+        intent = parse_intent(msg, None)["intent"]
+        if intent["target"] or intent["disease"]:
+            c.update({"target": intent["target"], "disease": intent["disease"], "tier": "Standard"})
+            if intent["ligand"]:
+                c["ligand"] = intent["ligand"]
+            # Route through the same planner as the LLM path: without a key MUMO
+            # used to treat EVERY message as a docking request, so "what is
+            # ADMET" started a run. Now the plan decides, and an unrunnable
+            # request says what is missing.
+            import dispatch
+            plan = dispatch.plan(intent, c, msg) or (
+                ["dock"] if dispatch.is_ready("dock", c) else [])
+            if not plan:
+                gap = dispatch.gap_prompt("dock", c)
+                say(gap or "Tell me a target and a ligand, e.g. *“dock 6LU7 with aspirin”*.")
+                return
+            say("Running it now (basic mode — add an LLM key to unlock questions, "
+                "teaching and result explanations). Results below.")
+            _run_plan(plan, c)
+            return
+        else:
+            say("Tell me a target and a ligand, e.g. *“dock 6LU7 with aspirin”*. "
+                "(No LLM key is visible to the app, so questions, teaching and "
+                "smart chat are off — see **Why is chat off?** in the sidebar.)")
+        return
+
+    # ── things MUMO genuinely cannot do ────────────────────────────────────
+    # Answered before the model gets a turn, because the failure mode here is
+    # the model inventing the capability and promising a run that will never
+    # produce output. A QUESTION about one of these is still a teaching moment,
+    # so only a request is short-circuited.
+    import dispatch
+    if not dispatch.looks_like_question(msg):
+        _no = dispatch.unsupported_request(msg)
+        if _no:
+            say(_no)
+            return
+
+    # ── LLM-driven turn (full context: known slots + latest results + history) ──
+    known = {k: c.get(k) for k in ("disease", "target", "ligand", "tier")}
+    prompt = (f"Known so far: {_json.dumps(known)}\n"
+              f"{_results_context()}\n\n"
+              f"{_personalization_context()}\n\n"
+              f"Conversation:\n{_history_text(14)}\n\n"
+              f'The user just said: "{msg}"\n\nReturn the JSON.')
+    # These two failures were previously caught together by a bare `except`,
+    # which printed the same friendly line whether the API was unreachable, the
+    # key was rejected, or the model returned unparseable text. That hid the
+    # actual cause completely — the same anti-pattern that hid the Vinardo
+    # failure for weeks. They are separated, and each says what happened.
+    raw = ""
+    try:
+        with st.spinner("Thinking…"):
+            raw = _llm.chat(CONV_SYSTEM, prompt, temperature=0.3, max_tokens=900)
+    except Exception as e:
+        detail = f"{type(e).__name__}: {e}"
+        say("I couldn't reach the language model just now, so I can't work out "
+            "what to run. Everything else — your saved results and reports — is "
+            "unaffected.\n\n"
+            f"Technical detail: `{detail[:400]}`\n\n"
+            "If this persists it is usually the `GROQ_API_KEY` secret on the "
+            "Space being missing, expired, or rate-limited.")
+        return
+
+    try:
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        data = _json.loads(match.group(0))
+    except Exception as e:
+        say("The model replied, but not in a form I could read. Could you say "
+            "that again?\n\n"
+            f"Technical detail: `{type(e).__name__}: {e}`\n\n"
+            f"It said: `{(raw or '(empty response)')[:300]}`")
+        return
+
+    import dispatch
+    # A slot the user asked to abandon must actually go. A model returning null
+    # is ambiguous — it usually just means "not mentioned this turn" — so the
+    # intent to CLEAR is read from the user's own words. Without this,
+    # "forget the ligand, just scout candidates" kept docking the old ligand.
+    for slot in dispatch.slots_to_clear(msg):
+        c.pop(slot, None)
+        if slot == "ligand":
+            c.pop("ligand_objs", None)   # the resolved structures go with it
+
+    for k in ("disease", "target", "tier"):
+        if data.get(k):
+            # moving to a different target abandons a dock that was waiting for a
+            # ligand against the old one, so its stale prompt doesn't resurface.
+            if k == "target" and ss.get("awaiting_ligand") and data[k] != c.get(k):
+                ss.awaiting_ligand = None
+            c[k] = data[k]
+    if data.get("ligand"):
+        c["ligand"] = data["ligand"]
+
+    # "run ADMET on the top hit" / "re-dock the best one" — the winner's name
+    # only ever existed inside the results table, so a back-reference has to be
+    # resolved into a real ligand before any step can use it. Only fills a slot
+    # that is otherwise EMPTY, so it can never override a molecule the user
+    # actually named.
+    if not c.get("ligand"):
+        _rows = []
+        _res = ss.results or {}
+        if _res.get("kind") == "docking" and _res.get("rdf") is not None:
+            try:
+                _rows = _res["rdf"].to_dict(orient="records")
+            except Exception:
+                _rows = []
+        _ref = dispatch.resolve_from_results(msg, _rows)
+        if _ref:
+            c["ligand"] = _ref
+            c.pop("ligand_objs", None)
+
+    say(data.get("reply") or "Okay.")
+
+    # ── decide what actually runs ──────────────────────────────────────────
+    # The model proposes; `dispatch` disposes. It is a pure, unit-tested module
+    # that overrides the model in the two cases that used to stall the app: the
+    # model chatting when the user plainly asked to run something we already
+    # have every input for, and the model asking a reworded version of a
+    # question the conversation already answered. It also returns a PLAN — an
+    # ordered list — so "dock X then run ADMET on it" is one request, not two.
+    import dispatch
+    actions = dispatch.plan(data, c, msg,
+                            asked_last_turn=bool(ss.get("asked_last_turn")))
+
+    if actions:
+        ss.asked_last_turn = False
+    else:
+        # The model committed to an action we cannot run yet — its reply has
+        # probably promised to run it. Say precisely what is missing, which is
+        # the thing the old vague re-ask never did. (When the model chose to
+        # chat it has already asked its own question; don't stack a second.)
+        wanted = dispatch.model_actions(data)
+        if wanted:
+            gap = dispatch.gap_prompt(wanted[0], c)
+            if gap:
+                say(gap)
+        ss.asked_last_turn = True
+
+    _run_plan(actions, c)
+
+
+def _capability_ok(capability):
+    """Pre-flight gate before attempting a capability.
+
+    Each action already contains its own try/except, so a failure never
+    crashed the app. What this adds is refusing to START work that cannot
+    succeed — a missing RDKit or absent Vina is reported as "docking is
+    unavailable, everything else works" instead of being discovered halfway
+    through a slow import — and a breaker that stops re-attempting a
+    repeatedly-failing capability on every single message.
+    """
+    try:
+        from services import resilience
+        ok, _ = resilience.available(capability)
+        if not ok:
+            say(resilience.message(capability))
+        return ok
+    except Exception:
+        # The guard must never be the thing that breaks a working feature.
+        return True
+
+
+def _capability_ok_quiet(capability):
+    """Like _capability_ok but says nothing when unavailable.
+
+    For OPTIONAL enrichments: a build without xtb should quietly omit the
+    orbital section, not announce a missing feature the user never asked for.
+    """
+    try:
+        from services import resilience
+        ok, _ = resilience.available(capability)
+        return ok
+    except Exception:
+        return False
+
+
+def _capability_failed(capability, err):
+    """Feed a real failure back to the breaker, so the second occurrence is
+    caught before the user waits through it again."""
+    try:
+        from services import resilience
+        resilience.record_failure(capability, f"{type(err).__name__}: {err}")
+    except Exception:
+        pass
+
+
+def _capability_ran(capability):
+    """A success clears the failure count — a transient wobble must not
+    accumulate across a session into a permanent outage."""
+    try:
+        from services import resilience
+        resilience.record_success(capability)
+    except Exception:
+        pass
+
+
+def _run_sync_action(action, c):
+    """Run one action that finishes within this script run (everything but dock).
+
+    Split out of `converse` so a queued follow-up step can reuse it verbatim —
+    "dock X then run ADMET" resumes here once the background dock lands, and
+    gets exactly the same code path as if it had been asked on its own.
+    """
+    from agents.admet import resolve_ligand, druglikeness, admet_ml
+
+    # analyze-only → drug-likeness + ADMET-AI predictions, no docking
+    if action == "analyze" and c.get("ligand"):
+        if not _capability_ok("admet"):
+            return
+        # A list of ligands used to be silently truncated to c["ligand"][0]:
+        # asking for 15 compounds produced one report for the first and no hint
+        # that the other 14 were dropped. Every ligand is resolved now, and the
+        # extra ones are carried in res["batch"] for the comparison table.
+        import ligand_check as _lc
+        _names = _lc.split_ligand_names(c["ligand"])
+        one = _names[0] if _names else c["ligand"]
+        smi, label = resolve_ligand(str(one))
+        if smi:
+            res = {"kind": "admet", "druglikeness": druglikeness(smi),
+                   "lig_label": label, "lig_smiles": smi}
+            with st.spinner("Running ADMET-AI models (hERG, CYP, Ames, DILI…)"):
+                res["admet_ml"] = admet_ml(smi)
+            # Electronic structure, when the xtb binary is in this build.
+            # Gated rather than assumed: a build without xtb simply omits the
+            # section instead of failing the whole ADMET run.
+            if _capability_ok_quiet("qm"):
+                try:
+                    from agents.qm_analyst import orbitals
+                    with st.spinner("Computing frontier orbitals (GFN2-xTB)…"):
+                        qm_res = orbitals(smi)
+                    if not qm_res.get("_error"):
+                        res["qm"] = qm_res
+                        _capability_ran("qm")
+                    else:
+                        _capability_failed("qm", qm_res["_error"])
+                except Exception as _e:
+                    _capability_failed("qm", _e)
+            # More than one ligand: build a comparison across all of them.
+            # This is what "run HOMO/LUMO for these 15" actually asks for — a
+            # table you can rank, not fifteen separate reports.
+            if len(_names) > 1:
+                batch, qm_ok = [], _capability_ok_quiet("qm")
+                prog = st.progress(0.0, text="Analysing ligands…")
+                for _i, _nm in enumerate(_names, 1):
+                    prog.progress(_i / len(_names), text=f"Analysing {_nm} ({_i}/{len(_names)})")
+                    _smi, _lab = (smi, label) if _nm == one else resolve_ligand(str(_nm))
+                    if not _smi:
+                        batch.append({"label": str(_nm), "smiles": "", "unresolved": True})
+                        continue
+                    entry = {"label": _lab or str(_nm), "smiles": _smi,
+                             "druglikeness": druglikeness(_smi)}
+                    if qm_ok:
+                        try:
+                            from agents.qm_analyst import orbitals as _orb
+                            _q = _orb(_smi)
+                            if not _q.get("_error"):
+                                entry["qm"] = _q
+                            else:
+                                entry["qm_error"] = _q["_error"]
+                        except Exception as _e:
+                            entry["qm_error"] = f"{type(_e).__name__}: {_e}"
+                    batch.append(entry)
+                prog.empty()
+                res["batch"] = batch
+            with st.spinner("Writing the ADMET report…"):
+                res["narrative"] = _admet_narrative(res)
+            ss.results = res
+            ss.panel_open = True
+            import dispatch
+            tip = dispatch.next_step("admet", top_ligand=label)
+            if tip:
+                say(tip)
+        return
+
+    # HOMO/LUMO on its own. Kept separate from "analyze" because an orbital
+    # request was previously answered with a drug-likeness report — a different
+    # question, and one that also only ever covered the first ligand.
+    if action == "qm" and c.get("ligand"):
+        if not _capability_ok("qm"):
+            return
+        import ligand_check as _lc
+        names = _lc.split_ligand_names(c["ligand"])
+        if not names:
+            say("Give me one or more compounds and I'll compute their frontier orbitals.")
+            return
+        from agents.qm_analyst import orbitals
+        from agents.admet import canonical_smiles, formula_of
+        entries, missing = [], []
+        # Resolve everything FIRST, then compute once per distinct structure.
+        # The 15-compound run that prompted this had three inputs resolving to
+        # the same molecule, so xtb ran three times on it and the report carried
+        # three identical sections. Identity is per-structure, not per-input.
+        by_structure = {}
+        for nm in names:
+            smi, label = resolve_ligand(str(nm))
+            if not smi:
+                missing.append(str(nm))
+                continue
+            key = canonical_smiles(smi)
+            slot = by_structure.setdefault(
+                key, {"smiles": smi, "label": label or str(nm), "aliases": []})
+            slot["aliases"].append(str(nm))
+
+        # Two DIFFERENT structures sharing one label would be just as unreadable
+        # as the generic label was, so disambiguate with the formula.
+        seen = {}
+        for key, slot in by_structure.items():
+            seen.setdefault(slot["label"], []).append(key)
+        for label, keys in seen.items():
+            if len(keys) > 1:
+                for key in keys:
+                    f = formula_of(by_structure[key]["smiles"])
+                    if f:
+                        by_structure[key]["label"] = f"{label} ({f})"
+
+        total = len(by_structure)
+        prog = st.progress(0.0, text="Computing frontier orbitals…")
+        for i, slot in enumerate(by_structure.values(), 1):
+            prog.progress(i / total, text=f"{slot['label']} ({i}/{total})")
+            entry = {"label": slot["label"], "smiles": slot["smiles"]}
+            # Record when several of the user's inputs were one molecule, so a
+            # collapsed duplicate is visible rather than silently dropped.
+            extra = [a for a in slot["aliases"] if a.strip().lower() != slot["label"].strip().lower()]
+            if len(slot["aliases"]) > 1 and extra:
+                entry["also_given_as"] = extra
+            q = orbitals(slot["smiles"])
+            if q.get("_error"):
+                entry["error"] = q["_error"]
+            else:
+                entry["qm"] = q
+            entries.append(entry)
+        prog.empty()
+        # Draw each diagram once, here, with matplotlib rather than a headless
+        # Chromium round-trip — the same PNG bytes are then reused by the
+        # .docx so the report never has to re-render anything.
+        _ok = [e for e in entries if e.get("qm")]
+        if _ok:
+            import viz_string as _vs
+            for e in _ok:
+                try:
+                    e["png"] = _vs.orbital_png(e["qm"], title=f"Frontier orbitals — {e['label']}")
+                except Exception as _e:
+                    say(f"(Orbital diagram for {e['label']} could not be drawn: "
+                        f"{type(_e).__name__}: {_e})")
+        if not any(e.get("qm") for e in entries):
+            _capability_failed("qm", "no ligand produced orbitals")
+            say("I couldn't compute orbitals for any of those compounds."
+                + (f" Unresolved: {', '.join(missing)}." if missing else ""))
+            return
+        _capability_ran("qm")
+        ss.results = {"kind": "qm", "entries": entries, "missing": missing}
+        ss.panel_open = True
+        done = [e["label"] for e in entries if e.get("qm")]
+        say(f"Frontier orbitals computed for **{len(done)}** compound(s): "
+            f"{', '.join(done)}. The HOMO/LUMO energies, the gap and an orbital "
+            f"diagram for each are in the panel."
+            + (f" I couldn't find a structure for: {', '.join(missing)}." if missing else ""))
+        return
+
+    # predicted phase I / phase II metabolism of a compound
+    if action == "metabolism" and c.get("ligand"):
+        if not _capability_ok("metabolism"):
+            return
+        from agents.metabolism import predict_metabolites
+        one = c["ligand"][0] if isinstance(c["ligand"], list) else c["ligand"]
+        smi, label = resolve_ligand(str(one))
+        if not smi:
+            say(f"I couldn't find a structure for **{one}** to predict its metabolism.")
+            return
+        with st.spinner(f"Predicting phase I and phase II metabolites of {label}…"):
+            pred = predict_metabolites(smi, depth=2)
+        if pred.get("_error"):
+            say(f"Metabolism prediction couldn't run: {pred['_error']}")
+            return
+        res = {"kind": "metabolism", "lig_label": label, "lig_smiles": smi,
+               "prediction": pred}
+        with st.spinner("Writing the metabolism report…"):
+            res["narrative"] = _metabolism_narrative(res)
+        ss.results = res
+        ss.panel_open = True
+        import dispatch
+        tip = dispatch.next_step("metabolism", top_ligand=label)
+        if tip:
+            say(tip)
+        return
+
+    # backbone-geometry (Ramachandran) validation of a target structure
+    if action == "ramachandran" and c.get("target"):
+        if not _capability_ok("ramachandran"):
+            return
+        from pipeline_core import structure_validation
+        tgt = c["target"]
+        name = tgt[0] if isinstance(tgt, list) else tgt
+        try:
+            with st.status(f"Validating the {name} structure…", expanded=True) as stt:
+                res = structure_validation(str(name), DATA,
+                                           progress=lambda m: stt.write(m))
+                stt.update(label="Structure validation complete", state="complete")
+        except Exception as e:
+            _capability_failed("ramachandran", e)
+            say(f"Structure validation couldn't run: {e}")
+            return
+        if res.get("_error"):
+            say(f"Structure validation couldn't run: {res['_error']}")
+            return
+        result = {"kind": "ramachandran", "target": str(name), "result": res}
+        with st.spinner("Writing the validation report…"):
+            result["narrative"] = _ramachandran_narrative(result)
+        ss.results = result
+        ss.panel_open = True
+        import dispatch
+        tip = dispatch.next_step("ramachandran", target=str(name))
+        if tip:
+            say(tip)
+        return
+
+    # protein–protein interaction network → STRING
+    if action == "string" and c.get("target"):
+        if not _capability_ok("string"):
+            return
+        from agents.string_analyst import analyze_string
+        prot = c["target"]
+        label = ", ".join(prot) if isinstance(prot, list) else str(prot)
+        try:
+            with st.spinner(f"Querying STRING for {label}…"):
+                data_str = analyze_string(prot)
+            with st.spinner("Writing the network report…"):
+                data_str["narrative"] = _string_narrative(data_str)
+            ss.results = {"kind": "string", **data_str}
+            ss.panel_open = True
+            _capability_ran("string")
+            import dispatch
+            tip = dispatch.next_step("string", target=label)
+            if tip:
+                say(tip)
+        except Exception as e:
+            _capability_failed("string", e)
+            say(f"STRING analysis couldn't run: {e}")
+        return
+
+    # BLAST sequence similarity (self-hosted BLAST+ — runs in seconds)
+    if action == "blast" and c.get("target"):
+        if not _capability_ok("blast"):
+            return
+        from agents.blast_analyst import analyze_blast
+        q = c["target"]
+        q = q[0] if isinstance(q, list) else q
+        try:
+            with st.status("Searching similar proteins with BLAST…", expanded=True) as stt:
+                data_bl = analyze_blast(
+                    str(q), status_cb=lambda w: stt.write("…fetching the sequence and searching"))
+                stt.update(label="BLAST complete", state="complete")
+            with st.spinner("Writing the BLAST report…"):
+                data_bl["narrative"] = _blast_narrative(data_bl)
+            ss.results = {"kind": "blast", **data_bl}
+            ss.panel_open = True
+            _capability_ran("blast")
+            import dispatch
+            tip = dispatch.next_step("blast", target=str(q))
+            if tip:
+                say(tip)
+        except Exception as e:
+            _capability_failed("blast", e)
+            say(f"BLAST couldn't run: {e}")
+        return
+
+
+def _run_plan(actions, c):
+    """Execute a planned sequence of actions.
+
+    Docking is the only step that outlives this script run — it is a detached
+    subprocess — so it cannot simply be called in a loop with the others. When
+    the plan reaches a dock, the REMAINDER is parked in session state along with
+    a snapshot of the conversation slots it will need, and `_apply_result`
+    resumes it once the dock lands. Snapshotting matters because finishing a
+    dock clears `ss.convo`, which would otherwise take the ligand for the
+    queued ADMET step with it.
+    """
+    queue = list(actions or [])
+    while queue:
+        action = queue.pop(0)
+        if action != "dock":
+            _run_sync_action(action, c)
+            continue
+
+        # resolve the CURRENT ligand(s) fresh (a single name OR a comparison list)
+        asked_for_ligands = bool(c.get("ligand"))
+        c["ligand_objs"] = _resolve_ligands(c.get("ligand"))
+        if asked_for_ligands and not c["ligand_objs"]:
+            # The user named specific molecules and none of them survived screening.
+            # Falling through would let the pipeline SCOUT substitutes from ChEMBL and
+            # present them as the answer — silently docking something the user never
+            # asked about. Stop instead; _resolve_ligands has already said why.
+            tgt = c.get("target")
+            if tgt:
+                # The target IS known — the only thing missing is a structure for a
+                # name no database has (a vendor code, a novel analogue). Remember
+                # the target so the next SMILES / structure file the user gives drops
+                # straight into this dock, instead of making them restate everything.
+                ss.awaiting_ligand = {
+                    "target": tgt,
+                    "uploaded_target_pdb": c.get("uploaded_target_pdb"),
+                    "uploaded_target_name": c.get("uploaded_target_name"),
+                    "tier": c.get("tier") or "Standard",
+                }
+                _tname = ", ".join(tgt) if isinstance(tgt, list) else tgt
+                _tried = c.get("ligand")
+                _tried = (_tried[0] if isinstance(_tried, list) else _tried) or "that ligand"
+                say(f"I couldn't get a structure for **{_tried}** from its name alone. "
+                    f"Paste its **SMILES**, or attach its structure file "
+                    f"(SDF / MOL / MOL2 / PDB) with the **+**, and I'll dock it against "
+                    f"**{_tname}**.")
+            else:
+                say("None of those ligands can be docked, so I've stopped here rather than "
+                    "substituting different molecules. Give me one that works and I'll run it.")
+            ss.pending_actions = []
+            return
+        c["tier"] = c.get("tier") or "Standard"
+        ss.awaiting_ligand = None  # a real dock is starting — supersede any stalled one
+        # park the rest WITH the slots they need, then hand off to the dock
+        ss.pending_actions = [{"action": a, "convo": dict(c)} for a in queue]
+        if len(queue):
+            nice = " then ".join(_ACTION_NAMES.get(a, a) for a in queue)
+            say(f"Starting the docking run — I'll {nice} straight after it finishes.")
+        ss.run_now = True
+        return
+
+    ss.pending_actions = []
+
+
+def _resume_pending():
+    """Run whatever was queued behind a docking run, now that it has finished.
+
+    Kept deliberately defensive: a follow-up step failing must never discard the
+    docking results the user was actually waiting for.
+    """
+    pend = ss.get("pending_actions") or []
+    ss.pending_actions = []
+    for step in pend:
+        try:
+            _run_sync_action(step.get("action"), dict(step.get("convo") or {}))
+        except Exception as e:
+            say(f"The follow-up {step.get('action')} step couldn't run: {e}")
+
+
+def build_target(c):
+    """Turn the chosen target string into a dockable target dict (gene or PDB ID)."""
+    from agents.target_analyst import auto_grid_from_pdb  # lazy: pulls in gemmi
+    t = c["target"]
+    if re.match(r"^[1-9][A-Za-z0-9]{3}$", t):       # PDB ID — fetch from RCSB (with retries)
+        content = None
+        for attempt in range(3):
+            try:
+                r = requests.get(f"https://files.rcsb.org/download/{t}.pdb", timeout=45)
+                if r.status_code == 200 and r.content:
+                    content = r.content
+                    break
+            except Exception:
+                pass
+        if content is None:
+            raise RuntimeError(f"Couldn't download {t} from RCSB (network was slow). Please try again.")
+        raw = os.path.join(DATA, f"{t}_chat.pdb")
+        with open(raw, "wb") as f:
+            f.write(content)
+        center, size, pocket = auto_grid_from_pdb(raw)
+        return {"gene": t, "pdb_path": raw, "center": center, "size": size, "source": f"PDB {t} · {pocket}"}
+    return {"gene": t, "pdb_path": None, "center": None, "size": None, "source": "gene (AlphaFold)"}
+
+
+def _run_to_results(run):
+    """Turn one STORED docking run back into a live results dict.
+
+    Rehydrating the viz is what restores the 3D pose and the 2D interaction
+    diagram — without it a re-opened conversation shows a bare table, which is
+    what "nothing shows except the written report" meant.
+    """
+    if not run or not run.get("rows"):
+        return None
+    try:
+        from viz import rehydrate_viz
+        rdf = pd.DataFrame(run["rows"])
+        rdf.index = range(1, len(rdf) + 1)     # Rank starts at 1, as for a fresh run
+        meta = dict(run.get("meta") or {})
+        meta.setdefault("gene", run.get("gene"))
+        # A fresh directory every call (see _fresh_scratch_dir) — this is what
+        # the run picker and the sidebar history loader both call, so without
+        # this, switching between two stored runs whose first ligand shares a
+        # name (e.g. "lupeol" docked against two different targets, or two
+        # separate single-ligand docks of the same compound) would silently
+        # overwrite one run's exported structure with the other's.
+        return {"kind": "docking", "rdf": rdf,
+                "viz": rehydrate_viz(run.get("viz") or {}, _fresh_scratch_dir(os.path.join(DATA, "viz"))),
+                "meta": meta, "tier": run.get("tier") or "Standard"}
+    except Exception:
+        return None
+
+
+def _run_label(run, i):
+    """Short label for a stored run, for the panel's run picker."""
+    meta = run.get("meta") or {}
+    gene = meta.get("gene") or run.get("gene") or "target"
+    n = len(run.get("rows") or [])
+    stamp = ""
+    try:
+        import datetime as _dt
+        if run.get("saved_at"):
+            stamp = _dt.datetime.fromtimestamp(run["saved_at"]).strftime(" · %d %b %H:%M")
+    except Exception:
+        pass
+    return f"{i + 1}. {gene} — {n} ligand{'s' if n != 1 else ''}{stamp}"
+
+
+def _apply_result(result):
+    """Turn a pipeline_core.run_job result dict into UI state: the chat message,
+    the right-hand results panel, and Supabase persistence. Shared by BOTH the
+    foreground fallback and the background-job poller, so there is exactly one
+    place that knows how a finished run becomes UI."""
+    if not result:
+        say("The run didn't return anything — please try again.")
+        return
+    if not result.get("ok"):
+        # a plain user-facing guard message (no target resolved / nothing to dock)
+        say(result.get("say_text") or "I couldn't run that — please rephrase.")
+        ss.stage = "start"
+        ss.convo = {}
+        return
+
+    from viz import rehydrate_viz
+    # result["viz"] is already in serialize_viz form (self-contained 2D SVG +
+    # cropped complex text); rehydrate writes the complex back to disk for the
+    # 3D viewer/report — identical to the history-reload path. A FRESH
+    # directory every time (see _fresh_scratch_dir) — this used to write to
+    # the bare DATA folder, so a later dock (or reloading a different past
+    # conversation) whose first ligand happened to share a name could
+    # overwrite THIS run's exported file on disk without anything on screen
+    # changing to say so.
+    viz = rehydrate_viz(result.get("viz") or {}, _fresh_scratch_dir(os.path.join(DATA, "viz")))
+    rdf = pd.DataFrame(result["rows"])         # already sorted best→worst by the core
+    rdf.index = range(1, len(rdf) + 1)         # Rank starts at 1
+    meta = result.get("meta") or {}
+    ss.results = {"kind": "docking", "rdf": rdf, "viz": viz, "meta": meta,
+                  "tier": result.get("tier") or "Standard"}
+    ss.panel_open = True
+    # persist the full summary so a reloaded conversation rebuilds the whole
+    # report. Idempotent — the background worker may have already written this.
+    # keep it in the in-session history too, so the panel's run picker shows it
+    # straight away rather than only after a reload
+    ss.stored_runs = ([{"gene": meta.get("gene"), "rows": result["rows"],
+                        "meta": meta, "viz": result.get("viz") or {},
+                        "saved_at": __import__("time").time()}]
+                      + list(ss.get("stored_runs") or []))[:6]
+    ss.run_index = 0
+    if ss.active_conversation_id:
+        try:
+            authdb.save_results(ss.active_conversation_id,
+                                {"gene": meta.get("gene"), "rows": result["rows"],
+                                 "meta": meta, "viz": result.get("viz") or {}})
+        except Exception:
+            pass
+    say(result["say_text"])
+    ss.convo = {}   # reset for the next, independent request
+    # A multi-step request ("dock X then run ADMET on it") parks its remaining
+    # steps here while the dock runs in its subprocess. They carry their own
+    # slot snapshot, which is why clearing ss.convo just above is safe.
+    queued = [s.get("action") for s in (ss.get("pending_actions") or [])]
+    _resume_pending()
+    # Offer the obvious follow-up — but never one the user already asked for in
+    # the same breath, which is what `queued` guards against.
+    import dispatch
+    top = str(rdf.iloc[0]["Ligand"]) if len(rdf) else None
+    tip = dispatch.next_step("docking", top_ligand=top, already_done=queued)
+    if tip:
+        say(tip)
+
+
+def run_pipeline(status_area):
+    """FOREGROUND fallback: run the whole pipeline in-process, then apply the
+    result. Used only when a detached background job can't be launched (e.g. an
+    anonymous session with no persistent conversation to track the job against).
+    The heavy scientific stack loads lazily inside pipeline_core."""
+    from pipeline_core import run_job
+    # A fresh directory per call — see _fresh_scratch_dir's docstring. The bare
+    # DATA folder used here previously meant a second foreground-fallback dock
+    # in the same session (or even a different session, on a shared host)
+    # could overwrite the first one's exported files mid-flight.
+    result = run_job(ss.convo, VINA, _fresh_scratch_dir(os.path.join(DATA, "fg")), VENV,
+                     llm=_llm, progress=lambda m: status_area.write(m))
+    _apply_result(result)
+
+
+def _prune_scratch(parent, keep_recent=6, max_age_hours=24):
+    """Delete stale scratch directories under `parent`.
+
+    _fresh_scratch_dir never reuses a directory, which is what makes the
+    exported structures correct — but it also means they accumulate forever,
+    and a docking run's working files (PDBQTs, complex PDBs) are not small.
+    On a free-tier container that is a slow leak with a real ceiling.
+
+    Deliberately conservative, because deleting a directory still in use would
+    break a live result rather than merely waste space:
+      * the `keep_recent` newest are ALWAYS kept, whatever their age — the
+        run happening right now is the newest, so it can never be the victim
+      * everything else must ALSO be older than `max_age_hours`
+
+    Both conditions have to hold, so a burst of runs inside a day is untouched
+    and only genuinely abandoned directories go.
+    """
+    import shutil
+    import time as _t
+    try:
+        entries = [os.path.join(parent, d) for d in os.listdir(parent)]
+    except OSError:
+        return 0
+    dirs = [d for d in entries if os.path.isdir(d)]
+    if len(dirs) <= keep_recent:
+        return 0
+    try:
+        dirs.sort(key=os.path.getmtime, reverse=True)      # newest first
+    except OSError:
+        return 0
+    cutoff = _t.time() - max_age_hours * 3600
+    removed = 0
+    for d in dirs[keep_recent:]:
+        try:
+            if os.path.getmtime(d) < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def _fresh_scratch_dir(parent):
+    """A brand-new, never-reused directory under `parent`.
+
+    dock_pipeline writes fixed filenames (c_complex_0.pdb, c_lig_0.pdbqt, …)
+    and viz.rehydrate_viz writes reload_{i}_{label}.pdb — both keyed only by a
+    ligand's position and name, never by anything that changes between
+    separate runs. Two docks that land on the same directory with the same
+    ligand at the same position (trivially true for "lupeol vs target A" then
+    later "lupeol vs target B" in one conversation, or simply reloading an
+    older conversation whose first ligand has the same name) silently
+    overwrite each other's file on disk.
+
+    That overwrite is invisible in the worst possible way: MUMO's own 2D
+    interaction diagram is a pre-rendered SVG baked in at dock time and never
+    re-read, so it keeps showing the run it was actually generated from — but
+    the exported 3D pose and the structure zip re-read the file fresh at
+    export time, so they silently show whichever run wrote to that shared
+    path LAST. The report text and the exported structure quietly stop
+    describing the same molecule, with nothing anywhere to say so. A fresh
+    directory per call makes the collision structurally impossible instead of
+    relying on names or positions never coinciding.
+    """
+    import uuid
+    os.makedirs(parent, exist_ok=True)
+    # Prune BEFORE creating, so the new directory is never a pruning
+    # candidate, and so cleanup happens exactly when new space is consumed —
+    # no scheduler, no startup hook, nothing to forget to run.
+    try:
+        _prune_scratch(parent)
+    except Exception:
+        pass          # housekeeping must never block an actual docking run
+    d = os.path.join(parent, uuid.uuid4().hex[:12])
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _job_data_dir(job_id):
+    """A private working directory for ONE docking run, nested under the job
+    so it's still easy to find/clean alongside that job's other files, but
+    never reused by a later run in the same conversation."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(job_id))[:60] or "job"
+    return _fresh_scratch_dir(os.path.join(DATA, "jobs", safe, "work"))
+
+
+def _start_background_job():
+    """Launch the docking pipeline in a DETACHED subprocess so it keeps running
+    even if the user closes the tab / refreshes / minimises / quits the browser,
+    and — just as importantly — so a crash in native code cannot kill the app.
+    Returns True if a background job is now in flight (→ switch to poll mode);
+    False only if the subprocess could not be launched at all, in which case the
+    caller falls back to a foreground run as a genuine last resort."""
+    import docking_jobs as jobs
+    # A logged-in session keys the job on its conversation id, so the run can be
+    # reclaimed from any device by reopening that conversation. An ANONYMOUS
+    # session has no such id — but it must still get its own process: the whole
+    # point of the subprocess is that a native segfault (Vina/ProLIF/MDAnalysis)
+    # kills only the child. Running it in-process instead would take the entire
+    # app down for everyone, which is exactly the outage of 2026-07-19. So we
+    # mint a throwaway id and isolate the run regardless; the only thing an
+    # anonymous user gives up is reconnecting to it after closing the tab.
+    job_id = ss.active_conversation_id or ss.get("anon_job_id")
+    if not job_id:
+        import uuid
+        job_id = "anon-" + uuid.uuid4().hex[:16]
+        ss.anon_job_id = job_id
+    # Housekeeping at the one moment we know a new run is about to consume
+    # disk. Guarded so a cleanup problem can never stop a dock from starting.
+    try:
+        jobs.prune()
+    except Exception:
+        pass
+    if jobs.is_running(job_id):
+        ss.job_id = job_id
+        say("A docking run is already going for this session — it keeps running on the "
+            "server even if you leave. Results will appear here when it's done.")
+        return True
+    spec = {
+        "job_id": job_id,
+        "jobs_dir": jobs.default_jobs_dir(),
+        "convo": dict(ss.convo),
+        "vina": VINA,
+        "data_dir": _job_data_dir(job_id),
+        "venv": VENV,
+        "conversation_id": ss.active_conversation_id,
+    }
+    try:
+        started = jobs.start(job_id, spec)
+    except Exception as e:
+        say(f"Couldn't start the background run ({e}) — running it here instead.")
+        return False
+    if not started:
+        return False
+    ss.job_id = job_id
+    ss.convo = {}   # captured in the spec already; clear so a new message starts fresh
+    return True
+
+
+def _render_job_progress():
+    """If a background docking job is in flight (or just finished) for the current
+    conversation, show its live progress and pick up its result. This is what
+    makes a run survive a page reload: a reconnecting session finds the job by the
+    conversation id and resumes watching it. Returns True if it handled a job."""
+    import docking_jobs as jobs
+    job_id = ss.get("job_id") or ss.active_conversation_id or ss.get("anon_job_id")
+    st_ = jobs.read_status(job_id) if job_id else None
+
+    if not st_:
+        # Nothing to watch by id. A session that reconnected after a dropped
+        # websocket has NO job id and NO active conversation, so its finished
+        # run would sit on disk forever — recover it by looking for unconsumed
+        # jobs belonging to any of this user's conversations.
+        user = authdb.current_user()
+        if not user:
+            return False
+        try:
+            convo_ids = [c["id"] for c in authdb.list_conversations(user["id"])]
+        except Exception:
+            return False
+        found = jobs.find_for_conversations(convo_ids)
+        if not found:
+            return False
+        job_id = found[0]["job_id"]
+        ss.job_id = job_id
+        ss.active_conversation_id = found[0]["conversation_id"]
+        st_ = jobs.read_status(job_id)
+        if not st_:
+            return False
+        if st_.get("status") != "running" and not ss.messages:
+            # reconnected into an empty chat: bring the conversation back too,
+            # so the recovered result lands in the thread it belongs to
+            try:
+                ss.messages = authdb.load_messages(ss.active_conversation_id)
+            except Exception:
+                pass
+    status = st_.get("status")
+
+    if status == "running":
+        ss.job_id = job_id
+        with st.status("Docking is running on the server…", expanded=True) as area:
+            area.write(st_.get("progress") or "Working…")
+            area.write("✔ You can close this tab, refresh, or minimise — the run keeps "
+                       "going and the result will be waiting here when you come back.")
+        import time as _t
+        _t.sleep(2.5)          # gentle poll cadence; the child does the real work
+        st.rerun()
+        return True
+
+    if status == "done" and not st_.get("consumed"):
+        result = jobs.read_result(job_id)
+        if not result:
+            jobs.mark_consumed(job_id)
+            ss.job_id = None
+            say("The docking finished but its result couldn't be read — please re-run.")
+            st.rerun()
+            return True
+        # APPLY FIRST, consume second. Marking consumed up front meant that a
+        # rerun or a dropped websocket in the gap left the job flagged as
+        # delivered while the user had seen nothing — and the poller would then
+        # skip it forever. That is the "it says it's running and the result
+        # never comes" failure. Consuming only after the result is in session
+        # state makes the worst case a duplicate announcement, not a lost run.
+        _apply_result(result)
+        jobs.mark_consumed(job_id)
+        ss.job_id = None
+        if st_.get("persisted") is False:
+            # computed fine but never reached their history — say so plainly
+            say("Note: I couldn't save this run to your history "
+                f"({st_.get('persist_error') or 'unknown error'}), so it may not "
+                f"be here when you come back. Download the report if you need it.")
+        st.rerun()
+        return True
+
+    if status == "error" and not st_.get("consumed"):
+        jobs.mark_consumed(job_id)
+        ss.job_id = None
+        say(f"The docking run stopped early: {st_.get('error')}")
+        ss.stage = "start"
+        st.rerun()
+        return True
+
+    return False
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# LAYOUT
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── left sidebar: history ──
+_user = authdb.current_user()
+with st.sidebar:
+    st.markdown(f"<div class='mumo-brand'>{mol_logo(20, 26, 'mgSide')}<span class='wm'>mumo</span></div>",
+                unsafe_allow_html=True)
+    # ── light / dark ──────────────────────────────────────────────────────
+    # A plain two-button row rather than a toggle widget: the current mode is
+    # visible at a glance instead of having to work out which way the switch
+    # points, and each button says what it does.
+    _is_dark = ss.get("theme", "dark") == "dark"
+    _tc = st.columns(2)
+    if _tc[0].button("Dark", use_container_width=True, disabled=_is_dark,
+                     key="theme_dark", help="Use the dark theme"):
+        ss.theme = "dark"
+        st.rerun()
+    if _tc[1].button("Light", use_container_width=True, disabled=not _is_dark,
+                     key="theme_light", help="Use the light theme"):
+        ss.theme = "light"
+        st.rerun()
+
+    # ── why is chat off? ──────────────────────────────────────────────────
+    # Shown ONLY when there is no LLM, because "add a key in secrets" is
+    # useless advice to someone who just added one. The actionable question is
+    # whether the running container can SEE the key, and under what name — so
+    # this reports the names it can find and never the values.
+    if _llm is None:
+        with st.expander("⚠️ Why is chat off?", expanded=False):
+            try:
+                import llm_client
+                d = llm_client.key_diagnostics()
+                if d["env"]:
+                    st.markdown("**Key-shaped variables the app can see:**")
+                    for n in d["env"]:
+                        st.markdown(f"- `{n}`")
+                else:
+                    st.markdown("**The app can see no LLM key at all.**")
+                if d["secrets"]:
+                    st.caption("Streamlit secrets: " + ", ".join(f"`{n}`" for n in d["secrets"]))
+                st.markdown(
+                    "MUMO accepts any of `GROQ_API_KEY`, `GROQ_KEY`, `OPENAI_API_KEY`, "
+                    "`ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (case-insensitive), or a key "
+                    "saved as `LLM_API_KEY` / `API_KEY` whose prefix identifies the "
+                    "provider (`gsk_`, `sk-`, `sk-ant-`, `AIza`)."
+                )
+                if not d["env"]:
+                    st.info(
+                        "**Hugging Face does not restart a Space when you change a "
+                        "secret.** If you just saved one, open Settings → **Restart "
+                        "this Space** (or Factory rebuild) — until then the container "
+                        "still has the old environment.")
+            except Exception as _e:
+                st.caption(f"Diagnostics unavailable: {type(_e).__name__}: {_e}")
+
+    if st.button("+ New session", use_container_width=True):
+        if not _user and ss.messages:
+            title = next((m["content"] for m in ss.messages if m["role"] == "user"), "Chat")
+            ss.history.insert(0, {"title": title[:40], "messages": ss.messages, "results": ss.results})
+        ss.messages, ss.stage, ss.convo, ss.results, ss.run_now, ss.panel_open = [], "start", {}, None, False, False
+        ss.active_conversation_id = None
+        ss.job_id = None
+        ss.anon_job_id = None   # a new session gets a fresh job slot
+        ss.stored_runs, ss.run_index = [], 0
+        ss.pending_actions = []
+        st.rerun()
+
+    st.markdown(
+        "<div style='font:600 11px \"Inter\",sans-serif;letter-spacing:1.2px;"
+        "color:#93a0aa;margin:14px 0 4px;'>RECENT</div>",
+        unsafe_allow_html=True,
+    )
+
+    if _user:
+        # cloud-backed history — survives logout, refresh, new device
+        try:
+            convos = authdb.list_conversations(_user["id"])
+        except Exception:
+            convos = []
+        for h in convos:
+            if st.button(h["title"] or "Chat", key=f"h{h['id']}", use_container_width=True):
+                ss.messages = authdb.load_messages(h["id"])
+                runs = []
+                try:
+                    runs = authdb.load_runs(h["id"])
+                except Exception:
+                    pass
+                # Every docking run in this conversation, newest first — not just
+                # the latest. Re-opening a conversation used to show only the most
+                # recent table because a new run overwrote the old one.
+                ss.stored_runs = runs
+                ss.run_index = 0
+                ss.results = _run_to_results(runs[0]) if runs else None
+                ss.stage, ss.active_conversation_id = "start", h["id"]
+                # clear any job id from the previous conversation; the poller will
+                # re-discover a job for THIS conversation from its id if one is live.
+                ss.job_id = None
+                ss.pending_actions = []
+                ss.panel_open = bool(ss.results)
+                st.rerun()
+    else:
+        # not logged in / Supabase not configured — local-only history for this session
+        for i, h in enumerate(ss.history[:15]):
+            if st.button(f"{h['title']}", key=f"h{i}", use_container_width=True):
+                ss.messages, ss.results, ss.stage = h["messages"], h["results"], "start"
+                ss.panel_open = bool(h["results"])
+                st.rerun()
+
+    if _user:
+        st.markdown("---")
+        st.caption(_user["email"])
+        if st.button("Log out", use_container_width=True):
+            authdb.sign_out()
+            ss.messages, ss.results, ss.active_conversation_id = [], None, None
+            ss.job_id = None
+            ss.anon_job_id = None
+            ss.stored_runs, ss.run_index = [], 0
+            ss.pending_actions = []
+            ss.auth_mode = None  # back to the flower's Log in / Sign up chooser
+            st.rerun()
+
+    # Capability health. Shown ONLY when something is actually down — a board
+    # that is green on every page teaches people to ignore it, which is exactly
+    # when you need them to read it.
+    try:
+        from services import resilience as _res
+        _down = [r for r in _res.status() if not r["ok"]]
+        if _down:
+            st.markdown("---")
+            with st.expander(f"⚠ {len(_down)} feature(s) unavailable", expanded=True):
+                st.caption("Everything not listed here is working normally.")
+                for _r in _down:
+                    st.markdown(f"**{_r['capability']}** — {_r['reason']}")
+                if st.button("Re-check now", use_container_width=True):
+                    _res.reset()
+                    st.rerun()
+    except Exception:
+        pass
+
+    # Data-source attributions (CC-BY / CC-BY-SA terms require credit) + tool credits.
+    st.markdown("---")
+    with st.expander("Data sources & credits"):
+        st.markdown(
+            "MUMO builds on open data and tools, with thanks:\n\n"
+            "**Data**\n"
+            "- UniProt — protein sequences (CC-BY 4.0)\n"
+            "- STRING — interaction networks (CC-BY 4.0)\n"
+            "- Open Targets — disease–target associations (CC-BY 4.0)\n"
+            "- ChEMBL — bioactive compounds (CC-BY-SA 3.0)\n"
+            "- AlphaFold DB — predicted structures (CC-BY 4.0)\n"
+            "- RCSB PDB — experimental structures (public domain)\n"
+            "- MolProbity Top8000 Ramachandran contours, Richardson Lab, Duke "
+            "(CC-BY 4.0) — Williams et al., *Protein Sci.* 27:293–315 (2018)\n"
+            "- Therapeutics Data Commons — ADMET training data\n\n"
+            "**Tools**\n"
+            "- AutoDock Vina, RDKit, ProLIF, meeko, dimorphite-dl, "
+            "ADMET-AI / Chemprop, self-hosted BLAST+\n"
+            "- Built with Llama (Llama-3.3, via Groq)\n"
+        )
+
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024   # 15 MB — a report/structure, not a dataset dump
+
+
+def _handle_upload(files, text=""):
+    """Read uploaded file(s) into chemical entities and set up the choice flow.
+
+    One file at a time is the norm; if several are dropped we read each and
+    concatenate whatever compounds come out. Everything is guarded — a bad file
+    reports an error in chat, never crashes the app — and the raw bytes are
+    never written to disk (only the extracted names/SMILES live on).
+    """
+    import uploads
+    all_compounds, target, notes = [], None, []
+    for f in files:
+        name = getattr(f, "name", "upload")
+        try:
+            data = f.getvalue() if hasattr(f, "getvalue") else f.read()
+        except Exception as e:
+            notes.append(f"Couldn't read {name}: {e}")
+            continue
+        if data and len(data) > MAX_UPLOAD_BYTES:
+            notes.append(f"{name} is too large ({len(data) // (1024*1024)} MB); "
+                         f"the limit is {MAX_UPLOAD_BYTES // (1024*1024)} MB.")
+            continue
+
+        res = uploads.read_upload(name, data)
+        if res["kind"] == "error":
+            notes.append(res["error"])
+            continue
+        if res.get("needs_llm"):        # a PDF/Word document → LLM extracts compounds
+            with st.spinner(f"Reading the compounds out of {name}…"):
+                res = uploads.extract_compounds_from_text(res["text"], _llm, source=name)
+            if res.get("error"):
+                notes.append(res["error"])
+                continue
+        if res["kind"] == "target" and res.get("target"):
+            target = dict(res["target"], filename=name)
+            notes.append(res["summary"])
+        else:
+            for c in res.get("compounds", []):
+                all_compounds.append(dict(c, _file=name))
+            if res.get("summary"):
+                notes.append(res["summary"])
+
+    for n in notes:
+        if n:
+            say(n)
+
+    # ── a protein structure → a target, inferred, confirm before use ──
+    if target and not all_compounds:
+        ss.upload_pending = {"stage": "confirm_target", "target": target}
+        return
+
+    if not all_compounds:
+        if not target:
+            say("I couldn't find any compounds or a structure in that file. "
+                "Supported: SDF, MOL, MOL2, PDB, CSV/Excel (with a SMILES or "
+                "name column), and text-based PDF/Word reports.")
+        return
+
+    # ── a SINGLE structure to fix a name ──
+    if len(all_compounds) == 1 and all_compounds[0].get("smiles"):
+        c0 = all_compounds[0]
+        # If a target is already known — most often because a dock just stalled
+        # waiting for exactly this structure — skip "is this a ligand? now name a
+        # target" and go straight to the one-tap dock confirm against that target.
+        if (ss.get("awaiting_ligand") or {}).get("target") or ss.convo.get("target"):
+            _offer_pending_dock([{"label": c0["name"], "smiles": c0["smiles"]}])
+        else:
+            ss.upload_pending = {"stage": "confirm_ligand", "compound": c0}
+        return
+
+    # ── a LIST of compounds → show them, then let the user choose ──
+    preview = ", ".join(c["name"] for c in all_compounds[:12])
+    more = f" (+{len(all_compounds) - 12} more)" if len(all_compounds) > 12 else ""
+    say(f"I read **{len(all_compounds)} compound(s)**: {preview}{more}.\n\n"
+        "What would you like to do with them?")
+    ss.upload_pending = {"stage": "choose", "compounds": all_compounds}
+
+
+def _upload_ligand_objs(compounds):
+    """Turn chosen upload compounds into dock-ready ligand_objs.
+
+    A compound that already carries a SMILES (from an SDF/CSV) is used as-is;
+    a name-only one (from a document or a name column) goes through the same
+    name→structure resolver typed names use — including the CAS-name fixes —
+    so an uploaded GC-MS list and a typed request resolve identically.
+    """
+    ready = [{"label": c["name"], "smiles": c["smiles"]}
+             for c in compounds if c.get("smiles")]
+    name_only = [c["name"] for c in compounds if not c.get("smiles")]
+    if name_only:
+        ready += _resolve_ligands(name_only, announce=True)
+    return ready
+
+
+def _ligand_from_message(msg):
+    """If a chat message is itself the missing ligand — a pasted SMILES, or a
+    short corrected name/CAS — return dock-ready [{label, smiles}]. Otherwise
+    None, so the message flows on to the normal conversational turn.
+
+    Only consulted while a dock is awaiting a ligand, so the extra structure
+    lookup a name costs is rare, and confirm-first catches a false positive.
+    """
+    s = (msg or "").strip()
+    if not s:
+        return None
+    from agents.admet import is_valid_smiles
+    if is_valid_smiles(s):
+        return [{"label": "your molecule", "smiles": s}]
+    # a terse token (not a sentence, not a question) might be the name retyped
+    if len(s.split()) <= 6 and not s.endswith("?"):
+        objs = _resolve_ligands(s, announce=False)
+        if objs:
+            return objs
+    return None
+
+
+def _offer_pending_dock(ligand_objs):
+    """Stage a one-tap 'Dock <ligand> against <known target>?' confirmation.
+
+    The target comes from a dock that stalled waiting for a structure (or, failing
+    that, whatever target the conversation already holds), so the user never has
+    to restate it. Shared by the pasted-SMILES path and the file-attach path."""
+    aw = ss.get("awaiting_ligand") or {}
+    ss.upload_pending = {
+        "stage": "confirm_dock",
+        "ligand_objs": ligand_objs,
+        "target": aw.get("target") or ss.convo.get("target"),
+        "uploaded_target_pdb": aw.get("uploaded_target_pdb") or ss.convo.get("uploaded_target_pdb"),
+        "uploaded_target_name": aw.get("uploaded_target_name") or ss.convo.get("uploaded_target_name"),
+        "tier": aw.get("tier") or ss.convo.get("tier"),
+    }
+
+
+def _render_upload_pending():
+    """The interactive step after an upload: the choice buttons, the pick list,
+    or the ligand/target confirmation. One small state machine on
+    ss.upload_pending; every branch either advances the state or clears it."""
+    pend = ss.get("upload_pending")
+    if not pend:
+        return
+    stage = pend.get("stage")
+
+    if stage == "confirm_dock":
+        objs = pend.get("ligand_objs") or []
+        tgt = pend.get("target")
+        tname = ", ".join(tgt) if isinstance(tgt, list) else (tgt or "the target")
+        lname = objs[0]["label"] if len(objs) == 1 else f"{len(objs)} compounds"
+        st.info(f"Dock **{lname}** against **{tname}**?")
+        a, b = st.columns(2)
+        if a.button("Dock it", key="up_do_dock", use_container_width=True):
+            ss.convo["ligand_objs"] = objs
+            ss.convo["ligand"] = ([o["label"] for o in objs]
+                                  if len(objs) > 1 else objs[0]["label"])
+            ss.convo["target"] = tgt
+            if pend.get("uploaded_target_pdb"):
+                ss.convo["uploaded_target_pdb"] = pend["uploaded_target_pdb"]
+                ss.convo["uploaded_target_name"] = pend.get("uploaded_target_name")
+            ss.convo["tier"] = ss.convo.get("tier") or pend.get("tier") or "Standard"
+            ss.upload_pending = None
+            ss.awaiting_ligand = None
+            say(f"Docking **{lname}** against **{tname}**.")
+            ss.run_now = True
+            st.rerun()
+        if b.button("Cancel", key="up_cancel_dock", use_container_width=True):
+            ss.upload_pending = None
+            st.rerun()
+        return
+
+    if stage == "confirm_target":
+        tgt = pend["target"]
+        st.info(f"This looks like a **protein structure** ({tgt['filename']}). "
+                f"Use it as the docking target?")
+        a, b = st.columns(2)
+        if a.button("Use as target", key="up_use_target", use_container_width=True):
+            # persist the uploaded PDB and point the conversation's target at it
+            path = os.path.join(_fresh_scratch_dir(os.path.join(DATA, "uploads")),
+                                f"{tgt['name']}.pdb")
+            with open(path, "w") as f:
+                f.write(tgt["pdb_text"])
+            ss.convo["target"] = tgt["name"]
+            ss.convo["uploaded_target_pdb"] = path
+            ss.convo["uploaded_target_name"] = tgt["name"]
+            ss.upload_pending = None
+            say(f"Got it — using your uploaded **{tgt['name']}** as the target. "
+                f"Name a ligand (or attach one) and I'll dock it.")
+            st.rerun()
+        if b.button("Cancel", key="up_cancel_target", use_container_width=True):
+            ss.upload_pending = None
+            st.rerun()
+        return
+
+    if stage == "confirm_ligand":
+        c = pend["compound"]
+        st.info(f"This looks like a **ligand**: {c['name']}. Use it as the ligand?")
+        a, b = st.columns(2)
+        if a.button("Use as ligand", key="up_use_ligand", use_container_width=True):
+            ss.convo["ligand"] = c["name"]
+            ss.convo["ligand_objs"] = [{"label": c["name"], "smiles": c["smiles"]}]
+            ss.upload_pending = None
+            say(f"Got it — **{c['name']}** is the ligand. Give me a target "
+                f"(a gene, a PDB ID, or attach one) and I'll dock it.")
+            st.rerun()
+        if b.button("Cancel", key="up_cancel_ligand", use_container_width=True):
+            ss.upload_pending = None
+            st.rerun()
+        return
+
+    if stage == "choose":
+        a, b = st.columns(2)
+        if a.button("Let me pick which ones", key="up_pick", use_container_width=True):
+            pend["stage"] = "picking"
+            st.rerun()
+        if b.button("Just show structures / details", key="up_show",
+                    use_container_width=True):
+            pend["stage"] = "showing"
+            st.rerun()
+        return
+
+    if stage == "picking":
+        compounds = pend["compounds"]
+        names = [c["name"] for c in compounds]
+        st.markdown("##### Pick the compounds to dock")
+        chosen = st.multiselect("Compounds", names, default=names,
+                                key="up_multiselect", label_visibility="collapsed")
+        tgt_default = ss.convo.get("target") or ""
+        if isinstance(tgt_default, list):
+            tgt_default = ", ".join(tgt_default)
+        tcol, gcol = st.columns([3, 1])
+        tgt = tcol.text_input("Target (gene, PDB ID, or several comma-separated)",
+                              value=tgt_default, key="up_target")
+        if gcol.button("Dock", key="up_dock", use_container_width=True):
+            picked = [c for c in compounds if c["name"] in set(chosen)]
+            if not picked:
+                st.warning("Select at least one compound.")
+                return
+            if not tgt.strip():
+                st.warning("Enter a target to dock against.")
+                return
+            targets = [t.strip() for t in tgt.split(",") if t.strip()]
+            ss.convo["target"] = targets if len(targets) > 1 else targets[0]
+            with st.spinner("Resolving the selected compounds…"):
+                ss.convo["ligand_objs"] = _upload_ligand_objs(picked)
+            if not ss.convo["ligand_objs"]:
+                st.warning("None of the selected compounds could be resolved to a "
+                           "structure. Try a SMILES, or fewer compounds.")
+                return
+            ss.convo["tier"] = ss.convo.get("tier") or "Standard"
+            ss.upload_pending = None
+            say(f"Docking {len(ss.convo['ligand_objs'])} compound(s) against "
+                f"{', '.join(targets)}.")
+            ss.run_now = True
+            st.rerun()
+        return
+
+    if stage == "showing":
+        compounds = pend["compounds"]
+        with st.spinner("Resolving structures…"):
+            objs = _upload_ligand_objs(compounds)
+        st.markdown(f"##### {len(objs)} resolved compound(s)")
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import Draw
+            mols, caps = [], []
+            for o in objs[:12]:
+                m = Chem.MolFromSmiles(o["smiles"])
+                if m is not None:
+                    mols.append(m)
+                    caps.append(o["label"][:28])
+            if mols:
+                st.image(Draw.MolsToGridImage(mols, molsPerRow=3,
+                         subImgSize=(230, 190), legends=caps))
+        except Exception:
+            pass
+        st.dataframe(pd.DataFrame([{"Compound": o["label"], "SMILES": o["smiles"]}
+                                   for o in objs]), use_container_width=True,
+                     height=min(35 * (len(objs) + 1) + 3, 300))
+        if objs:
+            st.download_button(
+                "Download as CSV",
+                pd.DataFrame([{"name": o["label"], "smiles": o["smiles"]} for o in objs])
+                .to_csv(index=False).encode("utf-8"),
+                file_name="mumo_compounds.csv", mime="text/csv", key="up_csv")
+        if st.button("Done", key="up_done"):
+            ss.upload_pending = None
+            st.rerun()
+        return
+
+
+# ── read chat input (pinned at bottom), with the "+" file attach ──
+# accept_file puts a native attach control at the edge of the input; the CSS
+# block above restyles its icon to a "+". Returns a value with .text + .files.
+_UPLOAD_TYPES = ["pdb", "sdf", "mol", "mol2", "csv", "tsv", "xlsx", "xls", "pdf", "docx"]
+user_input = st.chat_input(
+    "Message MUMO…  e.g. “find a drug for cystic fibrosis”  ·  or attach a file with +",
+    accept_file=True, file_type=_UPLOAD_TYPES, max_chars=4000)
+
+if user_input is not None:
+    _files = getattr(user_input, "files", None) or []
+    _text = (getattr(user_input, "text", None) or "").strip()
+    if _files:
+        _handle_upload(_files, _text)
+    elif _text:
+        converse(_text)
+
+# render any in-flight upload choice (pick compounds / confirm ligand-or-target)
+_render_upload_pending()
+
+# ── run the pipeline. Preferred path: a DETACHED SUBPROCESS that survives the
+#    user leaving (tab close / refresh / minimise). Fallback: a foreground run
+#    (anonymous sessions with no conversation id to track the job against). ──
+if ss.run_now:
+    ss.run_now = False
+    if _start_background_job():
+        st.rerun()                     # → poll mode, below
+    else:
+        with st.status("Running the pipeline…", expanded=True) as status_area:
+            try:
+                run_pipeline(status_area)
+                status_area.update(label="Done", state="complete")
+            except Exception as e:
+                say(f"The run hit a snag: {e}")
+                status_area.update(label="Failed", state="error")
+        st.rerun()
+
+# ── watch an in-flight (or freshly finished) background job for this conversation.
+#    Runs every rerun, so a reconnecting session resumes the live progress. ──
+_render_job_progress()
+
+
+# ── report system: EVERY pipeline's output lands in the right-side panel,
+# dispatched by its "kind". A new pipeline (STRING / BLAST / alignment / tree)
+# plugs in by adding a title here + registering a renderer in _REPORT_RENDERERS
+# — nothing else in the panel plumbing needs to change.
+REPORT_TITLES = {
+    "docking": "Docking report",
+    "admet": "ADMET report",
+    "qm": "Frontier orbitals (HOMO/LUMO)",
+    "string": "Interaction network",
+    "blast": "BLAST results",
+    "md": "Stability simulation",
+    "metabolism": "Metabolism pathway",
+    "ramachandran": "Structure validation",
+    "alignment": "Sequence alignment",
+    "phylogeny": "Phylogenetic tree",
+}
+_REPORT_RENDERERS = {}   # kind -> render fn(r); docking + admet handled inline below
+
+
+def _report_kind(r):
+    if not r:
+        return None
+    if r.get("kind"):
+        return r["kind"]
+    return "admet" if "druglikeness" in r else "docking"
+
+
+def _report_title(r):
+    return REPORT_TITLES.get(_report_kind(r), "Report")
+
+
+def _run_stability_md(r, status_cb=lambda m: None):
+    """Run the OpenMM pose-refinement + short relaxation on the best-scoring docked
+    ligand of a docking result. Self-contained: derives the receptor + ligand from
+    the (persisted) complex PDB, so it works for fresh AND reloaded results.
+    Returns an md result dict, or {"_error": ...}."""
+    from agents.md_analyst import (run_stability_md,
+                                   run_stability_md_isolated,
+                                   md_isolated_available)
+    from report_writer import _split_complex_pdb
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    from viz import find_entry
+    rdf, viz, meta = r.get("rdf"), r.get("viz") or {}, r.get("meta") or {}
+    label, smiles, entry = None, None, None
+    if rdf is not None:
+        for _, row in rdf.iterrows():
+            lab = row.get("Ligand")
+            if str(row.get("Best affinity (kcal/mol)")) == "FAILED":
+                continue
+            # multi-target runs key viz "TARGET · ligand"; a plain `lab in viz`
+            # check never matches that, so the run always fell through to "No
+            # docked pose is available" even though every ligand had one.
+            e = find_entry(viz, lab, row.get("Target"))
+            if e is not None:
+                label, smiles, entry = lab, row.get("SMILES"), e
+                break
+    if label is None:
+        return {"_error": "No docked pose is available to simulate."}
+
+    try:
+        with open(entry["complex"]) as f:
+            complex_pdb = f.read()
+    except Exception as e:
+        return {"_error": f"Couldn't read the docked complex: {e}"}
+
+    rec_pdb, lig_pdb = _split_complex_pdb(complex_pdb)
+    if not rec_pdb or not lig_pdb:
+        return {"_error": "Couldn't separate the protein and ligand."}
+
+    lig = (Chem.MolFromPDBBlock(lig_pdb, sanitize=True, removeHs=False)
+           or Chem.MolFromPDBBlock(lig_pdb, sanitize=False, removeHs=False))
+    if lig is None:
+        return {"_error": "Couldn't read the ligand structure."}
+    if smiles:
+        try:
+            tmpl = Chem.MolFromSmiles(smiles)
+            if tmpl is not None:
+                lig = AllChem.AssignBondOrdersFromTemplate(tmpl, lig)
+        except Exception:
+            pass
+
+    rec_path = os.path.join(DATA, "md_receptor.pdb")
+    with open(rec_path, "w") as f:
+        f.write(rec_pdb)
+
+    # Prefer the ISOLATED environment: openmm in this process is what caused
+    # the exit-139 outage. The in-process path stays only as a local-dev
+    # fallback, for a machine where the MD env was never built.
+    if md_isolated_available():
+        status_cb("Running in the isolated simulation environment…")
+        res = run_stability_md_isolated(rec_path, lig, DATA)
+    else:
+        res = run_stability_md(rec_path, lig, DATA, status=status_cb)
+    if res and "_error" not in res:
+        res["kind"], res["ligand"], res["meta"] = "md", label, meta
+    return res
+
+
+def _render_run_picker():
+    """Let the user switch between every docking run in this conversation.
+
+    Previously the panel could only ever show the newest run, so coming back to
+    a conversation after several docks lost all but the last one. Each entry
+    restores the full report — table, 2D diagram and 3D pose.
+    """
+    runs = ss.get("stored_runs") or []
+    if len(runs) < 2:
+        return
+    labels = [_run_label(run, i) for i, run in enumerate(runs)]
+    idx = min(int(ss.get("run_index") or 0), len(runs) - 1)
+    choice = st.selectbox("Docking runs in this conversation", labels, index=idx,
+                          key="run_picker")
+    picked = labels.index(choice)
+    if picked != idx:
+        restored = _run_to_results(runs[picked])
+        if restored:
+            ss.run_index = picked
+            ss.results = restored
+            st.rerun()
+        else:
+            st.caption("That run's stored data couldn't be rebuilt.")
+
+
+def render_results():
+    from viz import render_complex_html  # lazy: 3D viewer helper
+    _trace("render-results:enter")
+    _render_run_picker()
+    r = ss.results
+    kind = _report_kind(r)
+    _extra = _REPORT_RENDERERS.get(kind)
+    if _extra:                       # new pipelines render through the registry
+        _extra(r)
+        return
+    if kind == "admet":
+        st.markdown(f"#### Drug-likeness — {r['lig_label']}")
+        st.caption(f"`{r['lig_smiles']}`")
+        narrative = r.get("narrative")
+        if narrative:
+            st.markdown(narrative)
+            st.markdown("---")
+        st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
+
+        # Multi-ligand run: lead with the comparison, because the point of
+        # submitting fifteen compounds is to rank them, not to read fifteen
+        # separate write-ups.
+        batch = r.get("batch") or []
+        if len(batch) > 1:
+            st.markdown(f"#### Frontier orbitals — {len(batch)} ligands")
+            rows = []
+            for b in batch:
+                q = b.get("qm") or {}
+                rows.append({
+                    "Ligand": b["label"],
+                    "HOMO (eV)": f"{q['homo_ev']:.2f}" if q else "—",
+                    "LUMO (eV)": f"{q['lumo_ev']:.2f}" if q else "—",
+                    "Gap (eV)": f"{q['gap_ev']:.2f}" if q else "—",
+                    "MW": (b.get("druglikeness") or {}).get("Molecular weight", "—"),
+                    "LogP": (b.get("druglikeness") or {}).get("LogP", "—"),
+                    "Note": ("not found" if b.get("unresolved")
+                             else (b.get("qm_error", "")[:40] if b.get("qm_error") else "")),
+                })
+            # smallest gap first — the most electronically reactive end of the set
+            def _gapkey(x):
+                try:
+                    return float(x["Gap (eV)"])
+                except ValueError:
+                    return 1e9
+            st.dataframe(pd.DataFrame(sorted(rows, key=_gapkey)),
+                         hide_index=True, use_container_width=True)
+            st.caption("Ranked by HOMO–LUMO gap, smallest first — a smaller gap means "
+                       "the molecule engages more readily in electron transfer.")
+            with st.expander("Orbital diagrams for each ligand"):
+                import viz_string as _vs
+                for b in batch:
+                    q = b.get("qm")
+                    if not q:
+                        continue
+                    try:
+                        png = _vs.orbital_png(q, title=f"Frontier orbitals — {b['label']}")
+                    except Exception as _e:
+                        st.info(f"{b['label']}: diagram unavailable "
+                                f"({type(_e).__name__}: {_e})")
+                        continue
+                    if png:
+                        st.image(png, use_container_width=True)
+            st.markdown("---")
+
+        qm = r.get("qm")
+        if qm and not qm.get("_error"):
+            st.markdown("#### Frontier molecular orbitals")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("HOMO", f"{qm['homo_ev']:.2f} eV")
+            c2.metric("LUMO", f"{qm['lumo_ev']:.2f} eV")
+            c3.metric("HOMO–LUMO gap", f"{qm['gap_ev']:.2f} eV")
+            try:
+                import viz_string as _vs
+                _png = _vs.orbital_png(qm)
+                if _png:
+                    st.image(_png, use_container_width=True)
+            except Exception as _e:
+                st.info(f"Diagram unavailable: {type(_e).__name__}: {_e}")
+            if qm.get("interpretation"):
+                st.caption(qm["interpretation"])
+            st.markdown("---")
+
+        adm = r.get("admet_ml")
+        if adm and "_error" not in adm:
+            st.markdown("#### ADMET-AI predictions")
+            st.caption("Pretrained ML models (Therapeutics Data Commons / Chemprop). "
+                       "Classifier endpoints are probabilities 0–1 (higher = more likely); "
+                       "regression endpoints are in native units.")
+            st.table(pd.DataFrame(list(adm.items()), columns=["Endpoint", "Value"]))
+        elif adm and "_error" in adm:
+            st.caption(f"ADMET-AI predictions unavailable — {adm['_error']}")
+        import report_writer
+        _trace("report_writer:import+build (RDKit/Playwright)")
+        st.download_button("Download report (.docx)", report_writer.build_admet_docx(r),
+                           file_name=f"MUMO_ADMET_{r['lig_label']}.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    else:
+        rdf = r["rdf"]
+        meta = r.get("meta", {})
+        st.markdown(f"<div class='mumo-panel-sub'>Target: {meta.get('gene', 'target')}</div>",
+                    unsafe_allow_html=True)
+
+        # ── best-hit summary (clean, presentation-ready) ──
+        top = rdf.iloc[0]
+        if str(top["Best affinity (kcal/mol)"]) != "FAILED":
+            # On a multi-target screen the header above says only the JOINED
+            # label ("PLA2 + 2PE4") — accurate as an overview, but it doesn't
+            # say which of them THIS winning ligand actually came from. State
+            # it explicitly rather than leaving the reader to guess.
+            if top.get("Target"):
+                st.caption(f"Best hit is against **{top['Target']}**.")
+            # Custom compact metrics instead of st.metric — st.metric's fixed
+            # 36px value font doesn't fit this panel's width at normal window
+            # sizes (it truncated no matter how the st.columns were split).
+            # A flex-wrap row sized to the actual panel scales properly and
+            # wraps onto a second line instead of cutting text off.
+            metrics = [
+                ("Best affinity (Vina)", f"{top['Best affinity (kcal/mol)']} kcal/mol"),
+                ("Estimated Ki", str(top.get("Est. Ki", "—"))),
+                ("Ligand efficiency", str(top.get("Ligand efficiency", "—"))),
+                ("Vinardo rescore", f"{top.get('Vinardo (kcal/mol)', '—')} kcal/mol"),
+                ("Consensus", str(top.get("Consensus", "—"))),
+                ("Pose consistency", str(top.get("Pose consistency", "—"))),
+                ("Confidence", str(top.get("Confidence", "—"))),
+                ("Reliability", str(top.get("Reliability", "—"))),
+                ("Total interactions", str(int(top["Total interactions"]))),
+                ("H-bonds", str(int(top["H-bonds"]))),
+            ]
+            cells = "".join(
+                f"<div style='min-width:110px;'>"
+                f"<div style='font:10.5px \"Inter\",sans-serif;color:#93a0aa;"
+                f"margin-bottom:4px;'>{label}</div>"
+                f"<div style='font:600 20px \"IBM Plex Serif\",serif;color:#eef5fa;'>{value}</div>"
+                f"</div>"
+                for label, value in metrics
+            )
+            st.markdown(
+                f"<div style='display:flex;flex-wrap:wrap;gap:18px;margin:12px 0 18px;'>{cells}</div>",
+                unsafe_allow_html=True,
+            )
+        bits = []
+        if meta.get("exhaustiveness"):
+            bits.append(f"exhaustiveness {meta['exhaustiveness']}")
+        if meta.get("replicas"):
+            bits.append(f"{meta['replicas']} replica(s)")
+        if meta.get("pocket"):
+            bits.append(meta["pocket"])
+        val = meta.get("validation")
+        if val:
+            bits.append(f"native redock RMSD {val['rmsd']} Å "
+                        f"({'validated' if val['passed'] else '>2 Å'})")
+        if bits:
+            st.caption("Method: " + " · ".join(bits))
+
+        # size to the real row count (35px/row + header) instead of a fixed
+        # 200px, which left blank empty rows padded in below short results
+        table_height = min(35 * (len(rdf) + 1) + 3, 200)
+        st.dataframe(rdf, use_container_width=True, height=table_height)
+        st.download_button("Download CSV", rdf.to_csv(index_label="Rank").encode("utf-8"),
+                           file_name=f"MUMO_{meta.get('gene', 'target')}.csv", mime="text/csv")
+
+        # Full .docx report (every ligand: tables + write-up + 2D + 3D). Building it
+        # renders a static screenshot per ligand via headless Chromium, which is too
+        # slow to redo on every Streamlit rerun — so it's a two-step Generate → Download,
+        # cached in session_state keyed by this results object (a fresh dock run gets a
+        # fresh dict, so the cache naturally invalidates when new results land).
+        import report_writer
+        _trace("report_writer:import+build (RDKit/Playwright)")
+        doc_key = f"_docx_bytes_{id(r)}"
+        gcol, dcol = st.columns(2)
+        with gcol:
+            if st.button("Generate full report (.docx)", key=f"gen_{id(r)}"):
+                with st.spinner("Building report — rendering 2D/3D snapshots for every "
+                                "ligand (can take a minute for several ligands)…"):
+                    ss[doc_key] = report_writer.build_docking_docx(r, _llm)
+        with dcol:
+            if ss.get(doc_key):
+                st.download_button("Download report (.docx)", ss[doc_key],
+                                   file_name=f"MUMO_{meta.get('gene', 'target')}_docking_report.docx",
+                                   mime="application/vnd.openxmlformats-officedocument"
+                                        ".wordprocessingml.document",
+                                   key=f"dl_{id(r)}")
+
+        # Raw structure export — the docked pose as PDB/SDF/MOL2 so the user can
+        # open it in Discovery Studio / Maestro / BIOVIA / PyMOL. Derived from the
+        # (persisted) complex PDB, so it works for fresh AND reloaded results. Cheap
+        # file I/O → built once and cached, no separate "Generate" step needed.
+        if r.get("viz"):
+            zip_key = f"_struct_zip_{id(r)}"
+            if zip_key not in ss:
+                try:
+                    ss[zip_key] = report_writer.build_structure_zip(r)
+                except Exception:
+                    ss[zip_key] = None
+            if ss.get(zip_key):
+                st.download_button("Download structures (.zip)", ss[zip_key],
+                                   file_name=f"MUMO_{meta.get('gene', 'target')}_structures.zip",
+                                   mime="application/zip", key=f"struct_{id(r)}")
+                st.caption("Docked complex, ligand & receptor as PDB/SDF/MOL2 — open in "
+                           "Discovery Studio, Maestro, BIOVIA, PyMOL, etc.")
+
+        # Molecular stability simulation (OpenMM) — minimise + short relaxation of the
+        # best docked complex. Only shown when the MD stack is actually installed
+        # (it was rolled out of the shared conda env — see environment.yml note).
+        try:
+            from agents.md_analyst import MD_AVAILABLE as _MD_OK
+        except Exception:
+            _MD_OK = False
+        if r.get("viz") and _MD_OK:
+            if st.button("Run stability simulation (OpenMM)", key=f"md_{id(r)}",
+                         help="Energy-minimise + briefly relax the docked complex with real "
+                              "physics — a fast precursor to full molecular dynamics."):
+                with st.status("Molecular simulation — this takes a few minutes…",
+                               expanded=True) as _mds:
+                    res = _run_stability_md(r, status_cb=lambda m: _mds.write(m))
+                    if res and "_error" not in res:
+                        with st.spinner("Writing the simulation report…"):
+                            res["narrative"] = _md_narrative(res)
+                        _mds.update(label="Simulation complete", state="complete")
+                        ss.results = res
+                        ss.panel_open = True
+                        st.rerun()
+                    else:
+                        _mds.update(label="Simulation could not run", state="error")
+                        st.error((res or {}).get("_error", "Unknown error."))
+            st.caption("Refines the pose with real physics and checks the ligand stays in the "
+                       "pocket (implicit solvent, protein restrained).")
+
+        if r.get("viz"):
+            st.markdown("##### Pose & Interaction Views")
+            st.caption("The 2D map and the 3D pose show the SAME interactions from one analysis — "
+                       "the residues, counts and bonds match the results table above.")
+            choice = st.selectbox("Ligand", list(r["viz"].keys()), label_visibility="collapsed")
+            entry = r["viz"][choice]
+
+            tab_3d, tab_2d = st.tabs(["3D Pose", "2D Interactions"])
+
+            with tab_2d:
+                svg_content = entry["ia"].get("svg_2d", "")
+                if svg_content:
+                    st.markdown(
+                        f'<div style="background-color: white; padding: 16px; border-radius: 12px; border: 1px solid rgba(111,184,236,0.28); box-shadow: 0 8px 28px -10px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; max-width: 760px; margin: 1.5rem auto 0.5rem auto;">{svg_content}</div>',
+                        unsafe_allow_html=True
+                    )
+                    def _sw(color, label):
+                        return (f"<span style='display:inline-block;width:11px;height:11px;"
+                                f"border-radius:50%;background:{color};margin:0 5px -1px 12px;'></span>{label}")
+                    st.markdown(
+                        "<div style='text-align:center; color:rgba(226,232,240,0.7); font-size:0.82rem; margin-top:0.3rem;'>"
+                        + _sw("#2e8b3d", "H-bond") + _sw("#c665a6", "Hydrophobic")
+                        + _sw("#cf4a2e", "Salt bridge") + _sw("#7a5cc0", "Pi-stack")
+                        + _sw("#d5811f", "Pi-cation") + _sw("#1f93a6", "Halogen")
+                        + "<br><span style='opacity:0.7;'>Each residue is a colour-coded circle linked "
+                          "to the ligand atom it interacts with (solid = H-bond).</span></div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.info("No 2D interaction diagram available.")
+
+            with tab_3d:
+                with st.expander("Visualization settings", expanded=False):
+                    a = st.columns(3)
+                    protein_style = a[0].selectbox("Protein style", ["cartoon", "cartoon+surface",
+                                                   "surface", "stick", "line"], key="vp_style")
+                    protein_color = a[1].selectbox("Protein color", ["spectrum",
+                                                   "secondary structure", "grey", "white"], key="vp_color")
+                    surface_color = a[2].selectbox("Surface color", ["white", "grey", "lightblue"], key="vp_surfc")
+
+                    f = st.columns(3)
+                    cartoon_style = f[0].selectbox("Ribbon style", ["default", "trace",
+                                                   "rectangle", "edged"], key="vp_cstyle")
+                    protein_opacity = f[1].slider("Protein opacity", 0.2, 1.0, 1.0, 0.05, key="vp_op")
+                    label_size = f[2].slider("Label size", 8, 20, 11, 1, key="v_lsize")
+
+                    b = st.columns(3)
+                    ligand_style = b[0].selectbox("Ligand style", ["stick", "ball-and-stick",
+                                                  "sphere", "line"], key="vl_style")
+                    ligand_carbon = b[1].selectbox("Ligand color", ["greenCarbon", "cyanCarbon",
+                                                   "yellowCarbon", "magentaCarbon", "orangeCarbon",
+                                                   "whiteCarbon"], key="vl_color")
+                    ligand_radius = b[2].slider("Ligand thickness", 0.1, 0.4, 0.22, 0.02, key="vl_rad")
+
+                    d = st.columns(3)
+                    surface_opacity = d[0].slider("Surface opacity", 0.0, 1.0, 0.5, 0.05, key="v_surf")
+                    zoom = d[1].slider("Zoom", 0.3, 1.5, 0.45, 0.05, key="v_zoom")
+                    background = d[2].color_picker("Background", "#ffffff", key="v_bg")
+
+                    e = st.columns(4)
+                    show_residues = e[0].checkbox("Residues", value=True, key="v_res")
+                    show_interactions = e[1].checkbox("Interactions", value=True, key="v_int")
+                    show_labels = e[2].checkbox("Labels", value=True, key="v_lab")
+                    spin = e[3].checkbox("Spin", value=False, key="v_spin")
+
+                    pocket_only = st.checkbox("Pocket only (lighter view)", value=False, key="v_pocket")
+
+                opts = {"protein_style": protein_style, "protein_color": protein_color,
+                        "cartoon_style": cartoon_style, "protein_opacity": protein_opacity,
+                        "surface_color": surface_color, "surface_opacity": surface_opacity,
+                        "ligand_style": ligand_style, "ligand_carbon": ligand_carbon,
+                        "ligand_radius": ligand_radius, "zoom": zoom,
+                        "show_residues": show_residues, "show_interactions": show_interactions,
+                        "show_labels": show_labels, "label_size": label_size, "spin": spin,
+                        "pocket_only": pocket_only,
+                        "background": background}   # white "figure panel" by default
+                try:
+                    _trace("3d-viewer:build-html")
+                    components.html(render_complex_html(entry["complex"], entry["ia"],
+                                    options=opts, height=520), height=540)
+                    _trace("3d-viewer:ok")
+                except Exception as e:
+                    st.caption(f"(3D view unavailable: {e})")
+
+
+def _string_views(r):
+    """The view switcher under a STRING network.
+
+    Same shape as the docking panel's action row: the network alone answers
+    "what is connected", and these answer the questions that follow — why the
+    link exists, how the proteins relate by sequence, and what the set does.
+    Each figure is built on demand and cached on the result dict, so switching
+    views costs nothing after the first click and a reload never refetches.
+    """
+    import viz_string as vs
+    from agents.string_deep import evidence_matrix, dossiers, similarity_tree
+
+    views = ["Network", "Evidence", "Similarity", "Enrichment", "Druggability"]
+    key = f"strview_{id(r)}"
+    choice = st.radio("View", views, horizontal=True, key=key,
+                      label_visibility="collapsed")
+
+    partners = r.get("partners") or []
+    cache = r.setdefault("_figs", {})
+
+    def panel(svg):
+        st.markdown(
+            f'<div style="background:#fff;padding:10px;border-radius:12px;'
+            f'border:1px solid rgba(111,184,236,0.28);'
+            f'box-shadow:0 8px 28px -10px rgba(0,0,0,0.5);overflow:auto;">'
+            f'{svg}</div>', unsafe_allow_html=True)
+
+    if choice == "Evidence":
+        if "heat" not in cache:
+            cache["heat"] = vs.heatmap_svg(evidence_matrix(partners), dark=False)
+        if cache["heat"]:
+            panel(cache["heat"])
+            st.caption("Every STRING link is a sum of independent channels. A partner "
+                       "carried only by text mining is a weaker claim than one with "
+                       "experimental support, even at the same combined score.")
+        else:
+            st.info("No per-channel evidence returned for these partners.")
+
+    elif choice == "Similarity":
+        if "tree" not in cache:
+            with st.spinner("Fetching sequences and clustering…"):
+                genes = list(r.get("input", [])) + [p["preferredName_B"] for p in partners[:11]]
+                doss = dossiers(genes)
+                r.setdefault("_dossiers", doss)
+                cache["tree"] = vs.tree_svg(similarity_tree(doss), dark=False)
+        if cache["tree"]:
+            panel(cache["tree"])
+            st.caption("Groups the network by sequence similarity — paralogues and "
+                       "shared families fall together. This is k-mer distance with "
+                       "average linkage, not an aligned phylogeny.")
+        else:
+            st.info("Not enough sequences resolved to build a tree (needs at least three).")
+
+    elif choice == "Druggability":
+        # Fetched on demand, not with the analysis: it is ~5s of ChEMBL calls
+        # and most STRING questions never ask it.
+        if "drug" not in cache:
+            with st.spinner("Asking ChEMBL what modulates these proteins…"):
+                doss = r.get("dossiers") or r.get("_dossiers") or {}
+                if not doss:
+                    from agents.string_deep import dossiers as _dz
+                    genes = list(r.get("input", [])) + [p["preferredName_B"]
+                                                        for p in partners[:11]]
+                    doss = _dz(genes)
+                    r["_dossiers"] = doss
+                from agents.string_deep import druggability_map
+                cache["drug"] = druggability_map(doss)
+        dm = cache["drug"] or {}
+        if not dm:
+            st.info("Couldn't resolve these proteins in ChEMBL.")
+        else:
+            order = list(r.get("input", [])) + [p["preferredName_B"] for p in partners]
+            seen, rows = set(), []
+            for g in order:
+                if g in dm and g not in seen:
+                    seen.add(g)
+                    v = dm[g]
+                    top = ", ".join(x["name"] for x in v["drugs"][:3]) or "—"
+                    rows.append({"Protein": g, "Druggability": v["verdict"],
+                                 "Known modulators": v["n_mechanisms"],
+                                 "Examples": top})
+            import pandas as _pd
+            st.dataframe(_pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            hits = [g for g in seen if dm[g]["approved"]]
+            if hits:
+                st.caption(f"**{len(hits)} of {len(seen)} proteins already have approved "
+                           f"drugs** — those are validated points of intervention in this "
+                           f"network. Proteins with none are either genuinely hard to drug "
+                           f"or simply unexplored.")
+            else:
+                st.caption("None of these proteins has an approved drug — this network is "
+                           "unexploited territory, which can mean opportunity or difficulty.")
+
+    elif choice == "Enrichment":
+        if "enrich" not in cache:
+            cache["enrich"] = vs.enrichment_svg(r.get("enrichment") or [], dark=False)
+        if cache["enrich"]:
+            panel(cache["enrich"])
+            st.caption("What this set of proteins does together, ranked by how "
+                       "unlikely the overlap is by chance.")
+        else:
+            st.info("STRING returned no enrichment for this set.")
+
+    return choice
+
+
+def _render_string_biology(r):
+    """What each protein in the network actually does.
+
+    STRING gives connections and confidence; this is the layer that says what
+    is being connected — molecular function, the reaction it catalyses, the
+    processes it belongs to, where in the cell it acts, and what goes wrong
+    when it breaks. Dossiers are fetched with the analysis and persisted with
+    it, so this costs nothing to render and survives a conversation reload.
+    """
+    from agents.string_deep import biology_blocks
+
+    order = list(r.get("input", [])) + [p.get("preferredName_B")
+                                        for p in (r.get("partners") or [])]
+    blocks = biology_blocks(r.get("dossiers"), order=order)
+    if not blocks:
+        return
+
+    st.markdown("#### What these proteins do")
+    st.caption("Curated biology from UniProt — the layer STRING itself doesn't carry.")
+    queried = set(r.get("input", []))
+    for b in blocks:
+        head = f'{b["gene"]} — {b["protein_name"]}'
+        if b.get("accession"):
+            head += f'  ·  {b["accession"]}'
+        if b.get("length"):
+            head += f'  ·  {b["length"]} aa'
+        with st.expander(head, expanded=b["gene"] in queried):
+            if b["summary"]:
+                st.markdown(b["summary"])
+            for label, text in b["rows"]:
+                st.markdown(f"**{label}** — {text}")
+    st.markdown("---")
+
+
+def _render_string_report(r):
+    """STRING interaction report: network image + partners + enriched pathways."""
+    import re
+    names = ", ".join(r.get("input", [])) or "protein"
+    st.markdown(f"#### Interaction network — {names}")
+    st.caption("STRING protein–protein associations (known + predicted). "
+               "Combined score 0–1 from several evidence channels.")
+
+    view = _string_views(r)
+    svg = r.get("network_svg") or ""
+    if view != "Network":
+        svg = ""
+
+    if svg:
+        # make the root <svg> responsive: add a viewBox from its px width/height
+        # (STRING uses single-quoted attrs, no viewBox), then let it scale to width
+        m = re.search(r"<svg[^>]*?>", svg)
+        if m:
+            tag = m.group(0)
+            wm = re.search(r'width=["\']([\d.]+)', tag)
+            hm = re.search(r'height=["\']([\d.]+)', tag)
+            newtag = tag
+            if wm and hm and "viewbox" not in tag.lower():
+                newtag = re.sub(r"<svg", f'<svg viewBox="0 0 {wm.group(1)} {hm.group(1)}"',
+                                newtag, count=1)
+            newtag = re.sub(r'\swidth=["\'][^"\']*["\']', ' width="100%"', newtag, count=1)
+            newtag = re.sub(r'\sheight=["\'][^"\']*["\']', "", newtag, count=1)
+            svg = svg.replace(tag, newtag, 1)
+        st.markdown(
+            f'<div style="background:#fff;padding:10px;border-radius:12px;'
+            f'border:1px solid rgba(111,184,236,0.28);box-shadow:0 8px 28px -10px rgba(0,0,0,0.5);'
+            f'overflow:auto;">{svg}</div>', unsafe_allow_html=True)
+
+    narrative = r.get("narrative")
+    if narrative:
+        st.markdown(narrative)
+        st.markdown("---")
+
+    _render_string_biology(r)
+
+    partners = r.get("partners") or []
+    if partners:
+        rows = [{"Partner": p.get("preferredName_B", "?"),
+                 "Score": round(p.get("score", 0), 3),
+                 "Experimental": round(p.get("escore", 0), 3),
+                 "Database": round(p.get("dscore", 0), 3),
+                 "Text-mining": round(p.get("tscore", 0), 3)} for p in partners]
+        st.markdown("##### Functional partners")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     height=min(35 * (len(rows) + 1) + 3, 320))
+
+    enr = r.get("enrichment") or []
+    if enr:
+        top = sorted(enr, key=lambda e: e.get("fdr", 1.0))[:12]
+        rows = [{"Category": e.get("category", ""), "Term": e.get("description", ""),
+                 "FDR": "{:.1e}".format(e.get("fdr", 1.0))} for e in top]
+        st.markdown("##### Enriched pathways / functions")
+        st.caption("Lower FDR = stronger over-representation in this neighbourhood.")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     height=min(35 * (len(rows) + 1) + 3, 320))
+
+    # Full .docx report — rasterizing the network SVG via headless Chromium is too
+    # slow to redo on every rerun, so it's a two-step Generate → Download (same
+    # pattern as the docking report), cached in session_state per results object.
+    import report_writer
+    doc_key = f"_docx_bytes_{id(r)}"
+    gcol, dcol = st.columns(2)
+    with gcol:
+        if st.button("Generate report (.docx)", key=f"gen_{id(r)}"):
+            with st.spinner("Building report — rendering the network image…"):
+                ss[doc_key] = report_writer.build_string_docx(r)
+    with dcol:
+        if ss.get(doc_key):
+            st.download_button("Download report (.docx)", ss[doc_key],
+                               file_name=f"MUMO_STRING_{names.replace(', ', '_')}.docx",
+                               mime="application/vnd.openxmlformats-officedocument"
+                                    ".wordprocessingml.document",
+                               key=f"dl_{id(r)}")
+
+
+_REPORT_RENDERERS["string"] = _render_string_report
+
+
+def _render_metabolism_report(r):
+    """Predicted phase I / II metabolites, most likely first."""
+    pred = r.get("prediction") or {}
+    mets = pred.get("metabolites") or []
+    st.markdown(f"#### Predicted metabolism — {r.get('lig_label', 'compound')}")
+    if r.get("narrative"):
+        st.markdown(r["narrative"])
+        st.markdown("---")
+
+    n1 = sum(1 for m in mets if m["phase"] == "I")
+    n2 = sum(1 for m in mets if m["phase"] == "II")
+    a, b, c_ = st.columns(3)
+    a.metric("Metabolites shown", len(mets))
+    b.metric("Phase I", n1)
+    c_.metric("Phase II", n2)
+
+    if mets:
+        st.markdown("##### Most likely metabolites")
+        st.caption("Score RANKS likelihood — it is not a predicted amount. "
+                   "The route shows how each metabolite is reached from the parent.")
+        st.dataframe(pd.DataFrame([{
+            "Metabolite (SMILES)": m["smiles"],
+            "Transformation": m["name"],
+            "Phase": m["phase"],
+            "Score": m["score"],
+            "Route": " → ".join(m["pathway"]),
+        } for m in mets]), use_container_width=True,
+            height=min(35 * (len(mets) + 1) + 3, 420))
+
+        # The route DRAWN — parent, arrow, product — because a transformation
+        # name without the structure beside it is not checkable chemistry.
+        try:
+            from agents.metabolism import pathway_svg
+            svg = pathway_svg(pred, max_routes=6)
+            if svg:
+                st.markdown("##### Predicted routes")
+                st.markdown(
+                    f'<div style="background:#fff;border-radius:10px;padding:8px;'
+                    f'overflow-x:auto;">{svg}</div>', unsafe_allow_html=True)
+        except Exception:
+            pass   # the table is the substance; the drawing is the aid
+
+    st.caption(pred.get("citation", ""))
+    st.caption("Predictions are rule-based hypotheses for experimental testing, "
+               "not measurements.")
+
+    # Full .docx — rasterizing the route diagram via headless Chromium is too
+    # slow to redo on every rerun, so Generate → Download (same as docking/STRING).
+    import report_writer
+    doc_key = f"_docx_metab_{id(r)}"
+    gcol, dcol = st.columns(2)
+    with gcol:
+        if st.button("Generate report (.docx)", key=f"genm_{id(r)}"):
+            with st.spinner("Building report — drawing the metabolic routes…"):
+                ss[doc_key] = report_writer.build_metabolism_docx(r)
+    with dcol:
+        if ss.get(doc_key):
+            st.download_button(
+                "Download report (.docx)", ss[doc_key],
+                file_name=f"MUMO_metabolism_{r.get('lig_label', 'compound')}.docx",
+                mime="application/vnd.openxmlformats-officedocument"
+                     ".wordprocessingml.document",
+                key=f"dlm_{id(r)}")
+
+
+def _render_qm_report(r):
+    """Frontier orbitals for one or many ligands.
+
+    Leads with the diagram for each compound: an orbital energy diagram is the
+    thing being asked for, and a table of six numbers is the summary, not the
+    result.
+    """
+    entries = r.get("entries") or []
+    ok = [e for e in entries if e.get("qm")]
+    st.markdown("#### Frontier molecular orbitals")
+    st.caption("GFN2-xTB semi-empirical calculation. The HOMO–LUMO gap indicates how "
+               "readily a molecule takes part in electron transfer — a smaller gap "
+               "means a more reactive, more easily polarised molecule.")
+
+    if len(ok) > 1:
+        rows = [{"Ligand": e["label"],
+                 "HOMO (eV)": round(e["qm"]["homo_ev"], 2),
+                 "LUMO (eV)": round(e["qm"]["lumo_ev"], 2),
+                 "Gap (eV)": round(e["qm"]["gap_ev"], 2)} for e in ok]
+        st.dataframe(pd.DataFrame(sorted(rows, key=lambda x: x["Gap (eV)"])),
+                     hide_index=True, use_container_width=True)
+        st.caption("Ranked by gap, smallest first.")
+        st.markdown("---")
+
+    for e in ok:
+        q = e["qm"]
+        st.markdown(f"**{e['label']}**")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("HOMO", f"{q['homo_ev']:.2f} eV")
+        c2.metric("LUMO", f"{q['lumo_ev']:.2f} eV")
+        c3.metric("Gap", f"{q['gap_ev']:.2f} eV")
+        if e.get("png"):
+            st.image(e["png"], use_container_width=True)
+        else:
+            st.info("Orbital diagram not available for this compound.")
+        if q.get("interpretation"):
+            st.caption(q["interpretation"])
+        if e.get("also_given_as"):
+            st.caption("Also given as: " + ", ".join(e["also_given_as"])
+                       + " — the same structure, computed once.")
+        st.caption(f"`{e['smiles']}`")
+        st.markdown("---")
+
+    failed = [e for e in entries if e.get("error")]
+    if failed:
+        st.markdown("**Could not be computed**")
+        for e in failed:
+            st.markdown(f"- {e['label']} — {e['error'][:120]}")
+    if r.get("missing"):
+        st.markdown("**No structure found for:** " + ", ".join(r["missing"]))
+
+    st.markdown("---")
+    doc_key = f"qmdoc_{id(r)}"
+    if doc_key not in ss:
+        if st.button("Generate report (.docx)", key=f"genqm_{id(r)}"):
+            import report_writer
+            with st.spinner("Building the report…"):
+                ss[doc_key] = report_writer.build_qm_docx(r)
+            st.rerun()
+    else:
+        st.download_button("Download report (.docx)", ss[doc_key],
+                           file_name="MUMO_frontier_orbitals_report.docx",
+                           mime=("application/vnd.openxmlformats-officedocument"
+                                 ".wordprocessingml.document"),
+                           key=f"dlqm_{id(r)}")
+
+
+_REPORT_RENDERERS["qm"] = _render_qm_report
+
+
+_REPORT_RENDERERS["metabolism"] = _render_metabolism_report
+
+
+def _render_ramachandran_report(r):
+    """Backbone-geometry validation: verdict, plot, outliers."""
+    import ramachandran as ram
+    res = r.get("result") or {}
+    gene = res.get("gene") or r.get("target", "target")
+    st.markdown(f"#### Structure validation — {gene}")
+    if res.get("source"):
+        st.caption(f"Structure source: {res['source']}")
+    if res.get("_error"):
+        st.warning(res["_error"])
+        return
+
+    st.markdown(f"**{ram.verdict(res)}**")
+    if r.get("narrative"):
+        st.markdown(r["narrative"])
+        st.markdown("---")
+
+    a, b, c_, d = st.columns(4)
+    a.metric("Residues scored", res["n_scored"])
+    b.metric("Favoured", f'{res["pct"]["favoured"]}%')
+    c_.metric("Allowed", f'{res["pct"]["allowed"]}%')
+    d.metric("Outliers", f'{res["pct"]["outlier"]}%')
+
+    svg = ram.plot_svg(res, title=f"Ramachandran plot — {gene}")
+    if svg:
+        st.markdown(
+            f'<div style="background:#fff;border-radius:10px;padding:8px;'
+            f'overflow-x:auto;">{svg}</div>', unsafe_allow_html=True)
+
+    outs = res.get("outliers") or []
+    if outs:
+        st.markdown("##### Outlier residues")
+        st.caption("Backbone angles outside the regions normally accessible to that "
+                   "residue type. Worth checking whether any lie in the binding site.")
+        st.dataframe(pd.DataFrame({"Residue": outs}), use_container_width=True,
+                     height=min(35 * (len(outs) + 1) + 3, 240))
+
+    st.caption(res.get("note", ""))
+
+    import report_writer
+    doc_key = f"_docx_rama_{id(r)}"
+    gcol, dcol = st.columns(2)
+    with gcol:
+        if st.button("Generate report (.docx)", key=f"genr_{id(r)}"):
+            with st.spinner("Building report — drawing the plot…"):
+                ss[doc_key] = report_writer.build_ramachandran_docx(r)
+    with dcol:
+        if ss.get(doc_key):
+            st.download_button(
+                "Download report (.docx)", ss[doc_key],
+                file_name=f"MUMO_structure_validation_{gene}.docx",
+                mime="application/vnd.openxmlformats-officedocument"
+                     ".wordprocessingml.document",
+                key=f"dlr_{id(r)}")
+
+
+_REPORT_RENDERERS["ramachandran"] = _render_ramachandran_report
+
+
+def _render_blast_report(r):
+    """BLAST report: query info + plain-language narrative + hits table."""
+    st.markdown(f"#### BLAST results — {r.get('query_name', 'query')}")
+    acc = r.get("accession")
+    st.caption(f"{('UniProt ' + acc + ' · ') if acc else ''}{r.get('seq_len', '?')} residues · "
+               f"{r.get('program', 'blastp')} vs {r.get('database', 'swissprot')}")
+
+    narrative = r.get("narrative")
+    if narrative:
+        st.markdown(narrative)
+        st.markdown("---")
+
+    hits = r.get("hits") or []
+    if hits:
+        rows = [{"Accession": h.get("accession", ""), "Organism": h.get("sciname", ""),
+                 "Identity %": h.get("identity"),
+                 "E-value": "{:.1e}".format(h.get("evalue", 0)),
+                 "Bit score": h.get("bit_score"),
+                 "Description": h.get("title", "")[:60]} for h in hits]
+        st.markdown("##### Top hits")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                     height=min(35 * (len(rows) + 1) + 3, 380))
+    else:
+        st.info("No significant BLAST hits found.")
+
+
+_REPORT_RENDERERS["blast"] = _render_blast_report
+
+
+MD_REPORT_SYSTEM = (
+    "You are MUMO, explaining a molecular-simulation result to a pharmacy student NEW to "
+    "molecular dynamics. Make it genuinely easy while staying correct.\n\n"
+    "Markdown sections and headings:\n"
+    "## What this simulation did\n(2–3 sentences: docking gives one static best-guess pose; "
+    "this step used real physics — energy minimisation plus a short relaxation with OpenMM — "
+    "to let the docked complex settle and to check the drug doesn't immediately fall out of "
+    "the pocket. Note it is a FAST, lightweight precursor to full molecular dynamics, not a "
+    "long simulation.)\n"
+    "## What happened to the pose\n(explain the ligand RMSD — root-mean-square deviation, i.e. "
+    "how far on average the drug's atoms moved, in ångström — and the energy drop, which means "
+    "steric clashes from docking were relieved. Say what a small vs large movement implies.)\n"
+    "## What this tells us\n(the plain-language takeaway: is the docked pose physically "
+    "sensible / likely to stay put, or does it look strained? What a medicinal chemist takes "
+    "from this.)\n"
+    "## The honest caveat\n(one line: a true 'does it stay bound over time' answer needs a "
+    "much longer dynamics run on a GPU — this is the quick first look.)\n\n"
+    "RULES: define EVERY technical term the first time it appears. Short paragraphs. Warm tutor "
+    "tone. No emojis. Use ONLY the numbers provided — never invent values."
+)
+
+
+def _md_narrative(data):
+    """Plain-language explanation of a stability-simulation result."""
+    if _llm is None:
+        return ""
+    prompt = (
+        f"LIGAND: {data.get('ligand', 'the ligand')}  TARGET: {data.get('meta', {}).get('gene', '')}\n"
+        f"Energy before minimisation: {data.get('energy_initial')} kcal/mol\n"
+        f"Energy after minimisation: {data.get('energy_minimized')} kcal/mol\n"
+        f"Energy drop (strain relieved): {data.get('energy_drop')} kcal/mol\n"
+        f"Ligand movement during minimisation (RMSD): {data.get('lig_rmsd_min')} Å\n"
+        f"Ligand movement during {data.get('relax_ps')} ps relaxation (RMSD): {data.get('lig_rmsd_relax')} Å\n"
+        f"Verdict: {data.get('verdict')}\n\n"
+        "Write the beginner-friendly simulation report now.")
+    try:
+        return _llm.chat(MD_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1000)
+    except Exception:
+        return ""
+
+
+def _render_md_report(r):
+    """Molecular stability-simulation report: metrics + narrative + refined structure."""
+    st.markdown(f"#### Stability simulation — {r.get('ligand', 'ligand')}")
+    st.caption("OpenMM energy minimisation + short relaxation (implicit solvent, protein "
+               "restrained) — a fast precursor to full molecular dynamics.")
+
+    metrics = [
+        ("Verdict", str(r.get("verdict", "—"))),
+        ("Ligand RMSD (minimise)", f"{r.get('lig_rmsd_min', '—')} Å"),
+        ("Ligand RMSD (relax)", f"{r.get('lig_rmsd_relax', '—')} Å"
+         if r.get("lig_rmsd_relax") is not None else "—"),
+        ("Energy relieved", f"{r.get('energy_drop', '—')} kcal/mol"),
+    ]
+    cells = "".join(
+        f"<div style='min-width:120px;'>"
+        f"<div style='font:10.5px \"Inter\",sans-serif;color:#93a0aa;margin-bottom:4px;'>{label}</div>"
+        f"<div style='font:600 19px \"IBM Plex Serif\",serif;color:#eef5fa;'>{value}</div></div>"
+        for label, value in metrics)
+    st.markdown(f"<div style='display:flex;flex-wrap:wrap;gap:18px;margin:12px 0 18px;'>{cells}</div>",
+                unsafe_allow_html=True)
+
+    narrative = r.get("narrative")
+    if narrative:
+        st.markdown(narrative)
+        st.markdown("---")
+
+    refined = r.get("refined_pdb")
+    if refined:
+        try:
+            with open(refined) as f:
+                st.download_button("Download refined structure (.pdb)", f.read(),
+                                   file_name=f"MUMO_{r.get('ligand', 'complex')}_refined.pdb",
+                                   mime="chemical/x-pdb", key=f"mdpdb_{id(r)}")
+        except Exception:
+            pass
+
+
+_REPORT_RENDERERS["md"] = _render_md_report
+
+
+def render_chat():
+    if not ss.messages:
+        st.markdown(
+            "<div class='mumo-hero'>"
+            f"<div class='mumo-hero-logo'>{mol_logo(40, 52, 'mgHero')}"
+            "<span class='mumo-hero-title'>mumo</span></div>"
+            "<p class='mumo-hero-sub'>Tell me what to work on — a disease, a target, "
+            "or a molecule. I'll ask what I need, then dock it.</p>"
+            "</div>", unsafe_allow_html=True)
+    for m in ss.messages:
+        if m["role"] == "user":
+            st.markdown(
+                f"<div class='mumo-msg-user'><div class='bubble'>{m['content']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                "<div class='mumo-msg-assistant'><div class='label'>MUMO</div>"
+                f"<div class='body'>{m['content']}</div></div>",
+                unsafe_allow_html=True,
+            )
+
+
+# ── chat: always full width, never resizes ──
+# ── docking report: a fixed-width overlay drawer on the right, so it never
+#    steals space from the chat column (previously an st.columns([3,2])
+#    split, which squeezed/congested the chat every time the panel opened) ──
+# The drawer has two widths: a compact default and an expanded view (for wide
+# tables, the 3D pose and reports). The chat column's width is derived from this,
+# so it reflows automatically when the panel is expanded/collapsed.
+PANEL_WIDTH = 760 if ss.panel_expanded else 420
+panel_showing = bool(ss.results and ss.panel_open)
+
+st.markdown(f"""
+<style>
+.block-container {{ transition: width .25s ease; }}
+{f'''.stMain {{ align-items: flex-start !important; }}
+.block-container {{
+    max-width: none !important; width: calc(100% - {PANEL_WIDTH + 40}px) !important;
+    padding-right: 24px;
+}}''' if panel_showing else ''}
+@media (max-width: 1200px) {{
+    .stMain {{ align-items: center !important; }}
+    .block-container {{ max-width: none !important; width: 100% !important; padding-right: 1rem !important; }}
+}}
+</style>
+""", unsafe_allow_html=True)
+
+render_chat()
+
+if panel_showing:
+    with st.container(key="mumo_panel"):
+        st.markdown(f"""
+<style>
+.st-key-mumo_panel {{
+    position: fixed; top: 0; right: 0; width: {PANEL_WIDTH}px; height: 100vh;
+    overflow-y: auto; z-index: 999; background: var(--sidebar);
+    border-left: 1px solid var(--border);
+    box-shadow: -14px 0 34px -18px var(--shadow-panel);
+    padding: 22px 24px 40px;
+    transition: width .25s ease;
+}}
+@media (max-width: 900px) {{
+    .st-key-mumo_panel {{ width: 100vw; }}
+}}
+</style>
+""", unsafe_allow_html=True)
+        h = st.columns([5, 1, 1])
+        _rep = _report_title(ss.results)
+        h[0].markdown(f"<div class='mumo-panel-header'>{_rep}</div>", unsafe_allow_html=True)
+        _exp_icon = "⤡" if ss.panel_expanded else "⤢"
+        _exp_help = "Collapse panel" if ss.panel_expanded else "Expand panel"
+        if h[1].button(_exp_icon, key="expand_panel", help=_exp_help):
+            ss.panel_expanded = not ss.panel_expanded
+            st.rerun()
+        if h[2].button("✕", key="close_panel", help=f"Close {_rep.lower()}"):
+            ss.panel_open = False
+            st.rerun()
+        render_results()
+elif ss.results and not ss.panel_open:
+    _rep = _report_title(ss.results).lower()
+    if st.button(f"› Open {_rep}", key="open_panel"):
+        ss.panel_open = True
+        st.rerun()
