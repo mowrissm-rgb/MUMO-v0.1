@@ -86,8 +86,8 @@ PROVIDERS = {
                   "fallbacks": []},
     "gemini":    {"model": "gemini-1.5-flash",            "env": "GEMINI_API_KEY",
                   "fallbacks": []},
-    "groq":      {"model": "llama-3.3-70b-versatile",     "env": "GROQ_API_KEY",
-                  "fallbacks": ["llama-3.1-8b-instant", "gemma2-9b-it"]},
+    "groq":      {"model": "openai/gpt-oss-120b",     "env": "GROQ_API_KEY",
+                  "fallbacks": ["openai/gpt-oss-20b", "qwen/qwen3.6-27b"]},
 }
 
 
