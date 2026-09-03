@@ -34,7 +34,7 @@ DATA = os.path.join(BASE, "data"); os.makedirs(DATA, exist_ok=True)
 VENV = os.path.join(BASE, ".venv", "Scripts" if os.name == "nt" else "bin")
 VINA = ensure_vina()
 
-st.set_page_config(page_title="MUMO", page_icon="⚛️", layout="wide")
+st.set_page_config(page_title="MUMO", page_icon="🩺", layout="wide")
 
 ACCENT = "#6fb8ec"   # light blue — matches the React landing/login pages' accent
 ACCENT2 = "#2f7fc4"  # gradient end stop (used on buttons/bubbles for the same look)
