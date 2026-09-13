@@ -386,8 +386,9 @@ def _persist(role, content):
             ss.active_conversation_id = authdb.create_conversation(user["id"], title)
         authdb.save_message(ss.active_conversation_id, user["id"], role, content)
         authdb.touch_conversation(ss.active_conversation_id)
-    except Exception:
-        pass  # cloud storage is best-effort — never break the chat over it
+    except Exception as exc:
+        ss["persistence_error"] = str(exc)
+        st.warning("This message could not be saved to cloud storage. Keep a local copy before closing this session.")
 
 
 def say(text):
@@ -986,21 +987,9 @@ RAMACHANDRAN_REPORT_SYSTEM = (
 
 
 def _ramachandran_narrative(data):
-    """Plain-language write-up of a structure validation (same pattern as STRING)."""
-    try:
-        res = data.get("result") or {}
-        prompt = (f"Structure: {data.get('target', '')}\n"
-                  f"Source: {res.get('source', 'unknown')}\n"
-                  f"Residues scored: {res.get('n_scored')} of {res.get('n_residues')}\n"
-                  f"Favoured: {res['pct']['favoured']}% ({res['counts']['favoured']})\n"
-                  f"Allowed: {res['pct']['allowed']}% ({res['counts']['allowed']})\n"
-                  f"Outliers: {res['pct']['outlier']}% ({res['counts']['outlier']})\n"
-                  f"Outlier residues: {', '.join((res.get('outliers') or [])[:25]) or 'none'}\n"
-                  f"\nWrite the structure-validation report.")
-        return _llm.chat(RAMACHANDRAN_REPORT_SYSTEM, prompt,
-                         temperature=0.4, max_tokens=1100)
-    except Exception:
-        return ""
+    from ramachandran import verdict
+    return verdict(data.get('result') or {})
+
 
 
 METABOLISM_REPORT_SYSTEM = (
@@ -1026,32 +1015,29 @@ METABOLISM_REPORT_SYSTEM = (
 
 
 def _metabolism_narrative(data):
-    """Plain-language write-up of a metabolism prediction (same pattern as STRING)."""
-    try:
-        from agents.metabolism import summarize
-        prompt = (f"Compound: {data.get('lig_label', '')}\n"
-                  f"{summarize(data.get('prediction') or {})}\n\n"
-                  f"Write the metabolism report.")
-        return _llm.chat(METABOLISM_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1200)
-    except Exception:
-        return ""
+    from agents.metabolism import summarize
+    pred = data.get('prediction') or {}
+    return ("Predicted metabolites from recorded transformation rules. "
+            "These structures are hypotheses, not experimentally observed metabolites.\n\n"
+            + summarize(pred))
+
 
 
 def _admet_narrative(data):
-    """Ask MUMO's LLM to explain a drug-likeness/ADMET screen in plain, beginner-friendly terms."""
-    if _llm is None:
-        return ""
-    dl = data.get("druglikeness", {})
-    adm = data.get("admet_ml") or {}
-    prompt = (f"LIGAND: {data.get('lig_label', '')} ({data.get('lig_smiles', '')})\n\n"
-              "DRUG-LIKENESS PROPERTIES:\n" + _json.dumps(dl, indent=2) + "\n\n")
-    if adm and "_error" not in adm:
-        prompt += "ADMET-AI PREDICTIONS (endpoint: value):\n" + _json.dumps(adm, indent=2) + "\n\n"
-    prompt += "Write the beginner-friendly ADMET report now."
-    try:
-        return _llm.chat(ADMET_REPORT_SYSTEM, prompt, temperature=0.4, max_tokens=1100)
-    except Exception:
-        return ""
+    panels = [('RDKit rules', data.get('druglikeness') or {}),
+              ('ADMET-AI', data.get('admet_ml') or {})]
+    lines = ['Computational screening results; these do not establish clinical safety or efficacy.']
+    for name, panel in panels:
+        status = panel.get('_verification', {}).get('status', 'unavailable')
+        lines.append(f'{name}: {status}.')
+        if panel.get('_error'):
+            lines.append(str(panel['_error']))
+        for label, endpoint in panel.get('_verification', {}).get('endpoints', {}).items():
+            value = endpoint.get('value')
+            lines.append(f"{label}: {value if value is not None else 'unavailable'} "
+                         f"[{endpoint.get('unit', 'unknown unit')}; {endpoint.get('status', 'unavailable')}]")
+    return '\n'.join(lines)
+
 
 
 def _history_text(n=10, assistant_cap=420, user_cap=900):
@@ -1347,16 +1333,19 @@ def converse(msg):
     # ordered list — so "dock X then run ADMET on it" is one request, not two.
     import dispatch
     actions = dispatch.plan(data, c, msg,
-                            asked_last_turn=bool(ss.get("asked_last_turn")))
+                            asked_last_turn=bool(ss.get("asked_last_turn")),
+                            pending_actions=ss.get("pending_actions", []))
 
     if actions:
         ss.asked_last_turn = False
+        ss.pending_actions = []
     else:
         # The model committed to an action we cannot run yet — its reply has
         # probably promised to run it. Say precisely what is missing, which is
         # the thing the old vague re-ask never did. (When the model chose to
         # chat it has already asked its own question; don't stack a second.)
         wanted = dispatch.model_actions(data)
+        ss.pending_actions = dispatch.requested_actions(msg) or wanted
         if wanted:
             gap = dispatch.gap_prompt(wanted[0], c)
             if gap:
@@ -1459,6 +1448,7 @@ def _run_sync_action(action, c):
                         res["qm"] = qm_res
                         _capability_ran("qm")
                     else:
+                        res["qm_failure"] = qm_res
                         _capability_failed("qm", qm_res["_error"])
                 except Exception as _e:
                     _capability_failed("qm", _e)
@@ -1483,6 +1473,7 @@ def _run_sync_action(action, c):
                             if not _q.get("_error"):
                                 entry["qm"] = _q
                             else:
+                                entry["qm_failure"] = _q
                                 entry["qm_error"] = _q["_error"]
                         except Exception as _e:
                             entry["qm_error"] = f"{type(_e).__name__}: {_e}"
@@ -1552,6 +1543,7 @@ def _run_sync_action(action, c):
                 entry["also_given_as"] = extra
             q = orbitals(slot["smiles"])
             if q.get("_error"):
+                entry["qm_failure"] = q
                 entry["error"] = q["_error"]
             else:
                 entry["qm"] = q
@@ -2764,6 +2756,10 @@ def render_results():
     _render_run_picker()
     r = ss.results
     kind = _report_kind(r)
+    if r:
+        from verification import evidence_json
+        st.download_button("Download run evidence (.json)", evidence_json(r),
+                           file_name="mumo_run_evidence.json", mime="application/json")
     _extra = _REPORT_RENDERERS.get(kind)
     if _extra:                       # new pipelines render through the registry
         _extra(r)
@@ -2775,7 +2771,7 @@ def render_results():
         if narrative:
             st.markdown(narrative)
             st.markdown("---")
-        st.table(pd.DataFrame(list(r["druglikeness"].items()), columns=["Property", "Value"]))
+        st.table(pd.DataFrame([(k, v) for k, v in r["druglikeness"].items() if not k.startswith("_")], columns=["Property", "Value"]))
 
         # Multi-ligand run: lead with the comparison, because the point of
         # submitting fifteen compounds is to rank them, not to read fifteen
@@ -2846,7 +2842,7 @@ def render_results():
             st.caption("Pretrained ML models (Therapeutics Data Commons / Chemprop). "
                        "Classifier endpoints are probabilities 0–1 (higher = more likely); "
                        "regression endpoints are in native units.")
-            st.table(pd.DataFrame(list(adm.items()), columns=["Endpoint", "Value"]))
+            st.table(pd.DataFrame([(k, v) for k, v in adm.items() if not k.startswith("_")], columns=["Endpoint", "Value"]))
         elif adm and "_error" in adm:
             st.caption(f"ADMET-AI predictions unavailable — {adm['_error']}")
         import report_writer
@@ -2883,8 +2879,8 @@ def render_results():
                 ("Pose consistency", str(top.get("Pose consistency", "—"))),
                 ("Confidence", str(top.get("Confidence", "—"))),
                 ("Reliability", str(top.get("Reliability", "—"))),
-                ("Total interactions", str(int(top["Total interactions"]))),
-                ("H-bonds", str(int(top["H-bonds"]))),
+                ("Total interactions", (str(top["Total interactions"]) if pd.notna(top.get("Total interactions")) else "Unavailable")),
+                ("H-bonds", (str(top["H-bonds"]) if pd.notna(top.get("H-bonds")) else "Unavailable")),
             ]
             cells = "".join(
                 f"<div style='min-width:110px;'>"

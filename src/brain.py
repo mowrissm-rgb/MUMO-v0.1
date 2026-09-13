@@ -204,39 +204,24 @@ def write_report(results, llm=None, tier="Standard"):
          interacting_residues, total_interactions}
     Returns a readable report string.
     """
-    if llm is not None:
-        try:
-            system = (_REPORT_SYSTEM.get(tier, _REPORT_SYSTEM["Standard"])
-                      + " Do not use any emojis; keep it clean and professional.")
-            user = "Docking result:\n" + json.dumps(results, indent=2)
-            return llm.chat(system, user, temperature=0.3, max_tokens=600)
-        except Exception:
-            pass  # fall through to template
-
-    # template fallback (no LLM)
-    res = results
-    verdict = ("very strong" if res.get("affinity", 0) <= -8 else
-               "good" if res.get("affinity", 0) <= -6 else
-               "moderate" if res.get("affinity", 0) <= -4 else "weak")
-    hb = ", ".join(res.get("hbond_residues", [])) or "none"
-    stat_line = ""
-    if res.get("estimated_ki") or res.get("ligand_efficiency") is not None:
-        stat_line = (f"Estimated Ki: {res.get('estimated_ki','?')} "
-                     f"(binding constant; smaller = tighter). "
-                     f"Ligand efficiency: {res.get('ligand_efficiency','?')} kcal/mol per heavy atom.\n")
-    rel_line = ""
-    if res.get("reliability"):
-        rel_line = f"Overall reliability: {res['reliability']}"
-        if res.get("reliability_reason"):
-            rel_line += f" ({res['reliability_reason']})"
-        rel_line += ".\n"
+    # Scientific results are rendered deterministically. Free-form model text
+    # cannot provide evidence for extra numbers, mechanisms or efficacy claims.
+    import math
+    try:
+        score = float(results['affinity'])
+        if not math.isfinite(score):
+            raise ValueError('nonfinite score')
+    except (KeyError, ValueError, TypeError):
+        return 'Docking score unavailable: no valid executed result was recorded.'
+    def value(key):
+        val = results.get(key)
+        return 'unavailable' if val is None else str(val)
     return (
-        f"**{res.get('ligand','Ligand')} vs {res.get('target','target')}**\n\n"
-        f"Best binding affinity: **{res.get('affinity','?')} kcal/mol** ({verdict} binding).\n"
-        f"{stat_line}"
-        f"Total interactions: {res.get('total_interactions','?')} "
-        f"({res.get('n_hbonds',0)} hydrogen bonds, {res.get('n_hydrophobic',0)} hydrophobic).\n"
-        f"Hydrogen-bond residues: {hb}.\n"
-        f"Interacting residues: {', '.join(res.get('interacting_residues', [])) or 'n/a'}.\n"
-        f"{rel_line}"
+        f"**{results.get('ligand', 'Ligand')} vs {results.get('target', 'target')}**\n\n"
+        f"Docking score: **{score:g} kcal/mol** (computational prediction).\n"
+        f"Interactions: {value('total_interactions')}; hydrogen bonds: {value('n_hbonds')}; "
+        f"hydrophobic contacts: {value('n_hydrophobic')}.\n"
+        f"Hydrogen-bond residues: {', '.join(results.get('hbond_residues') or []) or 'unavailable or none recorded'}.\n"
+        "Docking scores are model scores, not measured binding affinities or evidence of efficacy. "
+        "Interaction absence is meaningful only when interaction analysis completed successfully."
     )

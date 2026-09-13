@@ -28,6 +28,8 @@ HOW IT WORKS
 """
 
 import math
+import json
+import hashlib
 import os
 import re
 
@@ -78,17 +80,18 @@ _RES_CHARGES = {
 }
 
 
-def _empty_result(note):
-    """A zeroed interaction result so the app keeps working when ProLIF is absent."""
+def _empty_result(note, status="unavailable"):
+    """Unavailable counts are null; zero is reserved for completed analysis."""
     return {
-        "total_interactions": 0, "n_hbonds": 0, "hbond_residues": [],
-        "n_hydrophobic": 0, "hydrophobic_residues": [],
-        "n_pistacking": 0, "pistacking_residues": [],
-        "n_saltbridges": 0, "saltbridge_residues": [],
-        "n_halogen": 0, "n_pication": 0, "n_waterbridges": 0,
+        "total_interactions": None, "n_hbonds": None, "hbond_residues": [],
+        "n_hydrophobic": None, "hydrophobic_residues": [],
+        "n_pistacking": None, "pistacking_residues": [],
+        "n_saltbridges": None, "saltbridge_residues": [],
+        "n_halogen": None, "n_pication": None, "n_waterbridges": None,
         "interacting_residues": [], "lines": [], "residue_numbers": [],
         "residues": [],
-        "note": note,
+        "note": note, "status": status, "records": [],
+        "verification": {"status": status, "reason": note},
         "svg_2d": "",
     }
 
@@ -128,6 +131,9 @@ def _ligand_mol_from_pose(ligand_pdbqt, smiles=None):
             return _keep_best_conformer(mols[0])
     except Exception:
         pass
+    # A coordinate-only fallback cannot establish chemical bond identity.
+    if not smiles:
+        return None
     # fallback: raw atoms from the PDBQT text + bond orders from the known SMILES
     try:
         lines = []
@@ -186,8 +192,7 @@ def build_complex(receptor_pdb, lig_mol, out_complex_pdb):
     restarting at 1. A PDB serial is the identity a viewer resolves CONECT
     records against, so duplicates are not cosmetic: with the ligand numbered
     1..N over a protein that already owns those serials, every ligand CONECT
-    record points at a PROTEIN atom. Discovery Studio then cannot perceive the
-    ligand as its own molecule and reports no ligand at all.
+    record would point at a PROTEIN atom and corrupt the exported connectivity.
     """
     with open(receptor_pdb) as f:
         protein_lines = [ln.rstrip("\n") for ln in f
@@ -227,15 +232,14 @@ def _protonate_protein(receptor_pdb):
         if chg is not None:
             atom.SetFormalCharge(chg)
             atom.SetNoImplicit(True)
-            atom.SetNumExplicitHs(0)
+            atom.SetNumExplicitHs(3 if (resn, name) == ("LYS", "NZ") else
+                                  2 if (resn, name) == ("ARG", "NH2") else
+                                  1 if (resn, name) == ("HIP", "NE2") else 0)
     try:
         Chem.SanitizeMol(mol)
-    except Exception:
-        pass
-    try:
-        mol = Chem.AddHs(mol, addCoords=True)
-    except Exception:
-        pass
+        mol = Chem.AddHs(mol, addCoords=True, addResidueInfo=True)
+    except Exception as exc:
+        raise ValueError("Receptor chemical preparation failed") from exc
     return mol
 
 
@@ -249,7 +253,7 @@ def _centroid(conf, idxs):
     return (sum(p.x for p in ps) / n, sum(p.y for p in ps) / n, sum(p.z for p in ps) / n)
 
 
-def _collect_interactions(ifp, lig_conf, prot_conf):
+def _collect_interactions(ifp, lig_conf, prot_conf, rejected=None):
     """
     THE single source of truth. Walk every interaction ProLIF found and return one
     flat list of records — each with its type, residue, the ligand-side and
@@ -260,22 +264,34 @@ def _collect_interactions(ifp, lig_conf, prot_conf):
     recs = []
     for pair, inters in ifp.items():
         prot_res = pair[1]
-        chain = prot_res.chain or "A"
+        chain = prot_res.chain or ""
         for iname, metas in inters.items():
             itype = _PROLIF_MAP.get(iname)
             if not itype:
                 continue
             for m in metas:
-                pidx = m.get("parent_indices") or m.get("indices") or {}
+                pidx = m.get("parent_indices")
+                if not pidx:
+                    if rejected is not None:
+                        rejected.append({'method': iname, 'residue': str(prot_res), 'reason': 'Global atom indices unavailable'})
+                        continue
+                    raise ValueError("Interaction lacks global parent atom indices")
                 lig_xyz = _centroid(lig_conf, pidx.get("ligand"))
                 prot_xyz = _centroid(prot_conf, pidx.get("protein"))
                 if lig_xyz is None or prot_xyz is None:
-                    continue
+                    if rejected is not None:
+                        rejected.append({'method': iname, 'residue': str(prot_res), 'reason': 'Atom coordinates unavailable'})
+                        continue
+                    raise ValueError("Interaction atom coordinates unavailable")
                 recs.append({
                     "type": itype, "restype": prot_res.name, "resnr": int(prot_res.number),
                     "reschain": chain, "tag": f"{prot_res.name}{prot_res.number}({chain})",
                     "lig_xyz": lig_xyz, "prot_xyz": prot_xyz,
-                    "distance": float(m.get("distance", 0) or 0), "color": _COLORS[itype],
+                    "distance": float(m["distance"]) if m.get("distance") is not None else None,
+                    "method": "ProLIF." + iname, "distance_unit": "angstrom",
+                    "ligand_atom_indices": list(map(int, pidx["ligand"])),
+                    "protein_atom_indices": list(map(int, pidx["protein"])),
+                    "geometry": _json_value(m), "color": _COLORS[itype],
                 })
     return recs
 
@@ -305,67 +321,8 @@ def _polar_protein_atoms(prot_mol, conf):
 
 
 def _geometric_hbonds(lig_mol, polar_atoms, existing, cutoff=3.5):
-    """Hydrogen bonds found by DONOR–ACCEPTOR HEAVY-ATOM distance.
-
-    WHY THIS EXISTS
-    ---------------
-    ProLIF decides an H-bond using the D–H···A angle, which needs the hydrogen
-    to be in the right place. Ours are not: the receptor is protonated with
-    RDKit's AddHs, which sets a chemically valid but ARBITRARY torsion for every
-    rotatable donor — Ser/Thr/Tyr hydroxyls, Lys ammonium. Their hydrogens end
-    up pointing in whatever direction the geometry code chose, so genuine bonds
-    fail the angle test and vanish.
-
-    That is not a hypothetical. On a real trypsin pose, aspirin sat with its
-    carbonyl oxygen 2.70 Å from Ser195 OG and 2.72 Å from Cys191 O — eleven
-    polar pairs inside 3.5 Å — and MUMO reported ZERO hydrogen bonds, while
-    Discovery Studio reported several. Discovery Studio was right.
-
-    Optimising those hydrogens properly needs Reduce or PDBFixer/OpenMM, which
-    is a heavy dependency this deployment deliberately keeps isolated. The
-    standard alternative, and what Discovery Studio effectively does, is the
-    heavy-atom criterion: a donor/acceptor pair within ~3.5 Å is a hydrogen
-    bond. For a rotatable hydroxyl that is the more honest test anyway, because
-    the crystal structure never determined where that hydrogen points.
-
-    Kept conservative: same-sign charged pairs are skipped (two cations close
-    together is a clash, not a bond), and anything ProLIF already reported for
-    that residue and ligand atom is skipped, so nothing is counted twice.
-    """
-    conf = lig_mol.GetConformer()
-    seen = [(r["resnr"], r["reschain"], r["lig_xyz"]) for r in existing]
-    found = []
-    for atom in lig_mol.GetAtoms():
-        if atom.GetSymbol() not in ("N", "O"):
-            continue
-        lp = conf.GetAtomPosition(atom.GetIdx())
-        lxyz = (lp.x, lp.y, lp.z)
-        lchg = atom.GetFormalCharge()
-        for pa in polar_atoms:
-            px, py, pz = pa["xyz"]
-            d = math.sqrt((lxyz[0] - px) ** 2 + (lxyz[1] - py) ** 2 + (lxyz[2] - pz) ** 2)
-            if d > cutoff or d < 2.2:          # < 2.2 Å is a clash, not a bond
-                continue
-            if lchg and pa["charge"] and (lchg > 0) == (pa["charge"] > 0):
-                continue                        # like charges: not a hydrogen bond
-            dup = False
-            for resnr, chain, xyz in seen:
-                if resnr == pa["resi"] and chain == pa["chain"] and xyz:
-                    if ((lxyz[0] - xyz[0]) ** 2 + (lxyz[1] - xyz[1]) ** 2
-                            + (lxyz[2] - xyz[2]) ** 2) < 0.36:      # within 0.6 Å
-                        dup = True
-                        break
-            if dup:
-                continue
-            seen.append((pa["resi"], pa["chain"], lxyz))
-            found.append({
-                "type": "H-bond", "restype": pa["resn"], "resnr": pa["resi"],
-                "reschain": pa["chain"],
-                "tag": f'{pa["resn"]}{pa["resi"]}({pa["chain"]})',
-                "lig_xyz": lxyz, "prot_xyz": (px, py, pz),
-                "distance": float(d), "color": _COLORS["H-bond"],
-            })
-    return found
+    """Retired distance-only shortcut: proximity alone is not a hydrogen bond."""
+    return []
 
 
 def prepare_receptor_context(receptor_pdb):
@@ -382,13 +339,14 @@ def prepare_receptor_context(receptor_pdb):
         if prot_h is None:
             return None
         conf = prot_h.GetConformer()
-        return {"prot_plf": plf.Molecule.from_rdkit(prot_h),
+        return {"prot_mol": prot_h, "source_sha256": _sha256(receptor_pdb),
+                "prot_plf": plf.Molecule.from_rdkit(prot_h),
                 "prot_conf": conf,
                 # precomputed once per receptor: the polar atoms the geometric
                 # H-bond pass needs, so a batch of ligands doesn't rescan the
                 # whole protein each time
                 "polar": _polar_protein_atoms(prot_h, conf),
-                "fp": plf.Fingerprint(_PROLIF_INTERACTIONS)}
+                "fp": plf.Fingerprint(_PROLIF_INTERACTIONS, count=True)}
     except Exception:
         return None
 
@@ -397,7 +355,7 @@ def analyze_interactions(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smi
                          receptor_ctx=None):
     """
     Full analysis. Returns a dictionary of interaction details for the docked pose.
-    Never raises — if ProLIF is unavailable or analysis fails, returns zeros so the
+    Never raises — unavailable or failed counts are null so the
     rest of MUMO (docking, scores, 3D view) keeps working.
 
     `receptor_ctx` (from prepare_receptor_context) lets a multi-ligand run reuse one
@@ -409,7 +367,96 @@ def analyze_interactions(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smi
     try:
         return _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles, receptor_ctx)
     except Exception as e:
-        return _empty_result(f"Interaction analysis skipped: {e}")
+        return _empty_result(f"Interaction analysis failed: {e}", status="failed")
+
+
+def _sha256(path):
+    with open(path, 'rb') as handle:
+        return hashlib.sha256(handle.read()).hexdigest()
+
+
+def _json_value(value):
+    if isinstance(value, dict):
+        return {str(k): _json_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(v) for v in value]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    if hasattr(value, 'item'):
+        return value.item()
+    if hasattr(value, 'GetAtoms'):
+        return Chem.MolToSmarts(value)
+    return str(value)
+
+
+def _export_prepared(ligand, protein, complex_path):
+    """Save portable bond-aware molecules; reload and verify before analysis.
+
+    SDFs preserve hydrogens/bonds/charges; the atom mapping preserves PDB residue
+    identity. The PDB is a coordinate view of those same reloaded molecules.
+    """
+    loaded, artifacts, identities = {}, {}, {}
+    for name, original in (("ligand", ligand), ("protein", protein)):
+        if original.GetNumConformers() != 1:
+            raise ValueError("Prepared molecule must contain exactly one pose")
+        path = str(complex_path) + '.' + name + '.sdf'
+        identities[name] = []
+        for atom in original.GetAtoms():
+            info = atom.GetPDBResidueInfo()
+            identities[name].append(None if info is None else {
+                'name': info.GetName(), 'residue': info.GetResidueName(),
+                'number': info.GetResidueNumber(), 'chain': info.GetChainId(),
+                'insertion_code': info.GetInsertionCode(), 'serial': info.GetSerialNumber()})
+        writer = Chem.SDWriter(path)
+        writer.SetForceV3000(True)
+        writer.write(original)
+        writer.close()
+        restored = Chem.SDMolSupplier(path, removeHs=False, sanitize=True)[0]
+        if restored is None or restored.GetNumAtoms() != original.GetNumAtoms():
+            raise ValueError('Prepared export could not be reloaded')
+        if Chem.MolToSmiles(restored) != Chem.MolToSmiles(original):
+            raise ValueError('Prepared export chemical state changed')
+        for index, atom in enumerate(restored.GetAtoms()):
+            if atom.GetAtomicNum() != original.GetAtomWithIdx(index).GetAtomicNum():
+                raise ValueError('Prepared export atom order changed')
+            p, q = original.GetConformer().GetAtomPosition(index), restored.GetConformer().GetAtomPosition(index)
+            if not all(math.isfinite(v) for v in (p.x,p.y,p.z,q.x,q.y,q.z)) or (p-q).Length() > 0.0002:
+                raise ValueError('Prepared export coordinates changed')
+            entry = identities[name][index]
+            if entry:
+                info = Chem.AtomPDBResidueInfo()
+                info.SetName(entry['name']); info.SetResidueName(entry['residue'])
+                info.SetResidueNumber(entry['number']); info.SetChainId(entry['chain'])
+                info.SetInsertionCode(entry['insertion_code']); info.SetSerialNumber(entry['serial'])
+                atom.SetMonomerInfo(info)
+            if name == 'ligand':
+                info = Chem.AtomPDBResidueInfo()
+                info.SetName(f'{atom.GetSymbol()}{index+1}'.rjust(4)[-4:])
+                info.SetResidueName('LIG'); info.SetResidueNumber(1)
+                info.SetChainId('Z'); info.SetIsHeteroAtom(True)
+                atom.SetMonomerInfo(info)
+        loaded[name] = restored
+        artifacts[name + '_sdf'] = {'path': path, 'sha256': _sha256(path)}
+    mapping_path = str(complex_path) + '.atoms.json'
+    with open(mapping_path, 'w', encoding='utf-8') as handle:
+        json.dump(identities, handle, indent=2)
+    artifacts['atom_mapping'] = {'path': mapping_path, 'sha256': _sha256(mapping_path)}
+    combined = Chem.CombineMols(loaded['protein'], loaded['ligand'])
+    Chem.MolToPDBFile(combined, str(complex_path))
+    # Verify the display/export coordinate view against the analysis molecules.
+    pdb_points = []
+    with open(complex_path) as handle:
+        for line in handle:
+            if line.startswith(('ATOM  ', 'HETATM')):
+                pdb_points.append(tuple(float(line[a:b]) for a,b in ((30,38),(38,46),(46,54))))
+    if len(pdb_points) != combined.GetNumAtoms():
+        raise ValueError('Complex PDB atom count mismatch')
+    for index, point in enumerate(pdb_points):
+        expected = combined.GetConformer().GetAtomPosition(index)
+        if math.dist(point, (expected.x, expected.y, expected.z)) > 0.001:
+            raise ValueError('Complex PDB coordinate mismatch')
+    artifacts['complex_pdb'] = {'path': str(complex_path), 'sha256': _sha256(complex_path)}
+    return loaded['ligand'], loaded['protein'], artifacts
 
 
 def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None, receptor_ctx=None):
@@ -417,29 +464,38 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
     if lig_mol is None:
         raise RuntimeError("Could not read the docked ligand pose.")
 
-    # write the complex (heavy-atom ligand) that the 2D diagram + 3D viewer read
-    build_complex(receptor_pdb, lig_mol, out_complex_pdb)
-
-    # ProLIF needs explicit Hs on the ligand. Heavy-atom coords are unchanged by
-    # AddHs, so the coordinates in `recs` stay consistent with the complex PDB above.
+    if ligand_smiles:
+        expected = Chem.MolFromSmiles(ligand_smiles)
+        if expected is None or Chem.MolToSmiles(Chem.RemoveHs(lig_mol)) != Chem.MolToSmiles(expected):
+            raise ValueError("Pose chemical identity does not match requested ligand")
+    Chem.SanitizeMol(lig_mol)
     lig_h = Chem.AddHs(lig_mol, addCoords=True)
-
-    # Reuse the prepared receptor (protonated protein + fingerprint) if given —
-    # otherwise prepare it just for this ligand (single-ligand path).
     ctx = receptor_ctx or prepare_receptor_context(receptor_pdb)
-    if ctx is None:
-        raise RuntimeError("Could not prepare the receptor for interaction analysis.")
-    prot_plf, prot_conf, fp = ctx["prot_plf"], ctx["prot_conf"], ctx["fp"]
-
+    if ctx is None or ctx.get("source_sha256") != _sha256(receptor_pdb):
+        raise RuntimeError("Receptor preparation missing or does not match input")
+    lig_h, prot_h, artifacts = _export_prepared(lig_h, ctx["prot_mol"], out_complex_pdb)
+    fp = plf.Fingerprint(_PROLIF_INTERACTIONS, count=True)
     lig_plf = plf.Molecule.from_rdkit(lig_h)
+    prot_plf = plf.Molecule.from_rdkit(prot_h)
     ifp = fp.generate(lig_plf, prot_plf, metadata=True)
-
-    # ── everything below derives from ONE canonical list, so CSV == 2D == 3D ──
-    recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_conf)
-    # Supplement ProLIF's angle-based H-bonds with the heavy-atom criterion —
-    # see _geometric_hbonds for why the angle test under-reports here.
-    if ctx.get("polar"):
-        recs = recs + _geometric_hbonds(lig_h, ctx["polar"], recs)
+    rejected = []
+    recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_h.GetConformer(), rejected)
+    settings = {name: _json_value(vars(getattr(detector, "__self__", detector)))
+                for name, detector in fp.interactions.items()}
+    for record in recs:
+        record["thresholds"] = settings.get(record["method"].split(".", 1)[1], {})
+    evidence = {"status": "partial" if rejected else "qualified", "records": recs, "rejected_records": rejected,
+                "versions": {"rdkit": Chem.rdBase.rdkitVersion, "prolif": plf.__version__},
+                "settings": settings, "artifacts": artifacts,
+                "preparation": "RDKit residue charge templates and AddHs; hydrogen geometry not optimized",
+                "source_receptor_sha256": _sha256(receptor_pdb),
+                "source_pose_sha256": _sha256(ligand_pdbqt),
+                "checks": {"export_reload": "passed", "analysis_uses_reloaded_artifacts": True},
+                "unsupported_interactions": ["water bridges"]}
+    evidence_path = out_complex_pdb + ".interactions.json"
+    with open(evidence_path, "w", encoding="utf-8") as handle:
+        json.dump(evidence, handle, indent=2, allow_nan=False)
+    artifacts["interaction_evidence"] = {"path": evidence_path, "sha256": _sha256(evidence_path)}
 
     def _by(t):
         return [r for r in recs if r["type"] == t]
@@ -467,17 +523,21 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
             residues.append({"chain": r["reschain"], "resi": r["resnr"]})
 
     return {
+        "status": "partial" if rejected else "qualified", "records": recs, "artifacts": artifacts,
+        "count_scope": "retained verified contacts only; incomplete" if rejected else "configured ProLIF interactions",
+        "verification": evidence,
+        "note": "Predicted contacts depend on residue charge templates and unoptimized hydrogen geometry.",
         "total_interactions": len(recs),
         "n_hbonds": len(hb), "hbond_residues": _tags(hb),
         "n_hydrophobic": len(hy), "hydrophobic_residues": _tags(hy),
         "n_pistacking": len(pi), "pistacking_residues": _tags(pi),
         "n_saltbridges": len(sb), "saltbridge_residues": _tags(sb),
-        "n_halogen": len(hal), "n_pication": len(pc), "n_waterbridges": 0,
+        "n_halogen": len(hal), "n_pication": len(pc), "n_waterbridges": None,
         "interacting_residues": sorted({r["tag"] for r in recs}),
         "lines": lines,                       # 3D dashed lines (with distances)
         "residue_numbers": sorted({r["resnr"] for r in recs}),
         "residues": residues,                 # chain-aware (fixes wrong-residue highlight)
-        "svg_2d": generate_2d_interaction_svg(out_complex_pdb, recs, lig_mol=lig_mol),
+        "svg_2d": generate_2d_interaction_svg(out_complex_pdb, recs, lig_mol=lig_h),
     }
 
 

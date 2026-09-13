@@ -49,6 +49,7 @@ improved all-atom structure validation", Protein Sci. 27:293-315 (2018).
 
 import math
 import os
+import hashlib
 
 # ── reference distributions ────────────────────────────────────────────────
 # Six Top8000 percentile grids, 180x180 bins of 2 degrees, wrapping in both
@@ -155,6 +156,8 @@ def dihedral(p0, p1, p2, p3):
     """
     import numpy as np
     p0, p1, p2, p3 = (np.asarray(p, dtype=float) for p in (p0, p1, p2, p3))
+    if any(p.shape != (3,) or not np.all(np.isfinite(p)) for p in (p0, p1, p2, p3)):
+        return None
     b0 = p0 - p1
     b1 = p2 - p1
     b2 = p3 - p2
@@ -187,8 +190,15 @@ def _parse_backbone(pdb_text):
     """
     residues = []          # ordered, one dict per residue
     index = {}
+    segment = 0
     for line in (pdb_text or "").splitlines():
+        if line.startswith('ENDMDL'):
+            break  # first model only, never combine ensemble coordinates
+        if line.startswith('TER'):
+            segment += 1
         if not line.startswith("ATOM"):
+            continue
+        if len(line) < 54:
             continue
         name = line[12:16].strip()
         if name not in _BACKBONE:
@@ -196,18 +206,20 @@ def _parse_backbone(pdb_text):
         altloc = line[16]
         if altloc not in (" ", "A"):      # keep one conformer only
             continue
-        try:
-            xyz = (float(line[30:38]), float(line[38:46]), float(line[46:54]))
-        except ValueError:
-            continue
-        key = (line[21], line[22:26].strip(), line[26])   # chain, resseq, icode
+        key = (segment, line[21], line[22:26].strip(), line[26])
         res = index.get(key)
         if res is None:
             res = {"chain": line[21], "resseq": line[22:26].strip(),
                    "icode": line[26].strip(), "resname": line[17:20].strip(),
-                   "atoms": {}}
+                   "atoms": {}, "segment": segment}
             index[key] = res
             residues.append(res)
+        try:
+            xyz = (float(line[30:38]), float(line[38:46]), float(line[46:54]))
+            if not all(math.isfinite(v) for v in xyz):
+                continue
+        except ValueError:
+            continue
         res["atoms"].setdefault(name, xyz)      # first occurrence wins
     return residues
 
@@ -217,12 +229,14 @@ def _bonded(res_a, res_b, cutoff=2.0):
     bond. Consecutive records in a PDB are NOT necessarily bonded — missing
     loops and chain ends leave gaps, and computing a torsion across one
     invents an angle from two unrelated pieces of the protein."""
+    if res_a['chain'] != res_b['chain'] or res_a.get('segment') != res_b.get('segment'):
+        return False
     c = res_a["atoms"].get("C")
     n = res_b["atoms"].get("N")
     if not c or not n:
         return False
     d2 = sum((a - b) ** 2 for a, b in zip(c, n))
-    return d2 <= cutoff * cutoff
+    return 1e-8 < d2 <= cutoff * cutoff
 
 
 def compute(pdb_text):
@@ -237,42 +251,73 @@ def compute(pdb_text):
          "note": str}
     or {"_error": "..."} — never raises.
     """
+    verification = {'status': 'failed', 'input_sha256': hashlib.sha256(
+        (pdb_text or '').encode('utf-8')).hexdigest(), 'angle_units': 'degrees',
+        'coordinate_units': 'angstrom', 'model_selection': 'first model',
+        'altloc_selection': 'blank or A, first occurrence',
+        'reference': 'MolProbity Top8000', 'favoured_min': _FAVOURED_MIN,
+        'allowed_min': dict(_ALLOWED_MIN), 'peptide_distance_max_angstrom': 2.0}
     try:
         import numpy  # noqa: F401  (dihedral needs it; fail early and clearly)
+        grids = _grids()
+        if any(k not in grids or grids[k].shape != (180, 180)
+               or not numpy.all(numpy.isfinite(grids[k]))
+               or numpy.any(grids[k] < 0) for k in _ALLOWED_MIN):
+            raise ValueError('Invalid Top8000 reference grids')
+        # Hash the actual in-memory arrays used by scoring, including class names.
+        evidence = b''.join(k.encode() + grids[k].tobytes() for k in sorted(grids))
+        verification['reference_sha256'] = hashlib.sha256(evidence).hexdigest()
     except Exception as e:
-        return {"_error": f"numpy unavailable: {e}"}
+        verification['status'] = 'unavailable'
+        return {"_error": f"Ramachandran reference or runtime unavailable: {e}",
+                '_verification': verification}
 
     residues = _parse_backbone(pdb_text)
     if len(residues) < 3:
-        return {"_error": "No protein backbone found in that structure."}
+        return {"_error": "Insufficient protein backbone found in that structure.",
+                '_verification': verification, 'n_residues': len(residues)}
 
     points = []
+    unscored = []
     for i, res in enumerate(residues):
+        identity = {k: res[k] for k in ('chain', 'resseq', 'icode', 'resname', 'segment')}
+        def skip(reason):
+            unscored.append(dict(identity, status='unavailable', reason=reason))
         prev_r = residues[i - 1] if i > 0 else None
         next_r = residues[i + 1] if i < len(residues) - 1 else None
         # phi needs the PREVIOUS residue's C, psi the NEXT residue's N — so a
         # chain's first residue has no phi and its last has no psi. Those are
         # genuinely undefined, not missing data, and are simply not scored.
         if not (prev_r and next_r):
+            skip('terminal residue: phi or psi undefined')
             continue
         if not (_bonded(prev_r, res) and _bonded(res, next_r)):
+            skip('missing backbone atom, chain boundary, or peptide distance outside limits')
             continue
         a = res["atoms"]
         if not all(k in a for k in _BACKBONE):
+            skip('missing or invalid backbone coordinates')
             continue
         phi = dihedral(prev_r["atoms"]["C"], a["N"], a["CA"], a["C"])
         psi = dihedral(a["N"], a["CA"], a["C"], next_r["atoms"]["N"])
         if phi is None or psi is None:
+            skip('undefined torsion geometry')
             continue
-        # omega of the bond INTO this residue, so a proline can be told cis
-        # from trans. Missing prev CA just leaves it None -> treated as trans,
-        # which is the overwhelmingly common case.
+        # Omega of the bond into this residue identifies cis/trans proline.
+        # Missing omega must not silently select the trans reference.
         pa = prev_r["atoms"]
         omega = (dihedral(pa["CA"], pa["C"], a["N"], a["CA"])
                  if ("CA" in pa and "C" in pa) else None)
+        if res['resname'] == 'PRO' and omega is None:
+            skip('proline omega unavailable: cis/trans class undetermined')
+            continue
         kind = rama_class(res["resname"], next_r["resname"], omega)
         label = f'{res["resname"]}{res["resseq"]}{res["icode"]}({res["chain"]})'
         points.append({"phi": round(phi, 2), "psi": round(psi, 2),
+                       'phi_unrounded': phi, 'psi_unrounded': psi, 'omega': omega,
+                       'coordinates': dict(a), 'previous_residue': {**{k: prev_r[k] for k in ('chain', 'resseq', 'icode', 'resname', 'segment')}, 'atoms': dict(pa)},
+                       'next_residue': {**{k: next_r[k] for k in ('chain', 'resseq', 'icode', 'resname', 'segment')}, 'atoms': dict(next_r['atoms'])},
+                       'segment': res['segment'], 'status': 'verified',
                        "resname": res["resname"], "chain": res["chain"],
                        "resseq": res["resseq"], "icode": res["icode"],
                        "label": label,
@@ -283,7 +328,9 @@ def compute(pdb_text):
 
     if not points:
         return {"_error": "Backbone found, but no residue had a complete "
-                          "phi/psi pair (structure may be badly fragmented)."}
+                          "phi/psi pair (structure may be badly fragmented).",
+                '_verification': verification, 'unscored': unscored,
+                'n_scored': 0, 'n_residues': len(residues)}
 
     counts = {k: sum(1 for p in points if p["region"] == k)
               for k in ("favoured", "allowed", "outlier")}
@@ -293,7 +340,9 @@ def compute(pdb_text):
     by_class = {}
     for p in points:
         by_class[p["rama_class"]] = by_class.get(p["rama_class"], 0) + 1
+    verification['status'] = 'partial' if unscored else 'verified'
     return {"points": points, "counts": counts, "pct": pct,
+            '_verification': verification, 'unscored': unscored,
             "n_residues": len(residues), "n_scored": n,
             "outliers": outliers, "by_class": by_class,
             "note": ("Scored against the MolProbity Top8000 percentile contours "
@@ -482,24 +531,9 @@ def _esc(s):
 
 
 def verdict(result):
-    """One plain-language line on whether the structure looks trustworthy.
-
-    Thresholds are calibrated to THIS module's region model, not to
-    MolProbity's. Applying MolProbity's usual ">98% favoured" bar here would
-    mislabel genuinely excellent structures as mediocre, because the box
-    regions read a few points low by construction (1UBQ, a 1.8 A structure,
-    scores 97.3% here). The outlier fraction carries most of the weight
-    instead, since that is the part measured to be reliable.
-    """
-    if not result or result.get("_error"):
-        return ""
-    fav, out = result["pct"]["favoured"], result["pct"]["outlier"]
-    if fav >= 90 and out <= 0.5:
-        return (f"{fav}% of residues sit in favoured regions and {out}% are "
-                f"outliers — backbone geometry looks well refined.")
-    if fav >= 80 and out <= 2:
-        return (f"{fav}% favoured, {out}% outliers — acceptable geometry; the "
-                f"outlying residues are worth a look if any sit in the binding site.")
-    return (f"Only {fav}% of residues are in favoured regions and {out}% are "
-            f"outliers — treat this structure with caution, and check whether "
-            f"the distorted residues are near the pocket before trusting a dock.")
+    """Report actual scoring coverage without asserting whole-structure validity."""
+    if not result or result.get('_error'):
+        return 'Backbone assessment unavailable.'
+    return (f"{result.get('n_scored', 0)}/{result.get('n_residues', 0)} residues scored: "
+            f"{result['pct']['favoured']}% favoured, {result['pct']['outlier']}% outliers among scored residues. "
+            "The unscored residues have undefined or unavailable geometry. This assessment alone does not validate docking.")

@@ -145,13 +145,18 @@ def _sanitize(mol):
 
 def _apply_rule(mol, smarts):
     """All distinct products of one rule on one molecule."""
+    return _apply_rule_checked(mol, smarts)[0]
+
+
+def _apply_rule_checked(mol, smarts):
+    """Apply one rule and distinguish a no-match from a broken rule."""
     from rdkit import Chem
     from rdkit.Chem import AllChem
     out = []
     try:
         rxn = AllChem.ReactionFromSmarts(smarts)
         if rxn is None:
-            return out
+            return out, "reaction SMARTS could not be parsed"
         for products in rxn.RunReactants((mol,)):
             for p in products:
                 p = _sanitize(p)
@@ -161,9 +166,33 @@ def _apply_rule(mol, smarts):
                 # a rule that "fires" but changes nothing is noise
                 if smi and smi != _canonical(mol):
                     out.append((smi, p))
+    except Exception as exc:
+        return out, str(exc)
+    return out, None
+
+
+def _verification(status, smiles=None, rule_failures=None, settings=None, error=None):
+    try:
+        from rdkit import rdBase
+        version = rdBase.rdkitVersion
     except Exception:
-        pass
-    return out
+        version = "unknown"
+    record = {
+        "schema_version": 1,
+        "status": status,
+        "result_kind": "prediction",
+        "input_smiles": str(smiles),
+        "canonical_smiles": None,
+        "method": "RDKit reaction SMARTS metabolic rules",
+        "rdkit_version": version,
+        "rule_set": CITATION,
+        "rule_failures": rule_failures or [],
+        "settings": settings or {},
+        "verification_scope": "Recorded local rule execution and product structure validation; not experimental validation.",
+    }
+    if error:
+        record["error"] = error
+    return record
 
 
 def predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40):
@@ -184,15 +213,29 @@ def predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40):
         from rdkit import Chem, RDLogger
         RDLogger.DisableLog("rdApp.*")   # invalid intermediates are expected
     except Exception as e:
-        return {"_error": f"RDKit unavailable: {e}"}
+        msg = f"RDKit unavailable: {e}"
+        return {"_error": msg, "_verification": _verification("unavailable", smiles, error=msg)}
 
     parent = Chem.MolFromSmiles(str(smiles or "").strip())
     if parent is None:
-        return {"_error": "Couldn't read that structure — check the SMILES."}
+        msg = "Couldn't read that structure — check the SMILES."
+        return {"_error": msg, "_verification": _verification("failed", smiles, error=msg)}
+
+    try:
+        depth = int(depth)
+        min_score = float(min_score)
+        max_results = int(max_results)
+        if depth < 1 or max_results < 1 or not 0 <= min_score <= 1:
+            raise ValueError("depth and max_results must be positive; min_score must be from 0 to 1")
+    except (TypeError, ValueError, OverflowError) as exc:
+        msg = f"Invalid metabolism settings: {exc}"
+        return {"_error": msg, "_verification": _verification("failed", smiles, error=msg)}
 
     parent_smi = _canonical(parent)
+    settings = {"depth": depth, "min_score": min_score, "max_results": max_results}
     seen = {parent_smi}
     results = {}
+    rule_failures = []
     frontier = [(parent_smi, parent, 1.0, [])]
 
     for generation in range(1, max(1, int(depth)) + 1):
@@ -207,7 +250,19 @@ def predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40):
             for name, smarts, prob, note, phase in ALL_RULES:
                 if len(results) >= MAX_METABOLITES:
                     break
-                for prod_smi, prod_mol in _apply_rule(mol, smarts):
+                try:
+                    prob = float(prob)
+                    if not 0 <= prob <= 1:
+                        raise ValueError("rule probability must be from 0 to 1")
+                except (TypeError, ValueError, OverflowError) as exc:
+                    rule_failures.append({"rule": str(name), "rule_smarts": str(smarts),
+                                          "error": str(exc)})
+                    continue
+                products, failure = _apply_rule_checked(mol, smarts)
+                if failure:
+                    rule_failures.append({"rule": str(name), "rule_smarts": str(smarts),
+                                          "error": failure})
+                for prod_smi, prod_mol in products:
                     new_score = score * prob
                     if new_score < min_score:
                         continue
@@ -219,6 +274,7 @@ def predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40):
                         if prev and new_score > prev["score"]:
                             prev.update(score=round(new_score, 4),
                                         name=name, phase=phase, note=note,
+                                        rule_smarts=smarts,
                                         parent=smi, generation=generation,
                                         pathway=path + [step])
                         continue
@@ -226,7 +282,9 @@ def predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40):
                     results[prod_smi] = {
                         "smiles": prod_smi, "name": name, "phase": phase,
                         "note": note, "parent": smi, "generation": generation,
-                        "score": round(new_score, 4), "pathway": path + [step]}
+                        "score": round(new_score, 4), "pathway": path + [step],
+                        "result_kind": "predicted metabolite", "rule_smarts": smarts,
+                        "structure_validated": Chem.MolFromSmiles(prod_smi) is not None}
                     next_frontier.append((prod_smi, prod_mol, new_score,
                                           path + [step]))
                     if len(results) >= MAX_METABOLITES:
@@ -236,8 +294,12 @@ def predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40):
         frontier = next_frontier
 
     ranked = sorted(results.values(), key=lambda m: -m["score"])[:max_results]
+    status = "partial" if rule_failures and results else "failed" if rule_failures else "verified"
+    verification = _verification(status, smiles, rule_failures, settings)
+    verification["canonical_smiles"] = parent_smi
     return {"parent": parent_smi, "n_generated": len(results),
-            "metabolites": ranked, "citation": CITATION}
+            "metabolites": ranked, "citation": CITATION,
+            "_verification": verification}
 
 
 def route_to_root(pred, metabolite):
@@ -259,17 +321,15 @@ def route_to_root(pred, metabolite):
         chain.append((node["smiles"], node.get("name")))
         parent_smi = node.get("parent")
         if not parent_smi or parent_smi == root:
-            chain.append((root, None))
+            if root:
+                chain.append((root, None))
             break
         nxt = by_smiles.get(parent_smi)
         if nxt is None:
-            # The intermediate isn't in the returned list (it can be ranked out
-            # if the caller trimmed the results). Anchor to the parent drug and
-            # keep the route drawable — a partial route is still informative;
-            # silently returning nothing would just erase the row.
+            # The intermediate isn't in the returned list. Show the known
+            # immediate parent as an unlinked start; never invent an edge to
+            # the named root because the missing route has not been observed.
             chain.append((parent_smi, None))
-            if parent_smi != root:
-                chain.append((root, None))
             break
         node = nxt
     return list(reversed(chain))

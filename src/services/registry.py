@@ -132,18 +132,9 @@ def unavailable(capability):
     owner = owner_of(capability)
     them = specialist(owner) if owner else None
     label = them["name"] if them else (capability or "that capability")
-    others = [s["name"] for sid, s in SPECIALISTS.items()
-              if sid != owner and endpoint(sid) is not None]
-    if others:
-        verb = "is" if len(others) == 1 else "are"
-        listed = others[0] if len(others) == 1 else (
-            ", ".join(others[:-1]) + " and " + others[-1])
-        tail = f" Everything else is unaffected — {listed} {verb} running normally."
-    else:
-        tail = ""
     return (f"The {label} service is temporarily unavailable, so I can't run "
-            f"{capability} right now.{tail} Your conversation and results are "
-            f"saved; try this again shortly.")
+            f"{capability} right now. No result is available for this attempt. "
+            f"Please try again shortly.")
 
 
 def status_table():

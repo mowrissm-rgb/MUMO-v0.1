@@ -9,6 +9,7 @@ reported through a `status(message)` callback the caller provides.
 """
 
 import os
+from verification import validate_box, validate_docking_result, capture_artifacts, run_record
 from agents.target_analyst import analyze_target
 from agents.interaction_analyst import analyze_interactions, prepare_receptor_context
 from docking_engine import (clean_protein_pdb, prepare_receptor,
@@ -42,6 +43,7 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     """
     status(f"Building the {tgt['gene']} structure and finding its pocket…")
     pdb_path, center, size, pocket = resolve_receptor(tgt, data_dir)
+    validate_box(center, size)
 
     cleaned = os.path.join(data_dir, "c_cleaned.pdb")
     receptor = os.path.join(data_dir, "c_receptor.pdbqt")
@@ -87,10 +89,8 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
         import ramachandran as _rama
         with open(cleaned) as _f:
             rama = _rama.compute(_f.read())
-        if rama.get("_error"):
-            rama = None          # never let a validation aid break a docking run
-    except Exception:
-        rama = None
+    except Exception as exc:
+        rama = {"_error": str(exc), "status": "unavailable"}
     dropped = prepare_receptor(cleaned, receptor, venv_dir) or []
     if dropped:
         # Say it out loud. Meeko has no templates for nucleotides/sugars, so a
@@ -176,7 +176,7 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                                             data_dir, exhaustiveness=max(8, min(eff_exh, 16)),
                                             seed=seed)
 
-    rows, viz, reliability_by = [], {}, {}
+    rows, viz, reliability_by, records = [], {}, {}, {}
     for k, lig in enumerate(ligands):
         label = lig["label"]
         status(f"Docking {label} ({k+1}/{len(ligands)})…")
@@ -189,8 +189,27 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 os.path.join(data_dir, f"c_out_{k}"), os.path.join(data_dir, f"c_cfg_{k}"),
                 center, size, exhaustiveness=eff_exh, n_replicas=eff_rep, base_seed=seed)
             best, modes, outp = res["best_score"], res["modes"], res["out_pdbqt"]
+            validate_docking_result(res)
             ia = analyze_interactions(cleaned, outp, cmplx, ligand_smiles=lig["smiles"],
                                       receptor_ctx=receptor_ctx)
+            artifacts = capture_artifacts(ia.get("artifacts", {}))
+            artifacts.update(capture_artifacts({
+                "docking_receptor": receptor, "docking_ligand": ligf,
+                "selected_docking_output": outp, "source_receptor": pdb_path}))
+            # Every replica's raw log, configuration and pose stays with the run.
+            from pathlib import Path
+            for evidence_path in Path(data_dir).glob(f"c_*_{k}_r*.*"):
+                artifacts.update(capture_artifacts({evidence_path.name: str(evidence_path)}))
+            record = run_record('docking', {'target': tgt['gene'], 'ligand': label,
+                'smiles': lig['smiles']}, {'center_angstrom': center, 'size_angstrom': size,
+                'exhaustiveness': eff_exh, 'replicas': res['n'],
+                'seeds': [seed + i for i in range(res['n'])]}, {
+                'docking': {'status': 'verified', 'result': res},
+                'interactions': ia,
+                'ramachandran': {'status': (rama or {}).get('_verification', {}).get('status', 'unavailable'), 'result': rama},
+                'native_redocking': {'status': 'qualified' if validation else 'unavailable',
+                                    'result': validation}}, artifacts)
+            records[label] = record
 
             # ── validation / statistics layer (#5): interpretable + aggregate metrics ──
             n_heavy = None
@@ -222,10 +241,11 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 "H-bond residues": "; ".join(ia["hbond_residues"]) or "-",
                 "All interacting residues": "; ".join(ia["interacting_residues"]) or "-",
                 "SMILES": lig["smiles"],
+                "Interaction status": ia.get("status", "unavailable"),
+                "Verification status": record['status'], "Run ID": record['run_id'],
             })
             viz[label] = {"complex": cmplx,
-                          "ia": {"lines": ia["lines"], "residue_numbers": ia["residue_numbers"],
-                                 "residues": ia.get("residues", []), "svg_2d": ia.get("svg_2d", "")}}
+                          "ia": ia, "artifact_texts": artifacts, "verification": record}
         except Exception as le:
             # MUMO attempts every ligand rather than pre-filtering, so a
             # molecule Vina genuinely cannot handle lands HERE. Name the real
@@ -245,4 +265,4 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     return rows, viz, {"gene": tgt["gene"], "center": center, "pocket": pocket,
                        "exhaustiveness": eff_exh, "replicas": eff_rep,
                        "validation": validation, "reliability_by": reliability_by,
-                       "ramachandran": rama}
+                       "ramachandran": rama, "run_records": records}

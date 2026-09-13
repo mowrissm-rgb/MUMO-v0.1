@@ -182,7 +182,7 @@ def requested_actions(text):
     return [a for _, a in sorted(hits)]
 
 
-def plan(data, convo, user_msg, asked_last_turn=False):
+def plan(data, convo, user_msg, asked_last_turn=False, pending_actions=None):
     """Decide what to actually run this turn.
 
     `data` is the model's parsed JSON. Returns an ordered, de-duplicated list of
@@ -208,8 +208,10 @@ def plan(data, convo, user_msg, asked_last_turn=False):
     # A bare "yes / go ahead" carries no action of its own: it authorises
     # whatever the conversation has been building toward.
     if not user and is_confirmation(user_msg):
-        user = [a for a in ("dock", "analyze", "qm", "string", "blast")
-                if is_ready(a, convo)][:1]
+        return [a for a in _dedupe(pending_actions or []) if is_ready(a, convo)]
+
+    if user:
+        return [a for a in _dedupe(user) if is_ready(a, convo)]
 
     if model:
         chosen = model

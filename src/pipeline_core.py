@@ -216,7 +216,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
             meta = dict(meta)
             meta.setdefault("per_target", {})[t_obj["gene"]] = {
                 k: t_meta.get(k) for k in ("pocket", "validation", "reliability_by",
-                                           "ramachandran")}
+                                           "ramachandran", "run_records")}
 
     if not rows:
         note = ("; ".join(failed_targets)) or "no poses were produced"
@@ -238,7 +238,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
 
     meta_store = {k: meta.get(k) for k in
                   ("gene", "pocket", "exhaustiveness", "replicas", "validation",
-                   "reliability_by", "targets", "per_target", "ramachandran")
+                   "reliability_by", "targets", "per_target", "ramachandran", "run_records")
                   if k in meta}
 
     # narrative report on the best hit
@@ -268,8 +268,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
                             "reliability": top.get("Reliability"),
                             "reliability_reason": _rel.get("reason"),
                             "total_interactions": top["Total interactions"],
-                            "n_hbonds": int(top["H-bonds"]), "hbond_residues": _sp(top["H-bond residues"]),
-                            "n_hydrophobic": int(top["Hydrophobic"]),
+                            "n_hbonds": top.get("H-bonds"), "hbond_residues": _sp(top["H-bond residues"]),
+                            "n_hydrophobic": top.get("Hydrophobic"),
                             "interacting_residues": _sp(top["All interacting residues"])},
                            llm, tier)
         msd = top.get("Mean ± SD (kcal/mol)", "—")

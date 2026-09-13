@@ -24,6 +24,7 @@ black box, which keeps every number defensible.
 
 from urllib.parse import quote
 import time
+import math
 
 import requests
 from rdkit import Chem
@@ -112,7 +113,7 @@ def _synthetic_accessibility(m):
 
 
 def _alert_count(m, catalog_name):
-    """Count structural-alert hits (PAINS / BRENK) via RDKit's FilterCatalog. 0 on failure."""
+    """Count structural-alert hits, or return None when the catalog cannot run."""
     try:
         from rdkit.Chem import FilterCatalog
         params = FilterCatalog.FilterCatalogParams()
@@ -121,7 +122,20 @@ def _alert_count(m, catalog_name):
         catalog = FilterCatalog.FilterCatalog(params)
         return len(catalog.GetMatches(m))
     except Exception:
-        return 0
+        return None
+
+
+def _canonical_smiles(smiles):
+    mol = Chem.MolFromSmiles(str(smiles or ""))
+    return Chem.MolToSmiles(mol) if mol is not None else None
+
+
+def _rdkit_version():
+    try:
+        from rdkit import rdBase
+        return rdBase.rdkitVersion
+    except Exception:
+        return "unknown"
 
 
 def druglikeness(smiles):
@@ -193,6 +207,36 @@ def druglikeness(smiles):
         "BBB permeant (pred.)": bbb,
         "Verdict": verdict,
     }
+    units = {
+        "MW (g/mol)": "g/mol", "LogP": "dimensionless", "H-bond donors": "count",
+        "H-bond acceptors": "count", "TPSA (Å²)": "Å²", "Rotatable bonds": "count",
+        "Aromatic rings": "count", "Fraction Csp3": "fraction", "Heavy atoms": "count",
+        "Molar refractivity": "unknown", "QED (0–1)": "score (0–1)",
+        "Lipinski (Ro5)": "rule outcome", "Veber": "rule outcome", "Ghose": "rule outcome",
+        "Egan": "rule outcome", "Lead-like": "rule outcome",
+        "Synthetic accessibility (1–10)": "score (1–10)", "PAINS alerts": "count",
+        "Brenk alerts": "count", "GI absorption (pred.)": "unknown",
+        "BBB permeant (pred.)": "unknown", "Verdict": "rule summary",
+    }
+    endpoints = {}
+    for label, value in out.items():
+        failed = value is None or value == "n/a"
+        endpoints[label] = {
+            "status": "failed" if failed else "predicted" if label.endswith("(pred.)") else "computed",
+            "value": None if failed else value,
+            "unit": units.get(label, "unknown"),
+        }
+    out["_verification"] = {
+        "schema_version": 1,
+        "status": "partial" if any(v["status"] == "failed" for v in endpoints.values()) else "verified",
+        "result_kind": "prediction",
+        "input_smiles": str(smiles),
+        "canonical_smiles": Chem.MolToSmiles(m),
+        "method": "RDKit descriptors and heuristic rules",
+        "rdkit_version": _rdkit_version(),
+        "endpoints": endpoints,
+        "verification_scope": "Recorded local calculation and rule execution; not experimental validation.",
+    }
     return out
 
 
@@ -257,6 +301,32 @@ def admet_ml(smiles):
     {"_error": msg} if admet-ai isn't available or the prediction fails, so the
     caller can show the transparent RDKit panel alone.
     """
+    def verification(status, canonical=None, endpoints=None, error=None):
+        record = {
+            "schema_version": 1, "status": status, "result_kind": "prediction",
+            "input_smiles": str(smiles), "canonical_smiles": canonical,
+            "method": "ADMET-AI pretrained ML models", "model_version": _admet_version(),
+            "applicability": "not established for this molecule",
+            "weights_fingerprint": "unavailable",
+            "endpoints": endpoints or {},
+            "verification_scope": "Recorded model execution and output validation; not experimental validation.",
+        }
+        if error:
+            record["error"] = error
+        return record
+
+    endpoint_records = {label: {"status": "unavailable", "value": None,
+                                "unit": _ADMET_UNITS.get(label, "unknown"), "kind": kind}
+                       for label, _sub, kind in _ADMET_PANEL}
+    canonical = _canonical_smiles(smiles)
+    if canonical is None:
+        for endpoint in endpoint_records.values():
+            endpoint["status"] = "failed"
+            endpoint["error"] = "invalid input SMILES"
+        return {"_error": f"Invalid SMILES: {smiles}",
+                "_verification": verification("failed", endpoints=endpoint_records,
+                                               error="Invalid input SMILES")}
+
     try:
         import pandas as pd
         model = _get_admet_model()
@@ -272,23 +342,63 @@ def admet_ml(smiles):
 
         def _find(sub):
             sub = sub.lower()
-            for lk, v in lut.items():
-                if sub in lk and "percentile" not in lk and "drugbank" not in lk:
-                    return v
+            if sub in lut:
+                return sub, lut[sub]
             return None
 
         out = {}
         for label, sub, kind in _ADMET_PANEL:
-            v = _find(sub)
-            if v is None:
+            match = _find(sub)
+            if match is None:
+                endpoint_records[label]["status"] = "missing"
                 continue
+            raw_key, v = match
+            endpoint_records[label]["raw_key"] = raw_key
             try:
-                out[label] = round(float(v), 3 if kind == "prob" else 2)
-            except (TypeError, ValueError):
-                out[label] = v
-        return out or {"_error": "admet-ai returned no recognised endpoints"}
+                number = float(v)
+                if not math.isfinite(number) or (kind == "prob" and not 0 <= number <= 1):
+                    raise ValueError("value outside valid range")
+                number = round(number, 3 if kind == "prob" else 2)
+                out[label] = number
+                endpoint_records[label].update(status="predicted", value=number)
+            except (TypeError, ValueError, OverflowError):
+                endpoint_records[label].update(status="failed", error="invalid model value")
+        good = sum(v["status"] == "predicted" for v in endpoint_records.values())
+        bad = any(v["status"] in ("failed", "missing") for v in endpoint_records.values())
+        status = "partial" if bad and good else "failed" if bad else "verified"
+        out["_verification"] = verification(status, canonical, endpoint_records)
+        if not good:
+            out["_error"] = "admet-ai returned no valid recognised endpoints"
+        return out
     except Exception as e:
-        return {"_error": f"ADMET-AI unavailable: {e}"}
+        for endpoint in endpoint_records.values():
+            endpoint["status"] = "unavailable"
+        msg = f"ADMET-AI unavailable: {e}"
+        return {"_error": msg, "_verification": verification("unavailable", canonical,
+                                                              endpoint_records, msg)}
+
+
+_ADMET_UNITS = {
+    "Caco-2 permeability (logPapp)": "log10(cm/s)",
+    "HIA — intestinal absorption": "probability (0–1)", "Oral bioavailability": "probability (0–1)",
+    "P-gp inhibitor": "probability (0–1)", "Aqueous solubility (logS)": "log10(mol/L)",
+    "BBB penetration": "probability (0–1)", "Plasma protein binding (%)": "%",
+    "Vol. of distribution (VDss)": "log10(L/kg)", "CYP1A2 inhibitor": "probability (0–1)",
+    "CYP2C19 inhibitor": "probability (0–1)", "CYP2C9 inhibitor": "probability (0–1)",
+    "CYP2D6 inhibitor": "probability (0–1)", "CYP3A4 inhibitor": "probability (0–1)",
+    "Hepatocyte clearance": "unknown", "Half-life": "unknown", "hERG blocker (cardiotox)": "probability (0–1)",
+    "Ames mutagenicity": "probability (0–1)", "DILI (liver injury)": "probability (0–1)",
+    "Clinical toxicity": "probability (0–1)", "Carcinogenicity": "probability (0–1)",
+    "Acute toxicity (LD50)": "unknown", "Skin reaction": "probability (0–1)",
+}
+
+
+def _admet_version():
+    try:
+        from importlib.metadata import version
+        return version("admet-ai")
+    except Exception:
+        return "unknown"
 
 
 def smiles_to_name(smiles, timeout=15, attempts=3):

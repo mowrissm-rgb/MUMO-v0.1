@@ -155,7 +155,7 @@ def find_entry(viz, label, target=None):
 #    it into a self-contained, JSON-storable form (2D SVG + interaction data +
 #    the pocket-cropped complex text) so a reloaded conversation can rebuild the
 #    full docking report — 2D diagram AND 3D pose — from the database alone. ──
-def serialize_viz(viz, crop=True):
+def serialize_viz(viz, crop=False):
     """viz (label -> {"complex": path, "ia": {...}}) → JSON-safe dict for storage.
     Reads each complex PDB from disk and (by default) crops it to the binding
     pocket, keeping the stored payload small (cloud/free-tier friendly)."""
@@ -169,7 +169,9 @@ def serialize_viz(viz, crop=True):
                 pdb_text = _crop_to_pocket(pdb_text)
         except Exception:
             pdb_text = None
-        out[label] = {"pdb": pdb_text, "ia": entry.get("ia", {})}
+        out[label] = {"pdb": pdb_text, "ia": entry.get("ia", {}),
+                      "artifact_texts": entry.get("artifact_texts", {}),
+                      "verification": entry.get("verification", {})}
     return out
 
 
@@ -184,13 +186,19 @@ def rehydrate_viz(stored_viz, data_dir):
     for i, (label, v) in enumerate((stored_viz or {}).items()):
         pdb_text = v.get("pdb")
         if not pdb_text:
+            if v.get('artifact_texts'):
+                out[label] = {'complex': '', 'ia': v.get('ia', {}),
+                              'artifact_texts': v['artifact_texts'],
+                              'verification': v.get('verification', {})}
             continue
         safe = _re.sub(r"[^A-Za-z0-9_.-]", "_", str(label))[:40] or f"lig{i}"
         path = os.path.join(data_dir, f"reload_{i}_{safe}.pdb")
         try:
             with open(path, "w") as f:
                 f.write(pdb_text)
-            out[label] = {"complex": path, "ia": v.get("ia", {})}
+            out[label] = {"complex": path, "ia": v.get("ia", {}),
+                          "artifact_texts": v.get("artifact_texts", {}),
+                          "verification": v.get("verification", {})}
         except Exception:
             continue
     return out
@@ -205,6 +213,9 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
     library ONCE from a CDN and emit only a few KB of our own JS. Same visuals,
     a fraction of the weight — so the cloud stays responsive across many dockings.
     """
+    import os
+    if not complex_pdb_path or not os.path.isfile(complex_pdb_path):
+        return '<p>Prepared complex unavailable. See the run evidence for completed steps.</p>'
     o = dict(DEFAULTS)
     if options:
         o.update(options)

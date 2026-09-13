@@ -78,6 +78,7 @@ USER mambauser
 
 WORKDIR /app
 COPY --chown=mambauser:mambauser . /app
+RUN python -m unittest discover -s tests
 
 # HF Spaces routes external traffic to app_port (7860, set in README frontmatter)
 ENV STREAMLIT_SERVER_HEADLESS=true \

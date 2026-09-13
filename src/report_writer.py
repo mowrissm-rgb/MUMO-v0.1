@@ -438,9 +438,9 @@ def build_docking_docx(r, llm=None):
                     "reliability": row.get("Reliability"),
                     "reliability_reason": rel.get("reason"),
                     "total_interactions": row.get("Total interactions"),
-                    "n_hbonds": int(row.get("H-bonds", 0) or 0),
+                    "n_hbonds": row.get("H-bonds"),
                     "hbond_residues": _sp(row.get("H-bond residues", "")),
-                    "n_hydrophobic": int(row.get("Hydrophobic", 0) or 0),
+                    "n_hydrophobic": row.get("Hydrophobic"),
                     "interacting_residues": _sp(row.get("All interacting residues", "")),
                 }, llm, r.get("tier", "Standard"))
             except Exception as e:
@@ -565,8 +565,8 @@ _RESULTS_SYSTEM = (
     "against what, the per-target best hits with their affinities, and how the set "
     "distributes across those bands. Then under a '## Discussion' heading cover: the "
     "evaluation basis, why these targets matter, interpretation against the bands, "
-    "whether any ligand is active across multiple targets, limitations (single "
-    "replica, exhaustiveness setting, no solvent, docking scores are not free "
+    "whether any ligand is active across multiple targets, limitations (recorded "
+    "replica count, exhaustiveness setting, no solvent, docking scores are not free "
     "energies), and a short conclusion. Use markdown headings and short paragraphs."
 )
 
@@ -584,7 +584,7 @@ def _add_results_discussion(doc, targets, rows_for, aff, meta, llm, qm_rows):
             f"{t}: {len(sub)} ligands docked; best {best['Ligand']} at "
             f"{aff(best):.3f} kcal/mol (Ki {best.get('Est. Ki', 'n/a')}, "
             f"ligand efficiency {best.get('Ligand efficiency', 'n/a')}, "
-            f"{best.get('H-bonds', 0)} H-bonds); "
+            f"{best.get('H-bonds', 'unavailable')} H-bonds); "
             f"weakest {aff(sub[-1]):.3f} kcal/mol.")
     if qm_rows:
         gaps = [x for x in qm_rows if x.get("Gap (eV)") not in ("—", "", None)]
@@ -599,31 +599,16 @@ def _add_results_discussion(doc, targets, rows_for, aff, meta, llm, qm_rows):
     if settings:
         facts.append("Settings: " + ", ".join(settings) + ".")
 
-    text = ""
-    if llm:
-        try:
-            text = llm.chat(_RESULTS_SYSTEM,
-                            "Run facts:\n" + "\n".join(facts) +
-                            "\n\nWrite the Results and Discussion sections.",
-                            temperature=0.3, max_tokens=1400)
-        except Exception:
-            text = ""
-
-    if text.strip():
-        _add_markdown(doc, text)
-        return
-
     doc.add_heading("Results", level=1)
     for f in facts:
         doc.add_paragraph(f)
     doc.add_heading("Discussion", level=1)
     doc.add_paragraph(
-        "Evaluation basis. Binding affinity more negative than -7.0 kcal/mol is "
-        "generally considered strong for AutoDock Vina, -5.0 to -7.0 moderate, and "
-        "weaker than -5.0 poor. Ligand efficiency normalises affinity by heavy-atom "
-        "count and is the fairer comparison across molecules of different size.")
+        "Evaluation basis. AutoDock Vina scores are model predictions in kcal/mol. "
+        "They do not establish measured affinity, inhibition or clinical activity. "
+        "Ligand efficiency is the score normalized by heavy-atom count.")
     doc.add_paragraph(
-        "Limitations. These poses come from a single docking replica at the "
+        f"Limitations. These poses use {meta.get('replicas', 'unrecorded')} docking replica(s) at the "
         "exhaustiveness recorded above, in the absence of explicit solvent. Docking "
         "scores are not free energies, and the ranking is more reliable than the "
         "absolute values. Treat this as a hypothesis-generating screen rather than "
@@ -941,7 +926,7 @@ def build_admet_docx(r):
     dl = r.get("druglikeness") or {}
     if dl:
         doc.add_heading("Drug-likeness", level=1)
-        _add_kv_table(doc, list(dl.items()))
+        _add_kv_table(doc, [(k, v) for k, v in dl.items() if not k.startswith("_")])
 
     adm = r.get("admet_ml") or {}
     if adm and "_error" not in adm:
@@ -949,7 +934,7 @@ def build_admet_docx(r):
         doc.add_paragraph("Pretrained ML models (Therapeutics Data Commons / Chemprop). "
                            "Classifier endpoints are probabilities 0–1; regression endpoints "
                            "are in native units.")
-        _add_kv_table(doc, list(adm.items()))
+        _add_kv_table(doc, [(k, v) for k, v in adm.items() if not k.startswith("_")])
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -1219,13 +1204,29 @@ def build_structure_zip(r):
               "(one per target — do NOT mix a receptor with a ligand docked "
               "against a DIFFERENT target)", "",
               "Open in Discovery Studio, Maestro/BIOLuminate, BIOVIA, PyMOL, ChimeraX, etc.",
-              "Note: structures reflect the exact docked pose from this run.", "",
+              "Prepared SDFs and atom mapping are the analysis source. PDB coordinates are rounded; PDB alone cannot preserve every chemical feature.",
+              "Cross-software contacts can differ with preparation, protonation, interaction definitions and thresholds.",
+              "Legacy exports without a run record are unverified.", "",
               "Ligands:"]
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for i, (label, entry) in enumerate(viz.items(), 1):
             target, lig_name = _label_parts(label)
             safe = _stem(label, i)
+            evidence = entry.get('artifact_texts') or {}
+            if evidence:
+                import json
+                from verification import verify_artifacts
+                if not verify_artifacts(evidence):
+                    raise ValueError(f'Export evidence integrity check failed for {label}')
+                for key, artifact in evidence.items():
+                    filename = re.sub(r'[^A-Za-z0-9_.-]', '_', artifact['filename'])
+                    z.writestr(f'{safe}/{filename}', artifact['text'].encode('utf-8'))
+                z.writestr(f'{safe}/run_record.json', json.dumps(entry.get('verification', {}), indent=2, default=str))
+                z.writestr(f'{safe}/interactions.json', json.dumps(entry.get('ia', {}), indent=2, default=str))
+                readme.append(f'  - {label}: prepared SDFs, atom mapping, complex PDB and run evidence in {safe}/')
+                wrote_any = True
+                continue
             try:
                 with open(entry["complex"]) as f:
                     complex_pdb = f.read()
@@ -1283,9 +1284,8 @@ def build_structure_zip(r):
                        "WARNING — IDENTICAL STRUCTURES DETECTED",
                        "!" * 60,
                        "These exported complexes are byte-for-byte identical, which "
-                       "means they do NOT each contain their own docked pose. Do not "
-                       "use them; re-run the docking and export again. The affinity "
-                       "numbers in the report are unaffected.", ""]
+                       "requires investigation: identical inputs can legitimately yield identical poses, "
+                       "but overwritten files can also cause this. Match the run evidence before use.", ""]
             for labs in dupes:
                 readme.append("  identical: " + " | ".join(labs))
         z.writestr("README.txt", "\n".join(readme) + "\n")
@@ -1315,8 +1315,8 @@ def build_qm_docx(r):
         "occupied molecular orbital and relates to how readily the molecule "
         "donates electron density; the LUMO is the lowest unoccupied orbital and "
         "relates to how readily it accepts electron density. The gap between them "
-        "indicates how easily the molecule takes part in electron transfer: a "
-        "smaller gap means a more reactive, more easily polarised molecule.")
+        "is a model orbital-energy difference. It is not a measured excitation "
+        "energy or proof of reactivity, stability or metabolic behavior.")
 
     counts = {"Table": 0, "Figure": 0}
 
