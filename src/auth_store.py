@@ -154,7 +154,8 @@ def _merge_runs(existing, new_run):
     elif isinstance(existing, list):
         runs = list(existing)
     runs.insert(0, new_run)
-    return {"runs": runs[:MAX_STORED_RUNS]}
+    from verification import json_safe
+    return json_safe({"runs": runs[:MAX_STORED_RUNS]})
 
 
 def save_results_with(client, conversation_id, results_summary):

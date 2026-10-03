@@ -242,6 +242,7 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 "All interacting residues": "; ".join(ia["interacting_residues"]) or "-",
                 "SMILES": lig["smiles"],
                 "Interaction status": ia.get("status", "unavailable"),
+                "Interaction note": ia.get("note", ""),
                 "Verification status": record['status'], "Run ID": record['run_id'],
             })
             viz[label] = {"complex": cmplx,

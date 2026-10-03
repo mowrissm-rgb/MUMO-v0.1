@@ -138,8 +138,10 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     # across the whole set, which is the actual question a multi-target screen
     # asks — running them as separate jobs would produce N reports the user then
     # has to compare by hand.
-    targets = c["target"] if isinstance(c["target"], list) else [c["target"]]
-    targets = [str(t).strip() for t in targets if str(t or "").strip()]
+    from target_names import split_targets
+    targets = split_targets(c["target"])
+    if not targets:
+        return {"ok": False, "tier": tier, "say_text": "No target was supplied."}
     multi = len(targets) > 1
 
     # Ligands are scouted against the FIRST named target and then docked against
@@ -202,8 +204,13 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
         t_dir = os.path.join(data_dir, "t%02d_%s" % (
             n_t, re.sub(r"[^A-Za-z0-9_.-]", "_", str(t_obj.get("gene") or name))[:32]))
         os.makedirs(t_dir, exist_ok=True)
-        t_rows, t_viz, t_meta = dock_pipeline(t_obj, ligands, vina, t_dir, venv,
-                                              status=progress)
+        try:
+            t_rows, t_viz, t_meta = dock_pipeline(t_obj, ligands, vina, t_dir, venv,
+                                                status=progress)
+        except Exception as exc:
+            failed_targets.append(f"{name} ({type(exc).__name__}: {exc})")
+            progress(f"Couldn't prepare or dock {name}: {exc}. Continuing with remaining targets…")
+            continue
         for r in t_rows:
             # tag every row so a merged table stays readable, and key the viz by
             # target+ligand so the same ligand docked twice doesn't collide
@@ -224,6 +231,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
                 "say_text": f"The docking didn't produce any results — {note}." + skipped_note}
 
     meta = dict(meta or {})
+    meta["failed_targets"] = failed_targets
     if multi:
         meta["gene"] = " + ".join(t for t in
                                   dict.fromkeys(r["Target"] for r in rows))
@@ -234,11 +242,12 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     rdf = pd.DataFrame(rows)
     num = pd.to_numeric(rdf["Best affinity (kcal/mol)"], errors="coerce")
     rdf = rdf.assign(_s=num).sort_values("_s").drop(columns="_s").reset_index(drop=True)
-    sorted_rows = rdf.to_dict(orient="records")
+    from verification import json_safe
+    sorted_rows = json_safe(rdf.to_dict(orient="records"))
 
     meta_store = {k: meta.get(k) for k in
                   ("gene", "pocket", "exhaustiveness", "replicas", "validation",
-                   "reliability_by", "targets", "per_target", "ramachandran", "run_records")
+                   "reliability_by", "targets", "per_target", "ramachandran", "run_records", "failed_targets")
                   if k in meta}
 
     # narrative report on the best hit
@@ -270,19 +279,22 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
                             "total_interactions": top["Total interactions"],
                             "n_hbonds": top.get("H-bonds"), "hbond_residues": _sp(top["H-bond residues"]),
                             "n_hydrophobic": top.get("Hydrophobic"),
+                            "interaction_status": top.get("Interaction status"),
+                            "interaction_note": top.get("Interaction note"),
                             "interacting_residues": _sp(top["All interacting residues"])},
                            llm, tier)
         msd = top.get("Mean ± SD (kcal/mol)", "—")
         rep_note = (f" (mean ± SD {msd}, confidence {top.get('Confidence','—')})"
                     if msd and msd != "—" else "")
-        val = meta.get("validation")
+        val = (meta.get("per_target", {}).get(top_target, {}).get("validation")
+               if multi else meta.get("validation"))
         val_note = ""
         if val:
             verdict = "<2 Å — setup validated" if val["passed"] else ">2 Å — interpret with care"
             val_note = (f" Setup validation: native ligand {val['resname']} redocked to "
                         f"{val['rmsd']} Å RMSD ({verdict}).")
         say_text = (f"Done. Best hit **{top['Ligand']}** at **{top['Best affinity (kcal/mol)']} "
-                    f"kcal/mol**{rep_note} against {meta['gene']} "
+                    f"kcal/mol**{rep_note} against {top_target or meta['gene']} "
                     f"[exhaustiveness {meta.get('exhaustiveness','?')}, {meta.get('replicas','?')} replica(s)]."
                     f"{val_note} Full results & 3D pose are below.\n\n{rep}")
     else:
@@ -290,5 +302,5 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
 
     # a ligand that was screened out must be accounted for even on a good run,
     # so the results table is never quietly shorter than what the user asked for
-    return {"ok": True, "rows": sorted_rows, "meta": meta_store,
-            "viz": serialize_viz(viz), "say_text": say_text + skipped_note, "tier": tier}
+    return json_safe({"ok": True, "rows": sorted_rows, "meta": meta_store,
+            "viz": serialize_viz(viz), "say_text": say_text + skipped_note, "tier": tier})

@@ -28,6 +28,8 @@ ALPHAFOLD_API  = "https://alphafold.ebi.ac.uk/api/prediction/{acc}"
 
 def gene_to_uniprot(gene, organism_id=9606):
     """Step 1: gene symbol -> reviewed (Swiss-Prot) UniProt accession for human."""
+    from target_names import canonical_gene
+    gene = canonical_gene(gene)
     params = {
         "query": f"gene_exact:{gene} AND organism_id:{organism_id} AND reviewed:true",
         "fields": "accession,id,protein_name",
@@ -185,6 +187,9 @@ def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
 _NOT_LIGAND = {
     "HOH", "WAT", "SOL", "DOD", "TIP", "CL", "NA", "K", "MG", "CA", "ZN", "MN",
     "SO4", "PO4", "ACT", "GOL", "EDO", "PEG", "DMS", "IOD", "BR", "FMT", "NO3",
+    # Prosthetic heme groups are not co-crystal inhibitors. Selecting the
+    # largest HETATM group in 1CX2 otherwise centers docking on heme.
+    "HEM", "HEA", "HEC", "NAG", "BMA", "MAN", "FUC", "GAL",
 }
 
 

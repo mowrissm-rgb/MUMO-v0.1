@@ -80,7 +80,8 @@ def _write_json(path, obj):
     fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(obj, f)
+            from verification import json_safe
+            json.dump(json_safe(obj), f, allow_nan=False)
         os.replace(tmp, path)
     except Exception:
         try:

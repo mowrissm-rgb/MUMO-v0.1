@@ -232,12 +232,35 @@ def _protonate_protein(receptor_pdb):
         if chg is not None:
             atom.SetFormalCharge(chg)
             atom.SetNoImplicit(True)
-            atom.SetNumExplicitHs(3 if (resn, name) == ("LYS", "NZ") else
-                                  2 if (resn, name) == ("ARG", "NH2") else
-                                  1 if (resn, name) == ("HIP", "NE2") else 0)
+            wanted_h = (3 if (resn, name) == ("LYS", "NZ") else
+                        2 if (resn, name) == ("ARG", "NH2") else
+                        1 if (resn, name) == ("HIP", "NE2") else 0)
+            # A PDB may already contain bonded hydrogen atoms. RDKit's
+            # explicit-H property adds Hs to those existing atom bonds.
+            bonded_h = sum(a.GetAtomicNum() == 1 for a in atom.GetNeighbors())
+            atom.SetNumExplicitHs(max(0, wanted_h - bonded_h))
     try:
         Chem.SanitizeMol(mol)
-        mol = Chem.AddHs(mol, addCoords=True, addResidueInfo=True)
+        # RDKit's addResidueInfo path can hang when an input PDB already has
+        # named hydrogens. Preserve those atoms and assign only new H metadata.
+        mol = Chem.AddHs(mol, addCoords=True)
+        next_serial = max((a.GetPDBResidueInfo().GetSerialNumber()
+                           for a in mol.GetAtoms() if a.GetPDBResidueInfo()), default=0) + 1
+        for atom in mol.GetAtoms():
+            if atom.GetAtomicNum() != 1 or atom.GetPDBResidueInfo() is not None:
+                continue
+            parent = atom.GetNeighbors()[0].GetPDBResidueInfo()
+            if parent is None:
+                raise ValueError('Hydrogen parent has no residue identity')
+            info = Chem.AtomPDBResidueInfo()
+            info.SetName(f'H{atom.GetIdx()+1}'[-4:].rjust(4))
+            info.SetResidueName(parent.GetResidueName())
+            info.SetResidueNumber(parent.GetResidueNumber())
+            info.SetChainId(parent.GetChainId())
+            info.SetInsertionCode(parent.GetInsertionCode())
+            info.SetSerialNumber(next_serial)
+            next_serial += 1
+            atom.SetMonomerInfo(info)
     except Exception as exc:
         raise ValueError("Receptor chemical preparation failed") from exc
     return mol
@@ -414,7 +437,19 @@ def _export_prepared(ligand, protein, complex_path):
         restored = Chem.SDMolSupplier(path, removeHs=False, sanitize=True)[0]
         if restored is None or restored.GetNumAtoms() != original.GetNumAtoms():
             raise ValueError('Prepared export could not be reloaded')
-        if Chem.MolToSmiles(restored) != Chem.MolToSmiles(original):
+        # Atom order is retained by SDF, so compare the indexed graph directly.
+        # Canonical SMILES of a repeated, multi-chain protein can take minutes.
+        def graph(molecule):
+            atoms = [(a.GetAtomicNum(), a.GetIsotope(), a.GetFormalCharge(),
+                      a.GetIsAromatic(), int(a.GetChiralTag()), a.GetNumExplicitHs())
+                     for a in molecule.GetAtoms()]
+            bonds = sorted((min(b.GetBeginAtomIdx(), b.GetEndAtomIdx()),
+                            max(b.GetBeginAtomIdx(), b.GetEndAtomIdx()),
+                            str(b.GetBondType()), b.GetIsAromatic(),
+                            int(b.GetStereo()), tuple(b.GetStereoAtoms()))
+                           for b in molecule.GetBonds())
+            return atoms, bonds
+        if graph(restored) != graph(original):
             raise ValueError('Prepared export chemical state changed')
         for index, atom in enumerate(restored.GetAtoms()):
             if atom.GetAtomicNum() != original.GetAtomWithIdx(index).GetAtomicNum():
@@ -459,14 +494,24 @@ def _export_prepared(ligand, protein, complex_path):
     return loaded['ligand'], loaded['protein'], artifacts
 
 
+def pose_matches_ligand(molecule, smiles, ph=7.4):
+    """Verify the same chemical state used by docking preparation."""
+    from docking_engine import _mol_from_smiles_at_ph
+    expected = _mol_from_smiles_at_ph(smiles, ph)
+    if expected is None:
+        expected = Chem.MolFromSmiles(smiles)
+    return (expected is not None and molecule is not None and
+            Chem.MolToSmiles(Chem.RemoveAllHs(molecule)) ==
+            Chem.MolToSmiles(Chem.RemoveAllHs(expected)))
+
+
 def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None, receptor_ctx=None):
     lig_mol = _ligand_mol_from_pose(ligand_pdbqt, ligand_smiles)
     if lig_mol is None:
         raise RuntimeError("Could not read the docked ligand pose.")
 
     if ligand_smiles:
-        expected = Chem.MolFromSmiles(ligand_smiles)
-        if expected is None or Chem.MolToSmiles(Chem.RemoveHs(lig_mol)) != Chem.MolToSmiles(expected):
+        if not pose_matches_ligand(lig_mol, ligand_smiles):
             raise ValueError("Pose chemical identity does not match requested ligand")
     Chem.SanitizeMol(lig_mol)
     lig_h = Chem.AddHs(lig_mol, addCoords=True)

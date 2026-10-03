@@ -215,13 +215,17 @@ def write_report(results, llm=None, tier="Standard"):
         return 'Docking score unavailable: no valid executed result was recorded.'
     def value(key):
         val = results.get(key)
-        return 'unavailable' if val is None else str(val)
+        return ('unavailable' if val is None or
+                isinstance(val, float) and not math.isfinite(val) else str(val))
+    note = results.get('interaction_note')
+    note = (f"Interaction analysis: {note}.\n" if isinstance(note, str) and note.strip() else '')
     return (
         f"**{results.get('ligand', 'Ligand')} vs {results.get('target', 'target')}**\n\n"
         f"Docking score: **{score:g} kcal/mol** (computational prediction).\n"
         f"Interactions: {value('total_interactions')}; hydrogen bonds: {value('n_hbonds')}; "
         f"hydrophobic contacts: {value('n_hydrophobic')}.\n"
         f"Hydrogen-bond residues: {', '.join(results.get('hbond_residues') or []) or 'unavailable or none recorded'}.\n"
+        f"{note}"
         "Docking scores are model scores, not measured binding affinities or evidence of efficacy. "
         "Interaction absence is meaningful only when interaction analysis completed successfully."
     )

@@ -7,6 +7,19 @@ from pathlib import Path
 import json
 
 
+def json_safe(value):
+    """Keep unavailable numeric values null at persistence boundaries."""
+    if isinstance(value, dict):
+        return {str(k): json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if hasattr(value, 'item'):
+        return json_safe(value.item())
+    return value
+
+
 def validate_box(center, size):
     if len(center) != 3 or len(size) != 3:
         raise ValueError('Docking box requires three coordinates and dimensions.')
