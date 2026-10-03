@@ -348,6 +348,31 @@ def _geometric_hbonds(lig_mol, polar_atoms, existing, cutoff=3.5):
     return []
 
 
+def prolif_molecule(molecule):
+    """Split inter-residue bonds once while preserving global atom indices."""
+    from prolif.residue import Residue
+    mol = Chem.Mol(molecule)
+    keys = []
+    for atom in mol.GetAtoms():
+        atom.SetUnsignedProp('mapindex', atom.GetIdx())
+        info = atom.GetPDBResidueInfo()
+        if info is None:
+            return plf.Molecule.from_rdkit(mol)
+        keys.append((info.GetChainId(), info.GetResidueNumber(),
+                     info.GetInsertionCode(), info.GetResidueName()))
+    cuts = [b.GetIdx() for b in mol.GetBonds()
+            if keys[b.GetBeginAtomIdx()] != keys[b.GetEndAtomIdx()]]
+    fragmented = Chem.FragmentOnBonds(mol, cuts, addDummies=False) if cuts else mol
+    residues = [Residue(piece) for piece in
+                Chem.GetMolFrags(fragmented, asMols=True, sanitizeFrags=False)]
+    residues.sort(key=lambda residue: residue.resid)
+    try:
+        return plf.Molecule(mol, residues=residues)
+    except TypeError:
+        # Older ProLIF versions do not expose the public residues argument.
+        return plf.Molecule.from_rdkit(mol)
+
+
 def prepare_receptor_context(receptor_pdb):
     """Protonate + charge the receptor and build the ProLIF fingerprint ONCE, so a
     batch of ligands can reuse it instead of re-preparing the whole protein for
@@ -363,7 +388,6 @@ def prepare_receptor_context(receptor_pdb):
             return None
         conf = prot_h.GetConformer()
         return {"prot_mol": prot_h, "source_sha256": _sha256(receptor_pdb),
-                "prot_plf": plf.Molecule.from_rdkit(prot_h),
                 "prot_conf": conf,
                 # precomputed once per receptor: the polar atoms the geometric
                 # H-bond pass needs, so a batch of ligands doesn't rescan the
@@ -521,7 +545,7 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
     lig_h, prot_h, artifacts = _export_prepared(lig_h, ctx["prot_mol"], out_complex_pdb)
     fp = plf.Fingerprint(_PROLIF_INTERACTIONS, count=True)
     lig_plf = plf.Molecule.from_rdkit(lig_h)
-    prot_plf = plf.Molecule.from_rdkit(prot_h)
+    prot_plf = prolif_molecule(prot_h)
     ifp = fp.generate(lig_plf, prot_plf, metadata=True)
     rejected = []
     recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_h.GetConformer(), rejected)

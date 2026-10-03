@@ -121,6 +121,27 @@ class BatchRecoveryTests(unittest.TestCase):
         self.assertEqual(protein.GetNumAtoms(), 9)
         self.assertIn('protein_sdf', artifacts)
 
+    def test_fast_residue_split_preserves_global_atom_indices(self):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+        from agents import interaction_analyst as ia
+        mol = Chem.AddHs(Chem.MolFromSmiles('CCO'))
+        AllChem.EmbedMolecule(mol, randomSeed=7)
+        for atom in mol.GetAtoms():
+            owner = atom.GetNeighbors()[0].GetIdx() if atom.GetAtomicNum() == 1 else atom.GetIdx()
+            info = Chem.AtomPDBResidueInfo()
+            info.SetName(atom.GetSymbol().rjust(4)); info.SetChainId('A')
+            info.SetResidueName('ALA' if owner == 0 else 'SER')
+            info.SetResidueNumber(1 if owner == 0 else 2)
+            atom.SetMonomerInfo(info)
+        with patch('prolif.molecule.split_mol_by_residues',
+                   side_effect=RuntimeError('Slow whole-protein splitter')):
+            prepared = ia.prolif_molecule(mol)
+        self.assertEqual(prepared.GetNumAtoms(), 9)
+        indices = sorted(a.GetUnsignedProp('mapindex') for r in prepared.residues.values()
+                         for a in r.GetAtoms())
+        self.assertEqual(indices, list(range(9)))
+
 
 if __name__ == '__main__':
     unittest.main()
