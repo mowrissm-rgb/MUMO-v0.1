@@ -135,7 +135,8 @@ class BatchRecoveryTests(unittest.TestCase):
             info.SetResidueNumber(1 if owner == 0 else 2)
             atom.SetMonomerInfo(info)
         with patch('prolif.molecule.split_mol_by_residues',
-                   side_effect=RuntimeError('Slow whole-protein splitter')):
+                   side_effect=RuntimeError('Slow whole-protein splitter')), patch.object(
+                       Chem, 'FragmentOnBonds', side_effect=RuntimeError('Unbounded fragment canonicalization')):
             prepared = ia.prolif_molecule(mol)
         self.assertEqual(prepared.GetNumAtoms(), 9)
         indices = sorted(a.GetUnsignedProp('mapindex') for r in prepared.residues.values()

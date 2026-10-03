@@ -360,11 +360,40 @@ def prolif_molecule(molecule):
             return plf.Molecule.from_rdkit(mol)
         keys.append((info.GetChainId(), info.GetResidueNumber(),
                      info.GetInsertionCode(), info.GetResidueName()))
-    cuts = [b.GetIdx() for b in mol.GetBonds()
-            if keys[b.GetBeginAtomIdx()] != keys[b.GetEndAtomIdx()]]
-    fragmented = Chem.FragmentOnBonds(mol, cuts, addDummies=False) if cuts else mol
-    residues = [Residue(piece) for piece in
-                Chem.GetMolFrags(fragmented, asMols=True, sanitizeFrags=False)]
+    # Build the residue views directly. Whole-protein GetMolFrags(asMols=True)
+    # also performs costly stereochemical work on repeated multi-chain graphs.
+    groups, positions = {}, {}
+    for atom in mol.GetAtoms():
+        key = keys[atom.GetIdx()]
+        part = groups.setdefault(key, Chem.RWMol())
+        copied_atom = Chem.Atom(atom)
+        # Prepared hydrogens are already explicit atom bonds. Residue views
+        # must not invent implicit hydrogens at their cut peptide boundaries.
+        copied_atom.SetNoImplicit(True)
+        positions[atom.GetIdx()] = part.AddAtom(copied_atom)
+    for bond in mol.GetBonds():
+        begin, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+        if keys[begin] != keys[end]:
+            continue
+        part = groups[keys[begin]]
+        part.AddBond(positions[begin], positions[end], bond.GetBondType())
+        copied = part.GetBondBetweenAtoms(positions[begin], positions[end])
+        copied.SetIsAromatic(bond.GetIsAromatic())
+        stereo = list(bond.GetStereoAtoms())
+        if len(stereo) == 2 and all(keys[i] == keys[begin] for i in stereo):
+            copied.SetStereoAtoms(*(positions[i] for i in stereo))
+            copied.SetStereo(bond.GetStereo())
+    conf = mol.GetConformer()
+    conformers = {key: Chem.Conformer(part.GetNumAtoms()) for key, part in groups.items()}
+    for index, key in enumerate(keys):
+        conformers[key].SetAtomPosition(positions[index], conf.GetAtomPosition(index))
+    residues = []
+    for key, part in groups.items():
+        part.AddConformer(conformers[key])
+        piece = part.GetMol()
+        piece.UpdatePropertyCache(strict=False)
+        Chem.GetSymmSSSR(piece)
+        residues.append(Residue(piece))
     residues.sort(key=lambda residue: residue.resid)
     try:
         return plf.Molecule(mol, residues=residues)
