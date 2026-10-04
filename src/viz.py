@@ -10,6 +10,22 @@ colors, background, surface opacity, and what to show.
 """
 
 import json as _json   # only the lightweight CDN viewer is used now (no py3Dmol embed)
+import html as _html
+from collections import Counter as _Counter
+
+CONTACT_COLORS = {'H-bond': '#14a83d', 'Hydrophobic': '#d42c98',
+                  'Salt bridge': '#ea4426', 'Pi-stack': '#7c3aed',
+                  'Pi-cation': '#f59e0b', 'Halogen': '#00aabb'}
+
+
+def brighten_2d_svg(svg):
+    """Update only established contact colors; never redraw geometry or labels."""
+    old = {'H-bond': '#2e8b3d', 'Hydrophobic': '#c665a6',
+           'Salt bridge': '#cf4a2e', 'Pi-stack': '#7a5cc0',
+           'Pi-cation': '#d5811f', 'Halogen': '#1f93a6'}
+    for kind, color in old.items():
+        svg = svg.replace(color, CONTACT_COLORS[kind])
+    return svg
 
 # Default look — a sensible starting point the user can change in the UI.
 DEFAULTS = {
@@ -32,6 +48,9 @@ DEFAULTS = {
     "pocket_only":    False,          # False = whole protein; True = binding-site crop (lighter)
     "surface_scope":  "protein",      # protein | pocket — where the surface is drawn
     "frame":          "card",         # card = rounded + shadow (in-app) | plain = flat (figure)
+    "view_mode":      "full",
+    "show_controls":  True,
+    "show_legend":    True,
 }
 
 # The look used for the STATIC figure in the .docx report — deliberately not the
@@ -48,13 +67,13 @@ DEFAULTS = {
 # So: muted protein so the eye goes to the ligand, a translucent surface to make
 # the pocket legible as a cavity, the ligand bright, and nothing else.
 REPORT_3D = {
-    "protein_style":   "cartoon+surface",
+    "protein_style":   "cartoon",
     # Ghosted, not solid. At the zoom a pose figure needs, an opaque ribbon
     # passing in FRONT of the ligand hides it completely — the first attempt at
     # this figure was a grey ribbon tangle with the ligand buried inside. At
     # ~0.4 the fold still reads as context while the ligand shows through.
-    "protein_color":   "grey",
-    "protein_opacity": 0.38,
+    "protein_color":   "#337dd6",
+    "protein_opacity": 0.82,
     "surface_color":   "#aebdd0",       # cool grey-blue; prints cleanly on white
     "surface_opacity": 0.55,
     # Sticks, not ball-and-stick: at report size the spheres read as a plastic
@@ -62,9 +81,11 @@ REPORT_3D = {
     "ligand_style":    "stick",
     "ligand_carbon":   "greenCarbon",
     "ligand_radius":   0.17,
-    "show_residues":   False,           # no residue sticks competing with the ligand
-    "show_interactions": False,         # no dashed contact lines
-    "show_labels":     False,           # no floating text boxes
+    "show_residues":   True,
+    "show_interactions": True,
+    "show_labels":     True,
+    "label_size":      16,
+    "legend_size":     14,
     # Tuned by rendering a real complex (3PTB) across a zoom sweep: below ~0.5
     # the ligand becomes a speck in a field of protein; this frames it as the
     # subject with the cavity around it.
@@ -77,6 +98,8 @@ REPORT_3D = {
     # reads as the cavity the ligand sits in — which is the point of the figure.
     "surface_scope":   "pocket",
     "frame":           "plain",         # a rounded card with a drop shadow reads
+    "show_controls":   False,
+    "show_legend":     True,
 }                                       # as a UI screenshot, not a figure
 
 
@@ -88,6 +111,8 @@ def _hex(c):
 def _protein_color_spec(name):
     if name == "spectrum":               return {"color": "spectrum"}
     if name == "secondary structure":    return {"colorscheme": "ssJmol"}
+    if isinstance(name, str) and name.startswith('#') and len(name) == 7:
+        return {"color": name}
     return {"color": {"grey": "lightgrey", "white": "white"}.get(name, "lightgrey")}
 
 
@@ -227,7 +252,7 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
 
     pstyle = o["protein_style"]
     pcolor = _protein_color_spec(o["protein_color"])    # {"color":...} or {"colorscheme":...}
-    js = []
+    js, label_js = [], []
 
     # ── protein representation ──
     if pstyle in ("cartoon", "cartoon+surface"):
@@ -287,18 +312,31 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
         seen = set()
         for ln in ia.get("lines", []):
             p1, p2 = ln["p1"], ln["p2"]
+            color = CONTACT_COLORS.get(ln.get('type'), ln['color'])
             js.append(f'v.addCylinder({{start:{{x:{p1[0]},y:{p1[1]},z:{p1[2]}}}, '
                       f'end:{{x:{p2[0]},y:{p2[1]},z:{p2[2]}}}, radius:0.08, dashed:true, '
-                      f'fromCap:1, toCap:1, color:"{ln["color"]}"}});')
-            if o["show_labels"] and ln["label"] not in seen:
-                seen.add(ln["label"])
-                js.append(f'v.addLabel({_json.dumps(ln["label"])}, '
+                      f'fromCap:1, toCap:1, color:{_json.dumps(color)}}});')
+            residue_tag = ln['label'].split(' · ')[0]
+            if o["show_labels"] and residue_tag not in seen:
+                seen.add(residue_tag)
+                label_js.append(f'v.addLabel({_json.dumps(residue_tag)}, '
                           f'{{position:{{x:{p2[0]},y:{p2[1]},z:{p2[2]}}}, '
-                          f'fontSize:{o.get("label_size", 11)}, fontColor:"white", '
-                          f'backgroundColor:"#111827", backgroundOpacity:0.7}});')
+                          f'fontSize:{o.get("label_size", 11)}, fontColor:"#172335", '
+                          f'backgroundColor:"white", backgroundOpacity:0.85}});')
 
-    js.append('v.zoomTo({resn:"LIG"});')           # focus the binding pocket so interactions are visible
-    js.append(f'v.zoom({o.get("zoom", 0.45)});')   # slightly wide → pocket + interacting residues + bonds
+    initial = 'binding' if o.get('pocket_only') else o.get('view_mode', 'full')
+    if initial not in ('full', 'binding'):
+        initial = 'full'
+    js.append(f'var initialView={_json.dumps(initial)};')
+    js.append('function focusView(mode){v.removeAllLabels(); '
+              'if(mode==="binding"){v.zoomTo({resn:"LIG"}); '
+              f'v.zoom({o.get("zoom", 0.70)}); {" ".join(label_js)}'
+              '}else{v.zoomTo();v.zoom(1.35);} v.render();window.__mumoView=mode;}')
+    js.append('focusView(initialView);')
+    js.append('var full=document.getElementById("mumo-full");'
+              'var binding=document.getElementById("mumo-binding");'
+              'if(full)full.onclick=function(){focusView("full");};'
+              'if(binding)binding.onclick=function(){focusView("binding");};')
     if o["spin"]:
         js.append('v.spin(true);')
     js.append('v.render();')
@@ -308,8 +346,23 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
               if o.get("frame") == "plain" else
               "border-radius:14px;border:1px solid rgba(0,0,0,0.10);"
               "box-shadow:0 4px 14px rgba(0,0,0,0.18);")
+    button_style = 'padding:7px 12px;border:1px solid #c7d1dd;border-radius:6px;background:white;color:#172335;cursor:pointer;'
+    controls = (f'<div style="position:absolute;top:12px;left:12px;z-index:5;display:flex;gap:6px;">'
+                f'<button id="mumo-full" style="{button_style}" aria-label="Show full protein ribbon">Full protein</button>'
+                f'<button id="mumo-binding" style="{button_style}" aria-label="Zoom to ligand binding site">Binding site</button></div>'
+                if o.get('show_controls') else '')
+    counts = _Counter(ln.get('type', 'Other') for ln in ia.get('lines', []))
+    badges = ''.join(
+        f'<span style="display:inline-block;margin-right:12px;white-space:nowrap;">'
+        f'<span style="color:{CONTACT_COLORS.get(kind, "#777777")};font-weight:bold;">⋯</span> '
+        f'{_html.escape(kind)} ({count})</span>' for kind, count in counts.items())
+    legend = (f'<div style="position:absolute;left:12px;right:12px;bottom:10px;z-index:5;'
+              f'background:rgba(255,255,255,0.94);color:#243348;padding:8px 10px;border-radius:6px;'
+              f'font:{int(o.get("legend_size", 12))}px Arial;pointer-events:none;">'
+              f'<b>Detected contacts</b> · dashed connectors · atom-pair counts<br>{badges or "No detected contacts"}</div>'
+              if o.get('show_legend') and o.get('show_interactions') else '')
     return f"""<div id="mumoview" style="width:100%;height:{height}px;position:relative;
-         overflow:hidden;{_frame}"></div>
+         overflow:hidden;{_frame}">{controls}{legend}</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 <!-- 3dmol.org's own CDN measured as a hard connection timeout (>10s, never
      responds) from this network path — every 3D screenshot in a report was

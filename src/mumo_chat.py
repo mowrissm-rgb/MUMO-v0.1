@@ -3011,6 +3011,8 @@ def render_results():
             with tab_2d:
                 svg_content = entry["ia"].get("svg_2d", "")
                 if svg_content:
+                    from viz import brighten_2d_svg, CONTACT_COLORS
+                    svg_content = brighten_2d_svg(svg_content)
                     st.markdown(
                         f'<div style="background-color: white; padding: 16px; border-radius: 12px; border: 1px solid rgba(111,184,236,0.28); box-shadow: 0 8px 28px -10px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; max-width: 760px; margin: 1.5rem auto 0.5rem auto;">{svg_content}</div>',
                         unsafe_allow_html=True
@@ -3019,10 +3021,8 @@ def render_results():
                         return (f"<span style='display:inline-block;width:11px;height:11px;"
                                 f"border-radius:50%;background:{color};margin:0 5px -1px 12px;'></span>{label}")
                     st.markdown(
-                        "<div style='text-align:center; color:rgba(226,232,240,0.7); font-size:0.82rem; margin-top:0.3rem;'>"
-                        + _sw("#2e8b3d", "H-bond") + _sw("#c665a6", "Hydrophobic")
-                        + _sw("#cf4a2e", "Salt bridge") + _sw("#7a5cc0", "Pi-stack")
-                        + _sw("#d5811f", "Pi-cation") + _sw("#1f93a6", "Halogen")
+                        "<div style='text-align:center; color:var(--ink); font-size:0.82rem; margin-top:0.3rem;'>"
+                        + ''.join(_sw(color, kind) for kind, color in CONTACT_COLORS.items())
                         + "<br><span style='opacity:0.7;'>Each residue is a colour-coded circle linked "
                           "to the ligand atom it interacts with (solid = H-bond).</span></div>",
                         unsafe_allow_html=True
@@ -3055,7 +3055,7 @@ def render_results():
 
                     d = st.columns(3)
                     surface_opacity = d[0].slider("Surface opacity", 0.0, 1.0, 0.5, 0.05, key="v_surf")
-                    zoom = d[1].slider("Zoom", 0.3, 1.5, 0.45, 0.05, key="v_zoom")
+                    zoom = d[1].slider("Binding-site zoom", 0.3, 1.5, 0.45, 0.05, key="v_zoom")
                     background = d[2].color_picker("Background", "#ffffff", key="v_bg")
 
                     e = st.columns(4)

@@ -64,7 +64,7 @@ def svg_to_png(svg, browser, width=760, height=560, pad=16):
         page.close()
 
 
-def png_from_3d(complex_pdb_path, ia, browser, options=None, width=900, height=560):
+def _png_pose_view(complex_pdb_path, ia, browser, options=None, width=900, height=560):
     """Load MUMO's own 3Dmol viewer HTML in headless Chromium and screenshot the
     rendered pose — the same view shown in-app, captured as a static image.
     Raises on failure (e.g. the CDN 3Dmol.js load times out) so the caller can
@@ -84,6 +84,34 @@ def png_from_3d(complex_pdb_path, ia, browser, options=None, width=900, height=5
         return page.locator("#mumoview").screenshot()
     finally:
         page.close()
+
+
+def compose_pose_views(full_png, binding_png):
+    """One actual full-fold image and one actual binding-site image."""
+    from PIL import Image, ImageDraw, ImageFont
+    panel = Image.new('RGB', (900, 1070), 'white')
+    draw = ImageDraw.Draw(panel)
+    try:
+        font = ImageFont.truetype('DejaVuSans.ttf', 24)
+    except OSError:
+        font = ImageFont.load_default(size=24)
+    for y, height, png, title in [(0, 400, full_png, '(A) Full protein ribbon'),
+                                  (455, 560, binding_png, '(B) Binding-site close-up')]:
+        panel.paste(Image.open(io.BytesIO(png)).convert('RGB').resize((900, height)), (0, y + 55))
+        draw.text((24, y + 15), title, font=font, fill='#172335')
+    draw.line((0, 455, 900, 455), fill='#d9e0e9', width=2)
+    output = io.BytesIO()
+    panel.save(output, format='PNG')
+    return output.getvalue()
+
+
+def png_from_3d(complex_pdb_path, ia, browser, options=None, width=900, height=560):
+    """Capture matching full-ribbon and pocket views from the same complex."""
+    full = dict(options or {}, view_mode='full', pocket_only=False, show_controls=False)
+    binding = dict(options or {}, view_mode='binding', pocket_only=False, show_controls=False)
+    return compose_pose_views(
+        _png_pose_view(complex_pdb_path, ia, browser, full, width, 400),
+        _png_pose_view(complex_pdb_path, ia, browser, binding, width, height))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -514,10 +542,12 @@ def build_docking_docx(r, llm=None):
                 shown = False
                 png3d, err3 = _shot("3d", entry["complex"], entry["ia"])
                 if png3d:
-                    picture(png3d, 5.5)
+                    picture(png3d, 6.2)
                     shown = True
                 svg2d = entry["ia"].get("svg_2d")
                 if svg2d:
+                    from viz import brighten_2d_svg
+                    svg2d = brighten_2d_svg(svg2d)
                     png2d, err2 = _shot("2d", svg2d)
                     if png2d:
                         picture(png2d, 5.5)
