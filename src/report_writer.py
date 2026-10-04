@@ -355,9 +355,9 @@ def build_docking_docx(r, llm=None):
                         seen[lab] = smi
                 doc.add_paragraph(
                     f"Electronic properties of the {len(seen)} unique ligand(s) in this "
-                    f"screen, computed with GFN2-xTB. The HOMO–LUMO gap indicates how "
-                    f"readily a molecule takes part in electron transfer: a smaller gap "
-                    f"means a more reactive, more easily polarised molecule.")
+                    f"screen, predicted with a GFN2-xTB single-point calculation. "
+                    f"The orbital gap alone does not establish chemical stability, "
+                    f"biological activity or electron-transfer rates.")
                 for lab, smi in seen.items():
                     q = orbitals(smi)
                     if q.get("_error"):
@@ -378,37 +378,26 @@ def build_docking_docx(r, llm=None):
                     caption("Table", "Frontier orbital energies for every ligand in the "
                                      "screen (GFN2-xTB).")
                     _add_df_table(doc, _pd.DataFrame(qm_rows))
-                # This loop silently produced NOTHING on the first real run —
-                # the table had all 14 ligands' numbers but not one diagram.
-                # It used to go through the shared headless-Chromium SVG
-                # screenshot (_shot) that every other figure in this report
-                # uses; that round-trip has now failed twice in production
-                # for this one diagram specifically (here, and separately in
-                # the live HOMO/LUMO panel) while the browser-based charts
-                # around it render fine. Rather than keep debugging a
-                # container-specific Playwright failure blind, orbital
-                # diagrams are drawn directly with matplotlib — a handful of
-                # lines and labels needs no browser, so this failure mode is
-                # gone rather than merely diagnosed.
+                from orbital_figures import prepare_entry, contact_sheets
+                surface_entries = []
                 for lab, q in qm_figs:
-                    try:
-                        import viz_string as _vs
-                        png = _vs.orbital_png(q, title=f"Frontier orbitals — {lab}")
-                        if not png:
-                            doc.add_paragraph(
-                                f"(No orbital diagram for {lab}: the figure came back "
-                                f"empty — homo={q.get('homo_ev')}, lumo={q.get('lumo_ev')}, "
-                                f"levels={len(q.get('levels') or [])}.)")
-                            continue
-                        picture(png, 4.6)
-                        caption("Figure",
-                                f"Orbital energy diagram for {lab}: HOMO "
-                                f"{q['homo_ev']:.2f} eV, LUMO {q['lumo_ev']:.2f} eV, "
-                                f"gap {q['gap_ev']:.2f} eV.")
-                    except Exception as _e:
+                    entry = {'label': lab, 'qm': q}
+                    if bh['browser'] is not None:
+                        prepare_entry(entry, bh['browser'])
+                    else:
+                        entry['surface_error'] = bh['err'] or 'Image renderer unavailable.'
+                    surface_entries.append(entry)
+                    if not entry.get('surface_png'):
                         doc.add_paragraph(
-                            f"(Orbital diagram for {lab} failed: "
-                            f"{type(_e).__name__}: {_e})")
+                            f"Genuine orbital surfaces unavailable for {lab}: "
+                            + entry.get('surface_error', 'Surface validation failed.'))
+                for sheet in contact_sheets(surface_entries):
+                    doc.add_page_break()
+                    doc.add_heading("Molecular orbital surfaces", level=2)
+                    picture(sheet['png'], 5.65)
+                    caption('Figure', '; '.join(sheet['labels']) + '. '
+                            'LUMO above HOMO. Orange/blue indicate opposite orbital phases '
+                            'at +0.03/-0.03 a.u., not charge. GFN2-xTB predictions.')
         except Exception as e:
             doc.add_paragraph(f"(Ligand validation unavailable: {type(e).__name__}: {e})")
 
@@ -1293,6 +1282,26 @@ def build_structure_zip(r):
     return buf.getvalue() if wrote_any else None
 
 
+def _add_qm_surface_pages(doc, entries):
+    """Place only genuine orbital-surface images in six-compound sheets."""
+    from docx.shared import Inches, Pt
+    from orbital_figures import contact_sheets
+    sheets = contact_sheets(entries)
+    for index, sheet in enumerate(sheets, 1):
+        doc.add_page_break()
+        doc.add_heading("Molecular orbital surfaces", level=1)
+        doc.add_picture(io.BytesIO(sheet['png']), width=Inches(5.65))
+        p = doc.add_paragraph(
+            f"Figure {index}. " + "; ".join(sheet['labels']) + ". "
+            "LUMO above HOMO for each compound. Orbital phase is shown in orange and blue "
+            "at isovalues +0.03 and -0.03 a.u.; these colors do not represent charge. "
+            "GFN2-xTB single-point predictions on the recorded MMFF geometry.")
+        p.paragraph_format.space_after = Pt(6)
+        for run in p.runs:
+            run.font.size = Pt(9)
+    return len(sheets)
+
+
 def build_qm_docx(r):
     """Frontier-orbital report: a ranked table, then a diagram per compound.
 
@@ -1338,24 +1347,21 @@ def build_qm_docx(r):
                          f"ranked by HOMO–LUMO gap (smallest first).")
         _add_df_table(doc, pd.DataFrame(rows))
 
-    doc.add_heading("Per-compound orbital diagrams", level=1)
+    _add_qm_surface_pages(doc, ok)
+    if any(e.get('surface_png') for e in ok):
+        doc.add_page_break()
+    doc.add_heading("Compound details", level=1)
     for e in ok:
         q = e["qm"]
-        doc.add_heading(e["label"], level=2)
-        _add_kv_table(doc, [
-            ("HOMO", f"{q['homo_ev']:.3f} eV"),
-            ("LUMO", f"{q['lumo_ev']:.3f} eV"),
-            ("HOMO–LUMO gap", f"{q['gap_ev']:.3f} eV"),
-        ] + ([("Dipole moment", f"{q['dipole_debye']:.2f} D")]
-             if q.get("dipole_debye") is not None else []))
-        if e.get("png"):
-            doc.add_picture(io.BytesIO(e["png"]), width=Inches(5.4))
-            caption("Figure",
-                    f"Orbital energy diagram for {e['label']}. Solid lines are "
-                    f"occupied levels, dashed are empty; the shaded band is the "
-                    f"HOMO–LUMO gap ({q['gap_ev']:.2f} eV).")
-        else:
-            doc.add_paragraph("(No orbital diagram was rendered for this compound.)")
+        doc.add_paragraph(
+            f"{e['label']}: HOMO {q['homo_ev']:.3f} eV; LUMO {q['lumo_ev']:.3f} eV; "
+            f"gap {q['gap_ev']:.3f} eV."
+            + (f" Dipole {q['dipole_debye']:.2f} D." if q.get('dipole_debye') is not None else ''))
+        if not e.get('surface_png'):
+            doc.add_paragraph(
+                f"Orbital surfaces unavailable for {e['label']}: "
+                + e.get('surface_error', 'No verified surface image was recorded for this run.')
+                + " Numerical energies are retained; an energy diagram is not a surface image.")
         if q.get("interpretation"):
             doc.add_paragraph(q["interpretation"])
         if e.get("also_given_as"):
@@ -1375,10 +1381,10 @@ def build_qm_docx(r):
     doc.add_heading("Method and limitations", level=1)
     doc.add_paragraph(
         "Geometries were generated with RDKit (ETKDG embedding followed by MMFF "
-        "optimisation) and the electronic structure computed with GFN2-xTB at the "
-        "optimised geometry. GFN2-xTB is semi-empirical: it is fast enough to "
-        "screen a whole ligand series in seconds and reproduces trends reliably, "
-        "but absolute orbital energies are not of DFT accuracy. Compare values "
+        "optimisation) and a GFN2-xTB single-point electronic calculation was performed "
+        "on that geometry. No xTB geometry optimisation or frequency calculation was "
+        "performed. GFN2-xTB is semi-empirical; absolute orbital energies are not "
+        "equivalent to a DFT calculation. Compare values "
         "WITHIN this table rather than against literature numbers computed at a "
         "different level of theory.")
     buf = io.BytesIO()

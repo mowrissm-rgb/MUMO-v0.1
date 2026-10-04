@@ -1561,6 +1561,23 @@ def _run_sync_action(action, c):
                 except Exception as _e:
                     say(f"(Orbital diagram for {e['label']} could not be drawn: "
                         f"{type(_e).__name__}: {_e})")
+            # Genuine shapes require recorded orbital coefficients, not energy lines.
+            _pw = _browser = None
+            try:
+                import report_writer as _rw
+                from orbital_figures import prepare_entry
+                with st.spinner("Calculating and drawing genuine HOMO/LUMO surfaces…"):
+                    _pw, _browser = _rw.new_browser()
+                    for e in _ok:
+                        prepare_entry(e, _browser)
+            except Exception as _e:
+                for e in _ok:
+                    e.setdefault('surface_error', f'{type(_e).__name__}: {_e}')
+            finally:
+                if _browser is not None:
+                    _browser.close()
+                if _pw is not None:
+                    _pw.stop()
         if not any(e.get("qm") for e in entries):
             _capability_failed("qm", "no ligand produced orbitals")
             say("I couldn't compute orbitals for any of those compounds."
@@ -3365,9 +3382,8 @@ def _render_qm_report(r):
     entries = r.get("entries") or []
     ok = [e for e in entries if e.get("qm")]
     st.markdown("#### Frontier molecular orbitals")
-    st.caption("GFN2-xTB semi-empirical calculation. The HOMO–LUMO gap indicates how "
-               "readily a molecule takes part in electron transfer — a smaller gap "
-               "means a more reactive, more easily polarised molecule.")
+    st.caption("GFN2-xTB single-point predictions. The orbital gap alone does not "
+               "establish compound stability, biological activity or electron-transfer rates.")
 
     if len(ok) > 1:
         rows = [{"Ligand": e["label"],
@@ -3386,8 +3402,15 @@ def _render_qm_report(r):
         c1.metric("HOMO", f"{q['homo_ev']:.2f} eV")
         c2.metric("LUMO", f"{q['lumo_ev']:.2f} eV")
         c3.metric("Gap", f"{q['gap_ev']:.2f} eV")
+        if e.get('surface_png'):
+            st.image(e['surface_png'], use_container_width=True)
+            st.caption("Orange and blue represent opposite orbital phases, not charge.")
+        else:
+            st.info("Genuine orbital surfaces unavailable: "
+                    + e.get('surface_error', 'No wavefunction surface was recorded.'))
         if e.get("png"):
             st.image(e["png"], use_container_width=True)
+            st.caption("Orbital energy levels—not a 3D orbital-surface image.")
         else:
             st.info("Orbital diagram not available for this compound.")
         if q.get("interpretation"):

@@ -429,9 +429,8 @@ def plot_svg(result, title=None, width=620):
     to every residue. The caption states this rather than leaving a reader to
     wonder why a blue point sits on white.
 
-    Point colour marks region membership. Outliers use a status red because
-    an outlier IS a problem state, not merely another category; favoured and
-    allowed use the standard series blue at two strengths.
+    Warm reference regions follow the requested red/yellow presentation.
+    Dark dots remain readable; outliers are blue to contrast with red shading.
     """
     if not result or result.get("_error") or not result.get("points"):
         return ""
@@ -443,8 +442,8 @@ def plot_svg(result, title=None, width=620):
     height = PAD_T + size + PAD_B
     INK, INK2, MUTED = "#0b0b0b", "#52514e", "#898781"
     GRID, AXIS = "#e1e0d9", "#c3c2b7"
-    FAV_FILL, ALLOW_FILL = "#dce9fa", "#f0f4f8"
-    C_FAV, C_ALLOW, C_OUT = "#2a78d6", "#86b6ef", "#d03b3b"
+    FAV_FILL, ALLOW_FILL = "#e87171", "#ffe680"
+    C_FAV, C_ALLOW, C_OUT = "#202020", "#825b00", "#2456a6"
     FONT = ('-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, '
             'Roboto, Helvetica, Arial, sans-serif')
 

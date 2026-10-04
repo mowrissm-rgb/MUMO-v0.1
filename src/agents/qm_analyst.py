@@ -103,9 +103,11 @@ def parse_xtb(text):
     m = _HOMO.search(text or "")
     if m:
         out["homo_eh"], out["homo_ev"] = float(m.group(1)), float(m.group(2))
+        out['homo_index'] = int(m.group(0).split()[0])  # xTB stdout is 1-based
     m = _LUMO.search(text or "")
     if m:
         out["lumo_eh"], out["lumo_ev"] = float(m.group(1)), float(m.group(2))
+        out['lumo_index'] = int(m.group(0).split()[0])
 
     m = _GAP.search(text or "")
     if m:
@@ -194,7 +196,7 @@ def orbitals(smiles, timeout=180, charge=None, unpaired_electrons=None):
         with open(path, "w", encoding="ascii") as fh:
             fh.write(xyz)
         cmd = [xtb, "mol.xyz", "--gfn", "2", "--sp", "--chrg", str(state['charge']),
-               '--uhf', str(state['unpaired_electrons'])]
+               '--uhf', str(state['unpaired_electrons']), '--molden']
         evidence['command'] = cmd
         try:
             proc = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True,
@@ -211,6 +213,18 @@ def orbitals(smiles, timeout=180, charge=None, unpaired_electrons=None):
         evidence.update(stdout=proc.stdout or '', stderr=proc.stderr or '', returncode=proc.returncode)
         version = re.search(r'xtb\s+version\s+([^\s]+)', text, re.I)
         evidence['xtb_version'] = version.group(1) if version else 'unavailable'
+        surface = {'surface_status': 'unavailable', 'surface_error': 'xTB Molden export is missing or empty.'}
+        try:
+            molden_path = os.path.join(tmp, 'molden.input')
+            if os.path.getsize(molden_path) > 64 * 1024 * 1024:
+                raise ValueError('xTB Molden export exceeds the 64 MiB capture limit.')
+            with open(molden_path, 'rb') as fh:
+                data = fh.read()
+            if data.strip():
+                surface = {'surface_status': 'captured', 'molden': data.decode('utf-8'),
+                           'molden_sha256': hashlib.sha256(data).hexdigest()}
+        except (OSError, UnicodeError, ValueError) as exc:
+            surface['surface_error'] = f'xTB Molden export unavailable: {exc}'
 
     if proc.returncode != 0:
         return fail(f"xtb exited with code {proc.returncode}.")
@@ -248,6 +262,7 @@ def orbitals(smiles, timeout=180, charge=None, unpaired_electrons=None):
     props["smiles"] = smiles
     props["n_atoms"] = n_atoms
     props.update(state)
+    props.update(surface)
     props.update(status='verified', result_kind='prediction', evidence=evidence,
                  units={'homo_ev': 'eV', 'lumo_ev': 'eV', 'gap_ev': 'eV',
                         'total_energy_eh': 'Hartree', 'dipole_debye': 'Debye'})

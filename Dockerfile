@@ -77,8 +77,20 @@ ENV MUMO_MD_PYTHON=/opt/mdenv/bin/python
 USER mambauser
 
 WORKDIR /app
+# Keep native orbital conversion outside the Streamlit/MD environments.
+# Wheels are pinned to the versions used to verify the real aspirin surfaces.
+USER root
+RUN micromamba create -y -p /opt/qmenv -c conda-forge python=3.12 pip && \
+    /opt/qmenv/bin/pip install --no-cache-dir \
+        pyscf==2.8.0 numpy==2.5.3 scipy==1.18.1 h5py==3.16.0 && \
+    /opt/qmenv/bin/python -c "import pyscf, numpy, scipy, h5py; print('isolated orbital engine OK')" && \
+    micromamba clean --all --yes && chmod -R a+rX /opt/qmenv
+ENV MUMO_QM_PYTHON=/opt/qmenv/bin/python
+USER mambauser
+RUN pip install --no-cache-dir pillow
 COPY --chown=mambauser:mambauser . /app
 RUN python -m unittest discover -s tests
+RUN python scripts/check_orbital_release.py
 
 # HF Spaces routes external traffic to app_port (7860, set in README frontmatter)
 ENV STREAMLIT_SERVER_HEADLESS=true \
