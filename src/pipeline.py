@@ -28,7 +28,7 @@ def resolve_receptor(tgt, data_dir):
 
 
 def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
-                  exhaustiveness=None, n_replicas=None, seed=42):
+                  exhaustiveness=None, n_replicas=None, seed=42, checkpoint=None):
     """
     Prepare the receptor once and dock every ligand.
 
@@ -180,6 +180,21 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                                             seed=seed)
 
     rows, viz, reliability_by, records = [], {}, {}, {}
+    with open(pdb_path, encoding='utf-8') as source:
+        original_pdb_text = source.read()
+    header_id = next((line[62:66].strip() for line in original_pdb_text.splitlines()
+                      if line.startswith('HEADER') and len(line) >= 66), '')
+    accessions = sorted({line[33:41].strip() for line in original_pdb_text.splitlines()
+                         if line.startswith('DBREF ') and line[26:32].strip() == 'UNP'})
+    target_meta = {"gene": tgt["gene"], "center": center, "size": size,
+                   "seed": seed, "pocket": pocket,
+                   "validation_pdb_text": validation_pdb_text,
+                   "pdb_id": tgt.get('pdb_id') or header_id,
+                   "accession": tgt.get('accession') or '; '.join(accessions),
+                   "dropped_residues": dropped,
+                   "exhaustiveness": eff_exh, "replicas": eff_rep,
+                   "validation": validation, "reliability_by": reliability_by,
+                   "ramachandran": rama, "run_records": records}
     for k, lig in enumerate(ligands):
         label = lig["label"]
         status(f"Docking {label} ({k+1}/{len(ligands)})…")
@@ -265,21 +280,10 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
             except Exception:
                 pass
             rows.append({"Ligand": label, "Best affinity (kcal/mol)": "FAILED",
-                         "Total interactions": reason, "SMILES": lig["smiles"]})
-    # Keep the full receptor, not the pocket complex, for later report rendering
-    # and saved-run regeneration. Never substitute another target's coordinates.
-    with open(pdb_path, encoding='utf-8') as source:
-        original_pdb_text = source.read()
-    header_id = next((line[62:66].strip() for line in original_pdb_text.splitlines()
-                      if line.startswith('HEADER') and len(line) >= 66), '')
-    accessions = sorted({line[33:41].strip() for line in original_pdb_text.splitlines()
-                         if line.startswith('DBREF ') and line[26:32].strip() == 'UNP'})
-    return rows, viz, {"gene": tgt["gene"], "center": center, "size": size,
-                       "seed": seed, "pocket": pocket,
-                       "validation_pdb_text": validation_pdb_text,
-                       "pdb_id": tgt.get('pdb_id') or header_id,
-                       "accession": tgt.get('accession') or '; '.join(accessions),
-                       "dropped_residues": dropped,
-                       "exhaustiveness": eff_exh, "replicas": eff_rep,
-                       "validation": validation, "reliability_by": reliability_by,
-                       "ramachandran": rama, "run_records": records}
+                         "Total interactions": None, "SMILES": lig["smiles"],
+                         "Failure reason": str(le), "Interaction status": "unavailable",
+                         "Interaction note": reason})
+        if checkpoint:
+            checkpoint(rows, viz, target_meta)
+        status(f"Completed {label} ({k+1}/{len(ligands)}) against {tgt['gene']}.")
+    return rows, viz, target_meta

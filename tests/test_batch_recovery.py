@@ -53,7 +53,11 @@ class BatchRecoveryTests(unittest.TestCase):
             path = str(Path(tmp) / 'result.json')
             docking_jobs._write_json(path, {'counts': [float('nan'), float('inf'), 0]})
             def invalid(value): raise ValueError(value)
-            data = json.loads(Path(path).read_text(), parse_constant=invalid)
+            import gzip
+            # Storage is compressed; the decoded scientific JSON must still
+            # contain null, never NaN/Infinity or fabricated zero counts.
+            with gzip.open(path, 'rt', encoding='utf-8') as source:
+                data = json.loads(source.read(), parse_constant=invalid)
         self.assertEqual(data['counts'], [None, None, 0])
 
     def test_report_explains_missing_interactions(self):

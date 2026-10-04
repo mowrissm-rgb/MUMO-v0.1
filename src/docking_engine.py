@@ -471,7 +471,20 @@ seed = {int(seed)}
     ]
     
     print(f"[Exec] Running command: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    timeout_seconds = int(os.environ.get('MUMO_VINA_TIMEOUT_SECONDS', '1800'))
+    if timeout_seconds <= 0:
+        raise ValueError('MUMO_VINA_TIMEOUT_SECONDS must be positive')
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        log_path = output_pdbqt.replace('.pdbqt', '_vina.log')
+        with open(log_path, 'w', encoding='utf-8') as log:
+            for stream in (exc.stdout, exc.stderr):
+                log.write(stream.decode('utf-8', errors='replace') if isinstance(stream, bytes)
+                          else stream or '')
+            log.write(f'\nTIMEOUT after {timeout_seconds} seconds: no completed docking score.\n')
+        raise RuntimeError(f'Vina exceeded its {timeout_seconds}-second time limit; '
+                           'this pair has no completed docking score') from exc
     
     # Save log file of the Vina run
     log_path = output_pdbqt.replace(".pdbqt", "_vina.log")

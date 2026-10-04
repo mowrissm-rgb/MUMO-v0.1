@@ -1846,7 +1846,7 @@ def _run_label(run, i):
     return f"{i + 1}. {gene} — {n} ligand{'s' if n != 1 else ''}{stamp}"
 
 
-def _apply_result(result):
+def _apply_result(result, persist=True):
     """Turn a pipeline_core.run_job result dict into UI state: the chat message,
     the right-hand results panel, and Supabase persistence. Shared by BOTH the
     foreground fallback and the background-job poller, so there is exactly one
@@ -1882,19 +1882,23 @@ def _apply_result(result):
     # keep it in the in-session history too, so the panel's run picker shows it
     # straight away rather than only after a reload
     ss.stored_runs = ([{"gene": meta.get("gene"), "rows": result["rows"],
+                        "run_id": result.get('run_id'),
                         "meta": meta, "viz": result.get("viz") or {},
                         "saved_at": __import__("time").time()}]
                       + list(ss.get("stored_runs") or []))[:6]
     ss.run_index = 0
-    if ss.active_conversation_id:
+    if persist and ss.active_conversation_id:
         try:
-            authdb.save_results(ss.active_conversation_id,
-                                {"gene": meta.get("gene"), "rows": result["rows"],
-                                 "meta": meta, "viz": result.get("viz") or {}})
+            authdb.save_results_async(authdb.get_client(), ss.active_conversation_id,
+                {"gene": meta.get("gene"), "rows": result["rows"], 'run_id': result.get('run_id'),
+                 "meta": meta, "viz": result.get("viz") or {}})
         except Exception:
             pass
     say(result["say_text"])
     ss.convo = {}   # reset for the next, independent request
+    if result.get('partial'):
+        ss.stage = 'start'
+        return  # do not run queued downstream analyses as though screening completed
     # A multi-step request ("dock X then run ADMET on it") parks its remaining
     # steps here while the dock runs in its subprocess. They carry their own
     # slot snapshot, which is why clearing ss.convo just above is safe.
@@ -2106,8 +2110,12 @@ def _render_job_progress():
         ss.job_id = job_id
         with st.status("Docking is running on the server…", expanded=True) as area:
             area.write(st_.get("progress") or "Working…")
-            area.write("✔ You can close this tab, refresh, or minimise — the run keeps "
-                       "going and the result will be waiting here when you come back.")
+            if st_.get('expected_pairs'):
+                area.write(f"Checkpointed pairs: {st_.get('completed_pairs', 0)} / {st_['expected_pairs']}")
+            import time as _clock
+            elapsed = int((_clock.time() - st_.get('started', _clock.time())) / 60)
+            area.write(f"Elapsed: {elapsed} minutes. The worker runs independently of this tab. "
+                       "Local checkpoints remain available while this server instance is retained.")
         import time as _t
         _t.sleep(2.5)          # gentle poll cadence; the child does the real work
         st.rerun()
@@ -2127,18 +2135,32 @@ def _render_job_progress():
         # skip it forever. That is the "it says it's running and the result
         # never comes" failure. Consuming only after the result is in session
         # state makes the worst case a duplicate announcement, not a lost run.
-        _apply_result(result)
+        _apply_result(result, persist=False)  # worker owns history saving; never block display on it
+        if result.get('ok') and ss.active_conversation_id and st_.get('persisted') is not True:
+            # A detached worker has no user session. Retry using this user's
+            # authenticated client, not an elevated/service-role key.
+            jd = jobs.job_dir(jobs.default_jobs_dir(), job_id)
+            def stored(saved, error):
+                if (jobs._read_json(os.path.join(jd, 'status.json')) or {}).get('run_id') == result.get('run_id'):
+                    jobs._write_json(os.path.join(jd, 'persist.json'),
+                                     {'persisted': saved, 'persist_error': error})
+            authdb.save_results_async(authdb.get_client(), ss.active_conversation_id,
+                {'gene': result.get('meta', {}).get('gene'), 'run_id': result.get('run_id'),
+                 'rows': result['rows'], 'meta': result.get('meta') or {},
+                 'viz': result.get('viz') or {}}, stored)
         jobs.mark_consumed(job_id)
         ss.job_id = None
         if st_.get("persisted") is False:
             # computed fine but never reached their history — say so plainly
-            say("Note: I couldn't save this run to your history "
-                f"({st_.get('persist_error') or 'unknown error'}), so it may not "
-                f"be here when you come back. Download the report if you need it.")
+            say("The results are ready. History saving is being retried in the background; "
+                "download the report and structure ZIP to keep your own copy.")
         st.rerun()
         return True
 
     if status == "error" and not st_.get("consumed"):
+        partial = jobs.read_checkpoint(job_id)
+        if partial and partial.get('rows'):
+            _apply_result(partial, persist=False)
         jobs.mark_consumed(job_id)
         ss.job_id = None
         say(f"The docking run stopped early: {st_.get('error')}")

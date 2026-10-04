@@ -65,7 +65,11 @@ def _safe(job_id):
 
 def _read_json(path):
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        import gzip
+        with open(path, 'rb') as probe:
+            compressed = probe.read(2) == b'\x1f\x8b'
+        opener = gzip.open if compressed else open
+        with opener(path, "rt", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
@@ -79,9 +83,15 @@ def _write_json(path, obj):
     os.makedirs(d, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            from verification import json_safe
-            json.dump(json_safe(obj), f, allow_nan=False)
+        with os.fdopen(fd, 'wb') as raw:
+            if os.path.basename(path) in ('result.json', 'checkpoint.json'):
+                from result_storage import write_compressed
+                write_compressed(raw, obj)
+            else:
+                import io
+                from verification import json_safe
+                with io.TextIOWrapper(raw, encoding='utf-8') as text:
+                    json.dump(json_safe(obj), text, allow_nan=False)
         os.replace(tmp, path)
     except Exception:
         try:
@@ -124,6 +134,13 @@ def _pid_alive(pid):
         except Exception:
             return False
     try:
+        # kill(pid, 0) succeeds for an exited but unreaped child on Linux.
+        # Streamlit may not launch another subprocess to reap it for hours.
+        if sys.platform.startswith('linux'):
+            with open(f'/proc/{pid}/stat', encoding='utf-8') as state_file:
+                state = state_file.read().rsplit(')', 1)[1].split()[0]
+            if state in ('Z', 'X'):
+                return False
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
@@ -155,7 +172,7 @@ def start(job_id, spec, jobs_dir=None, python_exe=None, runner=None, extra_env=N
     os.makedirs(jd, exist_ok=True)
     _write_json(os.path.join(jd, "spec.json"), spec)
     # clear any stale result from a previous run of this id
-    for stale in ("result.json",):
+    for stale in ("result.json", "checkpoint.json", "persist.json", "worker_persist.json"):
         try:
             os.remove(os.path.join(jd, stale))
         except OSError:
@@ -184,7 +201,10 @@ def start(job_id, spec, jobs_dir=None, python_exe=None, runner=None, extra_env=N
     else:
         kwargs["start_new_session"] = True   # setsid: survives parent/WebSocket death
 
-    proc = subprocess.Popen([python_exe, runner, os.path.join(jd, "spec.json")], **kwargs)
+    try:
+        proc = subprocess.Popen([python_exe, runner, os.path.join(jd, "spec.json")], **kwargs)
+    finally:
+        log.close()   # child owns its inherited descriptor
     update_status(jd, pid=proc.pid)
     return True
 
@@ -203,21 +223,34 @@ def read_status(job_id, jobs_dir=None):
         return None
     if st.get("status") == "running":
         pid = st.get("pid")
-        result_exists = os.path.exists(os.path.join(jd, "result.json"))
+        alive = _pid_alive(pid)
+        result_path = os.path.join(jd, "result.json")
+        result_exists = os.path.exists(result_path)
+        if result_exists and not alive and isinstance(_read_json(result_path), dict):
+            st = dict(st, status='done', progress='Complete')
+            st.update(_read_json(os.path.join(jd, 'worker_persist.json')) or {})
+            return dict(st, **(_read_json(os.path.join(jd, 'persist.json')) or {}))
         # give a just-launched job a moment before deciding its pid is 'dead'
         launched_recently = (time.time() - st.get("started", 0)) < 8
-        if pid and not _pid_alive(pid) and not result_exists and not launched_recently:
+        if not alive and not launched_recently:
             st = dict(st, status="error",
-                      error="The docking process stopped unexpectedly. This can happen "
-                            "on very large/flexible ligands that exhaust the free CPU tier. "
-                            "Try fewer or smaller ligands, or re-run.")
-    return st
+                      error="The docking worker stopped before completing the run. "
+                            "Any checkpointed pairs can be recovered below; "
+                            "unfinished pairs do not have a valid result.")
+    st.update(_read_json(os.path.join(jd, 'worker_persist.json')) or {})
+    return dict(st, **(_read_json(os.path.join(jd, 'persist.json')) or {}))
 
 
 def read_result(job_id, jobs_dir=None):
     """The finished result dict, or None if the job hasn't produced one yet."""
     jobs_dir = jobs_dir or default_jobs_dir()
     return _read_json(os.path.join(job_dir(jobs_dir, job_id), "result.json"))
+
+
+def read_checkpoint(job_id, jobs_dir=None):
+    """Completed pairs from an interrupted run, explicitly marked partial."""
+    jobs_dir = jobs_dir or default_jobs_dir()
+    return _read_json(os.path.join(job_dir(jobs_dir, job_id), 'checkpoint.json'))
 
 
 def is_running(job_id, jobs_dir=None):

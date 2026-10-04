@@ -50,6 +50,11 @@ def main(spec_path):
             pass
         print(f"[progress] {msg}", flush=True)
 
+    def checkpoint(result):
+        jobs._write_json(os.path.join(jd, 'checkpoint.json'), result)
+        jobs.update_status(jd, completed_pairs=len(result.get('rows') or []),
+                           expected_pairs=result.get('meta', {}).get('expected_pairs'))
+
     try:
         # LLM for the narrative report (falls back to rule-based if no key in env)
         try:
@@ -60,7 +65,15 @@ def main(spec_path):
 
         from pipeline_core import run_job
         result = run_job(spec["convo"], spec["vina"], spec["data_dir"], spec["venv"],
-                         llm=llm, progress=progress)
+                         llm=llm, progress=progress, checkpoint=checkpoint)
+        import uuid
+        result['run_id'] = str(uuid.uuid4())
+
+        # Deliver first. External storage must never withhold a computed result.
+        progress('Publishing completed results…')
+        jobs._write_json(os.path.join(jd, 'result.json'), result)
+        jobs.update_status(jd, status='done', progress='Complete', error=None,
+                           persisted=None, persist_error=None, run_id=result['run_id'])
 
         # Persist to Supabase so a reconnecting / brand-new session finds the
         # answer. This is the ONLY path that survives the browser session dying
@@ -76,6 +89,7 @@ def main(spec_path):
                 saved, save_err = save_results_with(
                     client, conv_id,
                     {"gene": result["meta"].get("gene"),
+                     "run_id": result['run_id'],
                      "rows": result["rows"], "meta": result["meta"],
                      "viz": result["viz"],
                      "saved_at": time.time()})
@@ -84,11 +98,10 @@ def main(spec_path):
                 traceback.print_exc()
             print(f"[persist] saved={saved} err={save_err}", flush=True)
 
-        jobs._write_json(os.path.join(jd, "result.json"), result)
-        # record whether the result reached the user's history, so the UI can
-        # say "computed but not saved" instead of the run vanishing
-        jobs.update_status(jd, status="done", progress="Complete", error=None,
-                           persisted=saved, persist_error=save_err)
+        # Separate file avoids racing the UI's consumed flag in status.json.
+        if (jobs._read_json(os.path.join(jd, 'status.json')) or {}).get('run_id') == result['run_id']:
+            jobs._write_json(os.path.join(jd, 'worker_persist.json'),
+                             {'persisted': saved, 'persist_error': save_err})
         print("[done]", flush=True)
         return 0
 

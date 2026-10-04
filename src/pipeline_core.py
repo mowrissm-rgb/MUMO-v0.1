@@ -106,7 +106,7 @@ def structure_validation(target, data_dir, progress=lambda m: None):
     return res
 
 
-def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
+def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, checkpoint=None):
     """Run the whole docking pipeline for one chat request. See module docstring
     for the return contract. `convo` is the chat's conversation dict (disease /
     target / ligand_objs / n_ligands / tier)."""
@@ -178,6 +178,26 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
         return {"ok": False, "tier": tier, "say_text": base + skipped_note}
 
     rows, viz, meta = [], {}, None
+    expected_pairs = len(targets) * len(ligands)
+    def save_checkpoint(target=None, target_rows=None, target_viz=None, target_meta=None):
+        if not checkpoint:
+            return
+        from verification import json_safe
+        combined_rows = list(rows)
+        combined_viz = dict(viz)
+        combined_meta = dict(meta or {})
+        combined_meta['per_target'] = dict(combined_meta.get('per_target') or {})
+        if target is not None:
+            combined_rows += [dict(row, Target=target) for row in target_rows]
+            combined_viz.update({f'{target} · {label}' if multi else label: entry
+                                 for label, entry in (target_viz or {}).items()})
+            combined_meta['per_target'][target] = target_meta or {}
+        combined_meta.update(gene=' + '.join(targets), targets=targets,
+                             expected_pairs=expected_pairs, partial=True)
+        checkpoint(json_safe({'ok': True, 'partial': True, 'rows': combined_rows,
+            'viz': serialize_viz(combined_viz), 'meta': combined_meta, 'tier': tier,
+            'say_text': f'Partial run: {len(combined_rows)} of {expected_pairs} target–ligand pairs '
+                        'have been attempted and saved. Unfinished pairs have no result.'}))
     failed_targets = []
     def record_target_failure(name, error):
         # Every requested pair remains visible; missing scores are never zero.
@@ -197,6 +217,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
             # one unreachable target must not sink the whole screen
             failed_targets.append(f"{name} ({e})")
             record_target_failure(name, e)
+            save_checkpoint()
             continue
         if multi:
             progress(f"Docking against {t_obj['gene']} ({n_t + 1} of {len(targets)})…")
@@ -215,12 +236,15 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
             n_t, re.sub(r"[^A-Za-z0-9_.-]", "_", str(t_obj.get("gene") or name))[:32]))
         os.makedirs(t_dir, exist_ok=True)
         try:
+            checkpoint_args = ({'checkpoint': lambda r, v, m: save_checkpoint(
+                t_obj['gene'], r, v, m)} if checkpoint else {})
             t_rows, t_viz, t_meta = dock_pipeline(t_obj, ligands, vina, t_dir, venv,
-                                                status=progress)
+                                                status=progress, **checkpoint_args)
         except Exception as exc:
             failed_targets.append(f"{name} ({type(exc).__name__}: {exc})")
             record_target_failure(name, exc)
             progress(f"Couldn't prepare or dock {name}: {exc}. Continuing with remaining targets…")
+            save_checkpoint()
             continue
         for r in t_rows:
             # tag every row so a merged table stays readable, and key the viz by
@@ -237,6 +261,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
                     "ramachandran", "run_records", "validation_pdb_text", "pdb_id",
                     "accession", "center", "size", "seed", "dropped_residues",
                     "exhaustiveness", "replicas")}
+        save_checkpoint()
 
     if not rows:
         note = ("; ".join(failed_targets)) or "no poses were produced"
@@ -245,6 +270,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
 
     meta = dict(meta or {})
     meta["failed_targets"] = failed_targets
+    meta['expected_pairs'] = expected_pairs
     if multi:
         meta["gene"] = " + ".join(t for t in
                                   dict.fromkeys(r["Target"] for r in rows))
@@ -261,7 +287,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
     meta_store = {k: meta.get(k) for k in
                   ("gene", "pocket", "exhaustiveness", "replicas", "validation",
                    "reliability_by", "targets", "per_target", "ramachandran", "run_records", "failed_targets",
-                   "validation_pdb_text", "pdb_id", "accession", "center", "size", "seed", "dropped_residues")
+                   "validation_pdb_text", "pdb_id", "accession", "center", "size", "seed", "dropped_residues",
+                   "expected_pairs")
                   if k in meta}
 
     # narrative report on the best hit

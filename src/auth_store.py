@@ -21,12 +21,14 @@ Schema: run supabase_schema.sql once in the Supabase SQL editor.
 
 import os
 import json
+from result_storage import pack as _pack_results, unpack as _unpack_results
 from datetime import datetime, timezone
 
 import streamlit as st
 
 try:
     from supabase import create_client
+    from supabase.client import ClientOptions
 except Exception:
     create_client = None
 
@@ -106,7 +108,8 @@ def get_client():
         return None
     if "_sb_client" not in st.session_state:
         try:
-            st.session_state["_sb_client"] = create_client(url, key)
+            st.session_state["_sb_client"] = create_client(
+                url, key, options=ClientOptions(postgrest_client_timeout=10, storage_client_timeout=10))
         except Exception:
             st.session_state["_sb_client"] = None
     return st.session_state["_sb_client"]
@@ -125,7 +128,8 @@ def standalone_client():
     if not url or not key:
         return None
     try:
-        return create_client(url, key)
+        return create_client(url, key, options=ClientOptions(
+            postgrest_client_timeout=10, storage_client_timeout=10))
     except Exception:
         return None
 
@@ -145,6 +149,7 @@ def _merge_runs(existing, new_run):
     Accepts the OLD single-dict shape as the first entry, so conversations
     saved before this change still open.
     """
+    existing = _unpack_results(existing)
     runs = []
     if isinstance(existing, dict):
         if isinstance(existing.get("runs"), list):
@@ -153,6 +158,8 @@ def _merge_runs(existing, new_run):
             runs = [existing]                 # legacy single-result shape
     elif isinstance(existing, list):
         runs = list(existing)
+    if new_run.get('run_id'):
+        runs = [run for run in runs if run.get('run_id') != new_run['run_id']]
     runs.insert(0, new_run)
     from verification import json_safe
     return json_safe({"runs": runs[:MAX_STORED_RUNS]})
@@ -176,12 +183,29 @@ def save_results_with(client, conversation_id, results_summary):
     except Exception:
         existing = None          # first run, or the read failed — still try to write
     try:
-        client.table("conversations").update(
-            {"results": _merge_runs(existing, results_summary)}
+        response = client.table("conversations").update(
+            {"results": _pack_results(_merge_runs(existing, results_summary))}
         ).eq("id", conversation_id).execute()
+        if not response.data:
+            return False, 'No authorized conversation row was updated'
         return True, None
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
+
+
+def save_results_async(client, conversation_id, summary, on_complete=None):
+    """Save with the user's already-authenticated client without blocking display.
+
+    No Streamlit session state is accessed by the thread. RLS remains in force.
+    """
+    import threading
+    def save():
+        saved, error = save_results_with(client, conversation_id, summary)
+        if on_complete:
+            on_complete(saved, error)
+    worker = threading.Thread(target=save, name='mumo-history-save', daemon=True)
+    worker.start()
+    return worker
 
 
 # ── resilient calls: Supabase (via httpx) keeps a persistent HTTP/2 connection,
@@ -359,7 +383,7 @@ def save_results(conversation_id, results_summary):
         except Exception:
             existing = None
         sb.table("conversations").update(
-            {"results": _merge_runs(existing, results_summary)}
+            {"results": _pack_results(_merge_runs(existing, results_summary))}
         ).eq("id", conversation_id).execute()
     return _run(_q)
 
@@ -368,7 +392,7 @@ def load_results(conversation_id):
     """The RAW stored value — may be the new {"runs": [...]} or a legacy dict."""
     def _q(sb):
         r = sb.table("conversations").select("results").eq("id", conversation_id).single().execute()
-        return (r.data or {}).get("results")
+        return _unpack_results((r.data or {}).get("results"))
     return _run(_q, default=None, swallow=True)
 
 
