@@ -20,6 +20,7 @@ No API key. No install. Pure Python + free public databases.
 
 import os
 import requests
+from public_database import get as database_get
 
 UNIPROT_SEARCH = "https://rest.uniprot.org/uniprotkb/search"
 UNIPROT_ENTRY  = "https://rest.uniprot.org/uniprotkb/{acc}.json"
@@ -36,7 +37,7 @@ def gene_to_uniprot(gene, organism_id=9606):
         "format": "json",
         "size": 1,
     }
-    r = requests.get(UNIPROT_SEARCH, params=params, timeout=30)
+    r = database_get(UNIPROT_SEARCH, params=params, timeout=30)
     r.raise_for_status()
     results = r.json().get("results", [])
     if not results:
@@ -51,13 +52,13 @@ def download_alphafold(acc, out_dir):
     they bump the model version (v4 -> v6 -> ...).
     """
     os.makedirs(out_dir, exist_ok=True)
-    info = requests.get(ALPHAFOLD_API.format(acc=acc), timeout=30)
+    info = database_get(ALPHAFOLD_API.format(acc=acc), timeout=30)
     if info.status_code != 200 or not info.json():
         raise FileNotFoundError(f"No AlphaFold model available for {acc}.")
     pdb_url = info.json()[0]["pdbUrl"]
 
     pdb_path = os.path.join(out_dir, f"AF_{acc}.pdb")
-    r = requests.get(pdb_url, timeout=60)
+    r = database_get(pdb_url, timeout=60)
     r.raise_for_status()
     with open(pdb_path, "wb") as f:
         f.write(r.content)
@@ -69,7 +70,7 @@ def get_active_site_residues(acc):
     Step 3: ask UniProt which residue numbers are the active/binding site.
     Returns a list of residue position integers (may be empty).
     """
-    r = requests.get(UNIPROT_ENTRY.format(acc=acc), timeout=30)
+    r = database_get(UNIPROT_ENTRY.format(acc=acc), timeout=30)
     r.raise_for_status()
     features = r.json().get("features", [])
     wanted = {"Active site", "Binding site"}

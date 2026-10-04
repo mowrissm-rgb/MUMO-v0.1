@@ -37,7 +37,8 @@ def add_docking_methodology(doc, meta, targets, add_table):
     doc.add_paragraph(
         'Ligands are identified by their recorded names and SMILES. RDKit adds explicit '
         'hydrogens, embeds a 3D conformer with seed 42 and performs MMFF geometry '
-        'optimization for at most 200 iterations. A non-converged geometry is not accepted '
+        'optimization for 200 iterations, with up to four additional 500-iteration '
+        'continuations if needed. A non-converged geometry is not accepted '
         'as a successful calculation. GFN2-xTB then performs a gas-phase single-point '
         'calculation; formal charge comes from the input chemical structure and the '
         'unpaired-electron count is checked [3]. This is a semiempirical calculation, '

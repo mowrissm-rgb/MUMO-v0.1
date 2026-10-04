@@ -128,6 +128,13 @@ def _add_kv_table(doc, pairs):
     return table
 
 
+def _report_value(value):
+    import math
+    if value is None or (isinstance(value, (int, float)) and not math.isfinite(value)):
+        return 'Not calculated'
+    return str(value)
+
+
 def _add_df_table(doc, df):
     table = doc.add_table(rows=1, cols=len(df.columns))
     table.style = "Light Grid Accent 1"
@@ -136,7 +143,7 @@ def _add_df_table(doc, df):
     for _, row in df.iterrows():
         cells = table.add_row().cells
         for i, col in enumerate(df.columns):
-            cells[i].text = str(row[col])
+            cells[i].text = _report_value(row[col])
     return table
 
 
@@ -403,7 +410,7 @@ def build_docking_docx(r, llm=None):
                     "build, so HOMO/LUMO properties were not computed.")
             else:
                 seen = {}
-                for x in ok_rows:
+                for x in rows:
                     lab, smi = x.get("Ligand"), x.get("SMILES")
                     if lab and smi and lab not in seen:
                         seen[lab] = smi
@@ -490,6 +497,8 @@ def build_docking_docx(r, llm=None):
                     "n_hbonds": row.get("H-bonds"),
                     "hbond_residues": _sp(row.get("H-bond residues", "")),
                     "n_hydrophobic": row.get("Hydrophobic"),
+                    "interaction_status": row.get("Interaction status"),
+                    "interaction_note": row.get("Interaction note"),
                     "interacting_residues": _sp(row.get("All interacting residues", "")),
                 }, llm, r.get("tier", "Standard"))
             except Exception as e:
@@ -637,7 +646,7 @@ def _add_results_discussion(doc, targets, rows_for, aff, meta, llm, qm_rows):
             f"{t}: {len(sub)} ligands docked; best {best['Ligand']} at "
             f"{aff(best):.3f} kcal/mol (Ki {best.get('Est. Ki', 'n/a')}, "
             f"ligand efficiency {best.get('Ligand efficiency', 'n/a')}, "
-            f"{best.get('H-bonds', 'unavailable')} H-bonds); "
+            f"{_report_value(best.get('H-bonds'))} H-bonds); "
             f"weakest {aff(sub[-1]):.3f} kcal/mol.")
     if qm_rows:
         gaps = [x for x in qm_rows if x.get("Gap (eV)") not in ("—", "", None)]

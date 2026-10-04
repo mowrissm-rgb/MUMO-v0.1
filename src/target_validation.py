@@ -23,7 +23,12 @@ def solvent_exposure(pdb_text, timeout=60):
             run = subprocess.run([python, str(Path(__file__).with_name('sasa_runner.py')), str(source)],
                                  capture_output=True, text=True, timeout=timeout)
             if run.returncode:
-                raise RuntimeError((run.stderr or 'FreeSASA failed')[-600:])
+                try:
+                    error = json.loads(run.stdout).get('_error')
+                except (ValueError, AttributeError):
+                    error = None
+                raise RuntimeError((error or run.stderr or
+                                    f'FreeSASA worker exited with code {run.returncode}')[-600:])
             result = json.loads(run.stdout)
             if result.get('status') != 'calculated':
                 raise ValueError(result.get('_error', 'Invalid FreeSASA result'))

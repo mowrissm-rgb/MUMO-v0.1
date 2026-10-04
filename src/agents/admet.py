@@ -82,11 +82,12 @@ def name_to_smiles(name):
     only happen when the first attempt fails, so a clean name still costs one
     request.
     """
+    from public_database import get as database_get
     for candidate in _name_candidates(name):
         url = (f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
                f"{quote(candidate)}/property/SMILES,IsomericSMILES/JSON")
         try:
-            r = requests.get(url, timeout=20)
+            r = database_get(url, timeout=20)
             if r.status_code == 200:
                 props = r.json()["PropertyTable"]["Properties"][0]
                 smi = (props.get("SMILES") or props.get("IsomericSMILES")

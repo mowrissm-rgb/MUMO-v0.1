@@ -21,6 +21,7 @@ NO API KEY. NO COST. Pure public REST calls over the internet.
 """
 
 import requests
+from public_database import get as database_get
 
 CHEMBL = "https://www.ebi.ac.uk/chembl/api/data"
 HEADERS = {"Accept": "application/json"}
@@ -35,7 +36,7 @@ def find_target_id(query, organism="Homo sapiens"):
         return query.upper(), query  # user already gave us an ID
 
     url = f"{CHEMBL}/target/search.json"
-    r = requests.get(url, params={"q": query}, headers=HEADERS, timeout=30)
+    r = database_get(url, params={"q": query}, headers=HEADERS, timeout=30)
     r.raise_for_status()
     targets = r.json().get("targets", [])
 
@@ -73,7 +74,7 @@ def find_ligands(target_query, limit=10, min_pchembl=6.0):
         "order_by": "-pchembl_value",          # strongest first
         "limit": 1000,                          # pull a pool, then de-dup below
     }
-    r = requests.get(url, params=params, headers=HEADERS, timeout=60)
+    r = database_get(url, params=params, headers=HEADERS, timeout=60)
     r.raise_for_status()
     activities = r.json().get("activities", [])
 

@@ -16,6 +16,7 @@ from agents.target_analyst import gene_to_uniprot
 class BatchRecoveryTests(unittest.TestCase):
     def test_gene_alias_is_resolved_before_query(self):
         class Response:
+            status_code = 200
             def raise_for_status(self): pass
             def json(self): return {'results': [{'primaryAccession': 'P03372'}]}
         with patch('agents.target_analyst.requests.get', return_value=Response()) as get:

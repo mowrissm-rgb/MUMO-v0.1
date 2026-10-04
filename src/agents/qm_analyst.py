@@ -71,7 +71,14 @@ def prepare_xyz(smiles, seed=42):
         raise ValueError("Could not generate a 3D conformer for this molecule.")
     if not AllChem.MMFFHasAllMoleculeParams(mol):
         raise ValueError("MMFF parameters unavailable for this chemical structure.")
-    if AllChem.MMFFOptimizeMolecule(mol, maxIters=200) != 0:
+    outcome = AllChem.MMFFOptimizeMolecule(mol, maxIters=200)
+    # Continue the same force field and conformer only on nonconvergence.
+    # Missing parameters or a failed optimization are never accepted.
+    for _ in range(4):
+        if outcome != 1:
+            break
+        outcome = AllChem.MMFFOptimizeMolecule(mol, maxIters=500)
+    if outcome != 0:
         raise ValueError("MMFF geometry optimization failed or did not converge.")
 
     conf = mol.GetConformer()

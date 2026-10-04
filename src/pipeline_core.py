@@ -179,6 +179,15 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
 
     rows, viz, meta = [], {}, None
     failed_targets = []
+    def record_target_failure(name, error):
+        # Every requested pair remains visible; missing scores are never zero.
+        for ligand in ligands:
+            rows.append({'Target': name, 'Ligand': ligand['label'],
+                'SMILES': ligand['smiles'], 'Best affinity (kcal/mol)': 'FAILED',
+                'Total interactions': None, 'H-bonds': None, 'Hydrophobic': None,
+                'H-bond residues': '-', 'All interacting residues': '-',
+                'Interaction status': 'unavailable', 'Interaction note': str(error),
+                'Failure stage': 'target preparation', 'Failure reason': str(error)})
     for n_t, name in enumerate(targets):
         try:
             if multi:
@@ -187,6 +196,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
         except Exception as e:
             # one unreachable target must not sink the whole screen
             failed_targets.append(f"{name} ({e})")
+            record_target_failure(name, e)
             continue
         if multi:
             progress(f"Docking against {t_obj['gene']} ({n_t + 1} of {len(targets)})…")
@@ -209,6 +219,7 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
                                                 status=progress)
         except Exception as exc:
             failed_targets.append(f"{name} ({type(exc).__name__}: {exc})")
+            record_target_failure(name, exc)
             progress(f"Couldn't prepare or dock {name}: {exc}. Continuing with remaining targets…")
             continue
         for r in t_rows:
@@ -223,7 +234,9 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
             meta = dict(meta)
             meta.setdefault("per_target", {})[t_obj["gene"]] = {
                 k: t_meta.get(k) for k in ("pocket", "validation", "reliability_by",
-                                           "ramachandran", "run_records")}
+                    "ramachandran", "run_records", "validation_pdb_text", "pdb_id",
+                    "accession", "center", "size", "seed", "dropped_residues",
+                    "exhaustiveness", "replicas")}
 
     if not rows:
         note = ("; ".join(failed_targets)) or "no poses were produced"
@@ -247,7 +260,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None):
 
     meta_store = {k: meta.get(k) for k in
                   ("gene", "pocket", "exhaustiveness", "replicas", "validation",
-                   "reliability_by", "targets", "per_target", "ramachandran", "run_records", "failed_targets")
+                   "reliability_by", "targets", "per_target", "ramachandran", "run_records", "failed_targets",
+                   "validation_pdb_text", "pdb_id", "accession", "center", "size", "seed", "dropped_residues")
                   if k in meta}
 
     # narrative report on the best hit
