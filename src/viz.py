@@ -361,9 +361,14 @@ def render_complex_html(complex_pdb_path, ia, options=None, width=900, height=56
               f'font:{int(o.get("legend_size", 12))}px Arial;pointer-events:none;">'
               f'<b>Detected contacts</b> · dashed connectors · atom-pair counts<br>{badges or "No detected contacts"}</div>'
               if o.get('show_legend') and o.get('show_interactions') else '')
+    if o.get('offline_script'):
+        from renderer_assets import graphics_script
+        library = graphics_script()
+    else:
+        library = '<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>'
     return f"""<div id="mumoview" style="width:100%;height:{height}px;position:relative;
          overflow:hidden;{_frame}">{controls}{legend}</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+{library}
 <!-- 3dmol.org's own CDN measured as a hard connection timeout (>10s, never
      responds) from this network path — every 3D screenshot in a report was
      polling for window.$3Dmol every 60ms with nothing ever arriving, so

@@ -48,6 +48,7 @@ def compute_surfaces(q, python=None, timeout=120):
 
 def surface_html(xyz, cube):
     """Both signs of a computed wavefunction at a common 0.03 a.u. isovalue."""
+    from renderer_assets import graphics_script
     def safe(value):
         return json.dumps(value).replace('<', '\\u003c')
     styles = '\n'.join(
@@ -56,7 +57,7 @@ def surface_html(xyz, cube):
         for element, color in ATOM_COLORS.items())
     return f'''<html><body style="margin:0;background:white">
 <div id="orbital" style="width:620px;height:360px"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+{graphics_script()}
 <script>
 const viewer=$3Dmol.createViewer(document.getElementById('orbital'),{{backgroundColor:'white'}});
 viewer.addModel({safe(xyz)},'xyz');

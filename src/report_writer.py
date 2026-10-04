@@ -75,6 +75,7 @@ def _png_pose_view(complex_pdb_path, ia, browser, options=None, width=900, heigh
     opts = dict(REPORT_3D)
     if options:
         opts.update(options)
+    opts['offline_script'] = True
     html = render_complex_html(complex_pdb_path, ia, options=opts, width=width, height=height)
     page = browser.new_page(viewport={"width": width, "height": height + 20})
     try:
