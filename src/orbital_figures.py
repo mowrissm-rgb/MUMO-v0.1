@@ -161,18 +161,20 @@ def prepare_entry(entry, browser):
         entry['surface_error'] = f'{type(exc).__name__}: {exc}'
 
 
-def contact_sheets(entries):
+def contact_sheets(entries, compact=False):
     """Six verified surface panels per sheet, preserving input order and all names."""
     from PIL import Image
     valid = [e for e in entries if e.get('surface_png')]
     sheets = []
     for offset in range(0, len(valid), 6):
         batch = valid[offset:offset + 6]
-        image = Image.new('RGB', (1860, 2540), 'white')
+        columns = min(3, len(batch)) if compact else 3
+        rows = (len(batch) + columns - 1) // columns if compact else 2
+        image = Image.new('RGB', (620 * columns, 1270 * rows), 'white')
         for i, entry in enumerate(batch):
             panel = Image.open(io.BytesIO(entry['surface_png'])).convert('RGB')
             panel.thumbnail((620, 1270))
-            x, y = (i % 3) * 620, (i // 3) * 1270
+            x, y = (i % columns) * 620, (i // columns) * 1270
             image.paste(panel, (x + (620 - panel.width) // 2, y + (1270 - panel.height) // 2))
         output = io.BytesIO()
         image.save(output, format='PNG')

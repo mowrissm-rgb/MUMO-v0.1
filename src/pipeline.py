@@ -22,6 +22,8 @@ def resolve_receptor(tgt, data_dir):
     if tgt.get("pdb_path"):
         return tgt["pdb_path"], tgt["center"], tgt["size"], tgt.get("source", "user PDB")
     info = analyze_target(tgt["gene"], data_dir)
+    if info.get('accession'):
+        tgt.setdefault('accession', info['accession'])
     return info["pdb_path"], info["center"], info["size"], info["pocket_source"]
 
 
@@ -85,10 +87,11 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     # and it answers the question every affinity in this run depends on: is
     # this structure trustworthy enough to dock into at all?
     rama = None
+    with open(cleaned, encoding='utf-8') as source:
+        validation_pdb_text = source.read()
     try:
         import ramachandran as _rama
-        with open(cleaned) as _f:
-            rama = _rama.compute(_f.read())
+        rama = _rama.compute(validation_pdb_text)
     except Exception as exc:
         rama = {"_error": str(exc), "status": "unavailable"}
     dropped = prepare_receptor(cleaned, receptor, venv_dir) or []
@@ -263,7 +266,20 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 pass
             rows.append({"Ligand": label, "Best affinity (kcal/mol)": "FAILED",
                          "Total interactions": reason, "SMILES": lig["smiles"]})
-    return rows, viz, {"gene": tgt["gene"], "center": center, "pocket": pocket,
+    # Keep the full receptor, not the pocket complex, for later report rendering
+    # and saved-run regeneration. Never substitute another target's coordinates.
+    with open(pdb_path, encoding='utf-8') as source:
+        original_pdb_text = source.read()
+    header_id = next((line[62:66].strip() for line in original_pdb_text.splitlines()
+                      if line.startswith('HEADER') and len(line) >= 66), '')
+    accessions = sorted({line[33:41].strip() for line in original_pdb_text.splitlines()
+                         if line.startswith('DBREF ') and line[26:32].strip() == 'UNP'})
+    return rows, viz, {"gene": tgt["gene"], "center": center, "size": size,
+                       "seed": seed, "pocket": pocket,
+                       "validation_pdb_text": validation_pdb_text,
+                       "pdb_id": tgt.get('pdb_id') or header_id,
+                       "accession": tgt.get('accession') or '; '.join(accessions),
+                       "dropped_residues": dropped,
                        "exhaustiveness": eff_exh, "replicas": eff_rep,
                        "validation": validation, "reliability_by": reliability_by,
                        "ramachandran": rama, "run_records": records}

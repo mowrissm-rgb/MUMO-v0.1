@@ -191,12 +191,22 @@ def build_docking_docx(r, llm=None):
     both being sound.
     """
     from docx import Document
-    from docx.shared import Inches, Pt
+    from docx.shared import Inches, Pt, Mm, RGBColor
     from brain import write_report
     from viz import find_entry
 
     rdf, viz, meta = r["rdf"], r.get("viz", {}), r.get("meta", {})
     doc = Document()
+    section = doc.sections[0]
+    section.page_width, section.page_height = Mm(210), Mm(297)
+    section.top_margin = section.bottom_margin = Mm(10)
+    section.left_margin = section.right_margin = Mm(10)
+    doc.styles['Normal'].font.name = 'Arial'
+    doc.styles['Normal'].font.size = Pt(11)
+    for name in ('Title', 'Heading 1', 'Heading 2', 'Heading 3'):
+        doc.styles[name].font.color.rgb = RGBColor(0, 0, 0)
+        for border in doc.styles[name].element.xpath('.//w:pBdr'):
+            border.getparent().remove(border)
     doc.add_heading("MUMO Docking Report", level=0)
 
     # ── numbering ──────────────────────────────────────────────────────────
@@ -307,10 +317,14 @@ def build_docking_docx(r, llm=None):
                 f"excluded from the tables below: "
                 + ", ".join(sorted({x['Ligand'] for x in failed_rows})) + ".")
 
+        from report_methods import add_docking_methodology, add_docking_references
+        add_docking_methodology(doc, meta, targets, _add_kv_table)
+        doc.add_page_break()
+        doc.add_heading('Results', level=1)
         # ══ 1. STRUCTURE VALIDATION ════════════════════════════════════════
         # First, because every affinity below is conditional on the receptor
         # geometry being sound. A distorted pocket invalidates the numbers.
-        doc.add_heading("Structure validation", level=1)
+        doc.add_heading("Ramachandran and target validation", level=2)
         per_target = meta.get("per_target") or {}
         wrote_any = False
         for t in targets:
@@ -329,23 +343,34 @@ def build_docking_docx(r, llm=None):
             if not (rama or pocket_bits):
                 continue
             wrote_any = True
-            doc.add_heading(t, level=2)
-
             if rama:
                 try:
                     import ramachandran as _ram
-                    doc.add_paragraph(_ram.verdict(rama))
-                    svg = _ram.plot_svg(rama, title=f"Ramachandran plot — {t}")
-                    if svg:
-                        png, err = _shot("2d", svg)
-                        if png:
-                            picture(png, 5.0)
-                            caption("Figure",
-                                    f"Ramachandran plot for {t}. Backbone torsion angles "
-                                    f"scored against the MolProbity Top8000 reference "
-                                    f"distributions.")
-                        else:
-                            doc.add_paragraph(f"(Ramachandran plot unavailable: {err})")
+                    from target_validation import build_panels, add_validation_page
+                    pdb_text = tm.get('validation_pdb_text') or ''
+                    png, sasa, errors = build_panels(pdb_text, rama, bh['browser'])
+                    ids = [f"PDB {tm['pdb_id']}"] if tm.get('pdb_id') else []
+                    if tm.get('accession'):
+                        ids.append(f"UniProt {tm['accession']}")
+                    title = t + (' [' + '; '.join(ids) + ']' if ids else '')
+                    counts['Figure'] += 1
+                    text = (f"Figure {counts['Figure']}. {_ram.verdict(rama)} "
+                            f"{rama.get('n_scored', 0)} of {rama.get('n_residues', 0)} residues scored. "
+                            'Panels A–E: ribbon, solvent exposure, residue counts, '
+                            'Ramachandran plot, polar/apolar accessible area. '
+                            'SASA is in Å²; Top8000 provides the torsion reference.')
+                    add_validation_page(doc, title, png, text,
+                                        first=counts['Figure'] == 1)
+                    # Long lists and diagnostics belong after the figure page,
+                    # never push a caption onto a second page.
+                    if errors or rama.get('outliers') or pocket_bits or sasa.get('status') == 'calculated':
+                        doc.add_page_break()
+                        doc.add_heading(f'{t} validation details', level=3)
+                    if sasa.get('status') == 'calculated':
+                        doc.add_paragraph(f"Total solvent-accessible surface: {sasa['total_area']:.2f} Å² "
+                                          f"(FreeSASA {sasa.get('version', 'unrecorded')}).")
+                    for error in errors:
+                        doc.add_paragraph(f'Calculation or image unavailable: {error}')
                     outs = rama.get("outliers") or []
                     if outs:
                         shown = ", ".join(outs[:20]) + (" …" if len(outs) > 20 else "")
@@ -367,7 +392,7 @@ def build_docking_docx(r, llm=None):
         # Second, because the electronic character of a ligand is a property of
         # the molecule alone — it does not depend on which target it was docked
         # into, so it belongs before the target-by-target results.
-        doc.add_heading("Ligand validation — frontier molecular orbitals", level=1)
+        doc.add_heading("Ligand HOMO LUMO", level=2)
         qm_rows, qm_figs = [], []
         try:
             from agents.qm_analyst import orbitals, xtb_available
@@ -419,10 +444,16 @@ def build_docking_docx(r, llm=None):
                         doc.add_paragraph(
                             f"Genuine orbital surfaces unavailable for {lab}: "
                             + entry.get('surface_error', 'Surface validation failed.'))
-                for sheet in contact_sheets(surface_entries):
-                    doc.add_page_break()
+                for sheet_index, sheet in enumerate(contact_sheets(surface_entries, compact=True)):
+                    if sheet_index:
+                        doc.add_page_break()
                     doc.add_heading("Molecular orbital surfaces", level=2)
-                    picture(sheet['png'], 5.65)
+                    from PIL import Image
+                    with Image.open(io.BytesIO(sheet['png'])) as sheet_image:
+                        max_height = 6.0 if len(sheet['labels']) < 4 else 6.8
+                        sheet_width = min(5.65, max_height * sheet_image.width / sheet_image.height)
+                    picture(sheet['png'], sheet_width)
+                    doc.paragraphs[-1].paragraph_format.keep_with_next = True
                     caption('Figure', '; '.join(sheet['labels']) + '. '
                             'LUMO above HOMO. Orange/blue indicate opposite orbital phases '
                             'at +0.03/-0.03 a.u., not charge. GFN2-xTB predictions.')
@@ -473,7 +504,8 @@ def build_docking_docx(r, llm=None):
                     writeups[id(x)] = futures[id(x)].result()
 
         # ══ 4. DOCKING RESULTS, PER TARGET ═════════════════════════════════
-        doc.add_heading("Docking results", level=1)
+        doc.add_page_break()
+        doc.add_heading("Docking results", level=2)
         import charts
         table_no_for = {}
 
@@ -562,6 +594,7 @@ def build_docking_docx(r, llm=None):
 
         # ══ 5. RESULTS + 6. DISCUSSION ═════════════════════════════════════
         _add_results_discussion(doc, targets, rows_for, _aff, meta, llm, qm_rows)
+        add_docking_references(doc)
 
     finally:
         if bh["browser"]:
@@ -618,10 +651,9 @@ def _add_results_discussion(doc, targets, rows_for, aff, meta, llm, qm_rows):
     if settings:
         facts.append("Settings: " + ", ".join(settings) + ".")
 
-    doc.add_heading("Results", level=1)
+    doc.add_heading("Discussion", level=1)
     for f in facts:
         doc.add_paragraph(f)
-    doc.add_heading("Discussion", level=1)
     doc.add_paragraph(
         "Evaluation basis. AutoDock Vina scores are model predictions in kcal/mol. "
         "They do not establish measured affinity, inhibition or clinical activity. "
@@ -629,10 +661,20 @@ def _add_results_discussion(doc, targets, rows_for, aff, meta, llm, qm_rows):
     doc.add_paragraph(
         f"Limitations. These poses use {meta.get('replicas', 'unrecorded')} docking replica(s) at the "
         "exhaustiveness recorded above, in the absence of explicit solvent. Docking "
-        "scores are not free energies, and the ranking is more reliable than the "
-        "absolute values. Treat this as a hypothesis-generating screen rather than "
+        "scores approximate binding energetics but are not measured free energies. "
+        "Treat this as a hypothesis-generating screen rather than "
         "a lead-identification result, and re-run anything promising at higher "
         "exhaustiveness with replicas before acting on it.")
+    doc.add_heading('Conclusion', level=1)
+    doc.add_paragraph(
+        f'The screen evaluated {len(targets)} target(s), with scored docking poses '
+        f'for {sum(bool(rows_for(t)) for t in targets)} target(s). '
+        'The target geometry checks and ligand electronic calculations '
+        'provide context for selecting candidates for further study. Confirmation requires '
+        'appropriate pose benchmarking and experimental binding or activity measurements; '
+        'neither docking scores nor orbital gaps establish biological efficacy.')
+
+
 
 
 def build_string_docx(r):

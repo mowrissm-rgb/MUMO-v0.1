@@ -86,11 +86,18 @@ RUN micromamba create -y -p /opt/qmenv -c conda-forge python=3.12 pip && \
     /opt/qmenv/bin/python -c "import pyscf, numpy, scipy, h5py; print('isolated orbital engine OK')" && \
     micromamba clean --all --yes && chmod -R a+rX /opt/qmenv
 ENV MUMO_QM_PYTHON=/opt/qmenv/bin/python
+# Solvent exposure is isolated from the docking and orbital environments.
+RUN micromamba create -y -p /opt/validationenv -c conda-forge \
+        python=3.11 freesasa-python=2.2.1 && \
+    /opt/validationenv/bin/python -c "import freesasa; print('isolated FreeSASA OK')" && \
+    micromamba clean --all --yes && chmod -R a+rX /opt/validationenv
+ENV MUMO_VALIDATION_PYTHON=/opt/validationenv/bin/python
 USER mambauser
 RUN pip install --no-cache-dir pillow
 COPY --chown=mambauser:mambauser . /app
 RUN python -m unittest discover -s tests
 RUN python scripts/check_orbital_release.py
+RUN python scripts/check_target_validation_release.py
 
 # HF Spaces routes external traffic to app_port (7860, set in README frontmatter)
 ENV STREAMLIT_SERVER_HEADLESS=true \
