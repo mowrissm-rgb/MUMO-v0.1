@@ -295,12 +295,12 @@ def build_docking_docx(r, llm=None):
         n_lig = len({x.get("Ligand") for x in rows})
         if len(targets) > 1:
             doc.add_paragraph(
-                f"This run docked {n_lig} small-molecule ligands against each of "
+                f"This screen evaluated {n_lig} small-molecule ligands against "
                 f"{len(targets)} targets — {', '.join(targets)} — for a total of "
                 f"{len(ok_rows)} scored poses.")
         else:
             doc.add_paragraph(
-                f"This run docked {n_lig} small-molecule ligand(s) against "
+                f"This screen evaluated {n_lig} small-molecule ligand(s) against "
                 f"{targets[0]}, producing {len(ok_rows)} scored poses.")
 
         best_bits = []
@@ -396,6 +396,15 @@ def build_docking_docx(r, llm=None):
         if not wrote_any:
             doc.add_paragraph("No structure-validation data was recorded for this run.")
 
+        from report_biology import add_string_section, add_adme_section
+        def network_picture(svg, label):
+            png, error = _shot('2d', svg)
+            if png:
+                doc.add_picture(io.BytesIO(png), width=Inches(6.0))
+                caption('Figure', label)
+            else:
+                doc.add_paragraph('Network image unavailable: ' + str(error))
+        add_string_section(doc, meta.get('biology'), _add_kv_table, network_picture)
         # ══ 2. LIGAND VALIDATION (HOMO/LUMO) ═══════════════════════════════
         # Second, because the electronic character of a ligand is a property of
         # the molecule alone — it does not depend on which target it was docked
@@ -543,10 +552,21 @@ def build_docking_docx(r, llm=None):
                 "Affinity (kcal/mol)": f"{_aff(x):.3f}",
                 "Est. Ki": x.get("Est. Ki", "—"),
                 "Ligand eff.": x.get("Ligand efficiency", "—"),
-                "H-bonds": x.get("H-bonds", 0),
+                "H-bonds": x.get("H-bonds"),
                 "Key interacting residues": x.get("All interacting residues", "—"),
             } for x in sub])
             _add_df_table(doc, tab)
+
+            if any(x.get('Calculation origin') for x in sub):
+                doc.add_heading('Calculation provenance', level=3)
+                caption('Table', f'Original calculation identity for each scored pair against {t}. '
+                        'Reused calculations are not independent new docking runs.')
+                _add_df_table(doc, _pd.DataFrame([{
+                    'Ligand': x.get('Ligand'),
+                    'Origin': x.get('Calculation origin', 'Not recorded'),
+                    'Original date': x.get('Original calculation date', 'Not recorded'),
+                    'Source run': x.get('Original run ID', 'Not recorded'),
+                } for x in sub]))
 
             # figures, scoped to THIS target only
             for heading, fn, cap in (
@@ -603,6 +623,7 @@ def build_docking_docx(r, llm=None):
                     doc.add_paragraph(f"(Pose images unavailable: {err3})")
 
         # ══ 5. RESULTS + 6. DISCUSSION ═════════════════════════════════════
+        add_adme_section(doc, meta.get('biology'), _add_kv_table)
         _add_results_discussion(doc, targets, rows_for, _aff, meta, llm, qm_rows)
         add_docking_references(doc)
 
@@ -620,13 +641,13 @@ def build_docking_docx(r, llm=None):
 _RESULTS_SYSTEM = (
     "You are writing the Results and Discussion sections of a molecular-docking "
     "report for a pharmacy researcher. Be precise, sober and academic. Use the "
-    "standard AutoDock Vina interpretation bands: more negative than -7.0 kcal/mol "
-    "is generally considered strong, -5.0 to -7.0 moderate, weaker than -5.0 poor. "
-    "Never claim a result the numbers do not support, and say plainly when a screen "
-    "produced no strong binder. Cover, under a '## Results' heading: what was docked "
+    "recorded AutoDock Vina scores for within-target ranking. No universal score "
+    "cutoff establishes strong binding, potency or biological activity. "
+    "Never claim a result the numbers do not support. Cover, under a '## Results' "
+    "heading: what was docked "
     "against what, the per-target best hits with their affinities, and how the set "
-    "distributes across those bands. Then under a '## Discussion' heading cover: the "
-    "evaluation basis, why these targets matter, interpretation against the bands, "
+    "distributes across the observed score range. Then under a '## Discussion' heading cover: the "
+    "evaluation basis, why these targets matter, score and pose uncertainty, "
     "whether any ligand is active across multiple targets, limitations (recorded "
     "replica count, exhaustiveness setting, no solvent, docking scores are not free "
     "energies), and a short conclusion. Use markdown headings and short paragraphs."

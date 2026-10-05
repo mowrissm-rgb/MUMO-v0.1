@@ -1861,6 +1861,15 @@ def _apply_result(result, persist=True):
         ss.convo = {}
         return
 
+    from docking_ui_bridge import public_result, save_cache_async
+    user = authdb.current_user()
+    try:
+        client = authdb.get_client() if user else None
+        save_cache_async(client, user, result)
+    except Exception:
+        say('Private calculation memory could not be saved. The computed results remain available.')
+    result = public_result(result)
+
     from viz import rehydrate_viz
     # result["viz"] is already in serialize_viz form (self-contained 2D SVG +
     # cropped complex text); rehydrate writes the complex back to disk for the
@@ -1903,6 +1912,8 @@ def _apply_result(result, persist=True):
     # steps here while the dock runs in its subprocess. They carry their own
     # slot snapshot, which is why clearing ss.convo just above is safe.
     queued = [s.get("action") for s in (ss.get("pending_actions") or [])]
+    if ((meta.get('biology') or {}).get('adme') or {}).get('compounds'):
+        queued.append('analyze')
     _resume_pending()
     # Offer the obvious follow-up — but never one the user already asked for in
     # the same breath, which is what `queued` guards against.
@@ -1923,8 +1934,24 @@ def run_pipeline(status_area):
     # DATA folder used here previously meant a second foreground-fallback dock
     # in the same session (or even a different session, on a shared host)
     # could overwrite the first one's exported files mid-flight.
-    result = run_job(ss.convo, VINA, _fresh_scratch_dir(os.path.join(DATA, "fg")), VENV,
-                     llm=_llm, progress=lambda m: status_area.write(m))
+    from docking_protocol import request_for_mode
+    user = authdb.current_user()
+    # No interactive consent can interrupt a synchronous fallback. Calculate
+    # fresh, state that explicitly, and still record eligible pairs for later reuse.
+    cache_context = None
+    from docking_release import private_cache_enabled
+    if user and private_cache_enabled():
+        status_area.write('Background launch unavailable: this fallback calculates all pairs fresh; '
+                          'it does not reuse previous docking results.')
+        cache_context = {'owner_id': user['id'], 'candidates': [],
+                         'notice': 'Foreground fallback: fresh calculation, no previous pair reuse.'}
+    result = run_job(request_for_mode(ss.convo, ss.get('docking_mode', 'Standard')),
+                     VINA, _fresh_scratch_dir(os.path.join(DATA, "fg")), VENV,
+                     llm=_llm, progress=lambda m: status_area.write(m), cache_context=cache_context)
+    import uuid
+    result.setdefault('run_id', str(uuid.uuid4()))
+    from docking_biology import enrich_result
+    result = enrich_result(result, progress=lambda message: status_area.write(message))
     _apply_result(result)
 
 
@@ -2046,15 +2073,21 @@ def _start_background_job():
         say("A docking run is already going for this session — it keeps running on the "
             "server even if you leave. Results will appear here when it's done.")
         return True
+    from docking_protocol import request_for_mode
     spec = {
         "job_id": job_id,
         "jobs_dir": jobs.default_jobs_dir(),
-        "convo": dict(ss.convo),
+        "convo": request_for_mode(ss.convo, ss.get('docking_mode', 'Standard')),
         "vina": VINA,
         "data_dir": _job_data_dir(job_id),
         "venv": VENV,
         "conversation_id": ss.active_conversation_id,
     }
+    from docking_ui_bridge import cache_fields
+    user = authdb.current_user()
+    spec.update(cache_fields(authdb.get_client() if user else None, user))
+    if spec.get('cache_notice'):
+        say(spec['cache_notice'])
     try:
         started = jobs.start(job_id, spec)
     except Exception as e:
@@ -2105,6 +2138,37 @@ def _render_job_progress():
             except Exception:
                 pass
     status = st_.get("status")
+
+    if status == 'awaiting_reuse':
+        ss.job_id = job_id
+        user = authdb.current_user()
+        from docking_ui_bridge import may_view_offer
+        if not may_view_offer(st_, user):
+            st.warning('Sign in with the account that started this run to choose calculation reuse.')
+            return True
+        offer = st_.get('reuse_offer') or {}
+        with st.status('Previous matching calculations found', expanded=True):
+            st.write(f"{offer.get('hit_count', 0)} matching calculation(s) in "
+                     f"{offer.get('total_pairs', 0)} requested pairs. "
+                     'Use them and calculate the remaining pairs, or calculate all pairs again.')
+            st.caption('Matching requires the same prepared structures and calculation settings. '
+                       'Reused results keep their original dates and validation limitations.')
+            for match in offer.get('matches') or []:
+                st.caption(f"Original calculation: {match.get('created_at', 'date unavailable')} "
+                           f"· run {match.get('source_run_id', 'unknown')} "
+                           f"· reliability {match.get('qualifications') or 'not recorded'}")
+            columns = st.columns(2)
+            generation = st_.get('generation')
+            for column, action, label in [(columns[0], 'reuse', 'Reuse matching results'),
+                                           (columns[1], 'redock', 'Redock all pairs')]:
+                if column.button(label, key=f'reuse_{generation}_{action}',
+                                 disabled=not user, use_container_width=True):
+                    if jobs.submit_reuse_choice(job_id, generation, action, user['id']):
+                        st.rerun()
+                    else:
+                        st.warning('This choice is no longer current. Reload to see the latest run state.')
+        # Keep this screen interactive; do not automatically choose or enter a polling loop.
+        return True
 
     if status == "running":
         ss.job_id = job_id
@@ -2195,6 +2259,11 @@ with st.sidebar:
         ss.theme = "light"
         st.rerun()
 
+    st.selectbox('Docking mode', ['Medium', 'Standard', 'High'], index=1,
+                 key='docking_mode',
+                 help='Medium: 8, Standard: 16, High: 32 exhaustiveness. '
+                      'Each uses 3 independently seeded searches. Higher search '
+                      'effort takes longer and does not prove biological activity.')
     # ── why is chat off? ──────────────────────────────────────────────────
     # Shown ONLY when there is no LLM, because "add a key in secrets" is
     # useless advice to someone who just added one. The actionable question is
@@ -2953,6 +3022,10 @@ def render_results():
         st.dataframe(rdf, use_container_width=True, height=table_height)
         st.download_button("Download CSV", rdf.to_csv(index_label="Rank").encode("utf-8"),
                            file_name=f"MUMO_{meta.get('gene', 'target')}.csv", mime="text/csv")
+
+        if meta.get('biology'):
+            from report_biology import render_biology_panel
+            render_biology_panel(st, meta['biology'])
 
         # Full .docx report (every ligand: tables + write-up + 2D + 3D). Building it
         # renders a static screenshot per ligand via headless Chromium, which is too

@@ -71,6 +71,40 @@ def add_docking_methodology(doc, meta, targets, add_table):
         'and a binding-site close-up from the same complex. Vina scores are predictions '
         'in kcal/mol. Any Ki inferred from a score is a heuristic, not a measured inhibition constant.')
     per_target = meta.get('per_target') or {}
+    if meta.get('cache'):
+        doc.add_heading('Previously calculated and new docking pairs', level=2)
+        doc.add_paragraph(
+            'Reuse requires an explicit user choice and an exact match of the prepared '
+            'receptor and ligand, chemical state, search box, scoring function, seeds '
+            'and recorded software/preparation versions. Display names alone do not '
+            'establish equivalence. Previously calculated pairs retain their original '
+            'scores, coordinates, interaction records, calculation dates and source '
+            'run identifiers; they are not described as newly executed calculations. '
+            'New and reused pairs are combined only under the matching recorded '
+            'protocol. Reusing a result does not add an independent validation run.')
+    if meta.get('biology'):
+        doc.add_heading('Target associations and candidate ADME', level=2)
+        doc.add_paragraph(
+            'Recorded UniProt accessions and verified NCBI taxonomy identifiers are '
+            'used to group targets by species. Each group is queried separately in '
+            'STRING [6]; unmapped targets are retained as unavailable. The stored '
+            'network represents functional associations, not evidence of ligand '
+            'binding. Enrichment covers resolved inputs and up to 12 functional '
+            'partners; it is not an enrichment test of the submitted targets alone. '
+            'Network confidence scores, identifiers, query parameters and dates '
+            'are retained with the run. Report downloads render this snapshot '
+            'without performing another network analysis.')
+        doc.add_paragraph(
+            'Within each target, completed interaction-profiled pairs are ranked '
+            'by the lowest finite Vina score; tied candidates are retained. '
+            'A candidate shared by several targets is analyzed once when its '
+            'canonical isomeric input structure is identical. RDKit calculates '
+            'descriptors and transparent heuristic rules. Available ADMET-AI '
+            'models provide separate machine-learning predictions [7], with '
+            'recorded versions and endpoint-specific units and availability. '
+            'Missing model endpoints are not replaced by estimates. Neither '
+            'candidate selection nor an ADME prediction establishes biological '
+            'activity or experimental pharmacokinetics.')
     for target in targets:
         tm = per_target.get(target) or (meta if len(targets) == 1 else {})
         doc.add_heading(f'{target} run parameters', level=3)
@@ -78,6 +112,7 @@ def add_docking_methodology(doc, meta, targets, add_table):
             ('Search box center (Å)', tm.get('center', 'Not recorded')),
             ('Search box size (Å)', tm.get('size', 'Not recorded')),
             ('Pocket source', tm.get('pocket', 'Not recorded')),
+            ('Docking mode', tm.get('docking_mode', 'Not recorded (historical run)')),
             ('Vina exhaustiveness', tm.get('exhaustiveness', 'Not recorded')),
             ('Docking replicas', tm.get('replicas', 'Not recorded')),
             ('Base random seed', tm.get('seed', 'Not recorded')),
@@ -99,5 +134,11 @@ def add_docking_references(doc):
         'Journal of Computational Chemistry (2010), 31:455–461. doi:10.1002/jcc.21334.',
         '[5] Bouysset C, Fiorucci S. ProLIF: a library to encode molecular interactions '
         'as fingerprints. Journal of Cheminformatics (2021), 13:72. doi:10.1186/s13321-021-00548-6.',
+        '[6] Szklarczyk D et al. The STRING database in 2023: protein-protein association '
+        'networks and functional enrichment analyses for any sequenced genome of interest. '
+        'Nucleic Acids Research (2023), 51:D638-D646. doi:10.1093/nar/gkac1000.',
+        '[7] Swanson K et al. ADMET-AI: a machine learning ADMET platform for evaluation '
+        'of large-scale chemical libraries. Bioinformatics (2024), 40:btae416. '
+        'doi:10.1093/bioinformatics/btae416.',
     ]:
         doc.add_paragraph(text)
