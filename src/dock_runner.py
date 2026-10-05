@@ -56,6 +56,7 @@ def main(spec_path):
                            expected_pairs=result.get('meta', {}).get('expected_pairs'))
 
     try:
+        jobs.validate_job_spec(spec)
         # LLM for the narrative report (falls back to rule-based if no key in env)
         try:
             from llm_client import get_llm
@@ -64,10 +65,32 @@ def main(spec_path):
             llm = None
 
         from pipeline_core import run_job
+        from docking_release import private_cache_enabled
+        def choose_reuse(offer):
+            return jobs.await_reuse_choice(jd, spec.get('generation'), spec.get('owner_id'),
+                offer, timeout=spec.get('reuse_timeout_seconds', 900))
         result = run_job(spec["convo"], spec["vina"], spec["data_dir"], spec["venv"],
-                         llm=llm, progress=progress, checkpoint=checkpoint)
+                         llm=llm, progress=progress, checkpoint=checkpoint,
+                         cache_context=({'owner_id': spec.get('owner_id'),
+                             'candidates': spec.get('cache_candidates') or [],
+                             'notice': spec.get('cache_notice')} if private_cache_enabled() else None),
+                         reuse_decision=choose_reuse)
         import uuid
-        result['run_id'] = str(uuid.uuid4())
+        result.setdefault('run_id', str(uuid.uuid4()))
+        if result.get('cache_entries'):
+            try:
+                from docking_reuse_ui import worker_cache_fields
+                bounded = worker_cache_fields(spec.get('owner_id'), result['cache_entries'])
+                result['cache_entries'] = bounded['cache_candidates']
+            except Exception:
+                result['cache_entries'] = []
+                result.setdefault('meta', {}).setdefault('cache', {})['notice'] = (
+                    'Private cache write unavailable; finished docking remains available.')
+        if result.get('ok'):
+            # An interrupted optional biological step must retain all completed pairs.
+            checkpoint(result)
+            from docking_biology import enrich_result
+            result = enrich_result(result, progress=progress)
 
         # Deliver first. External storage must never withhold a computed result.
         progress('Publishing completed results…')
@@ -84,14 +107,16 @@ def main(spec_path):
         saved, save_err = False, None
         if conv_id and result.get("ok"):
             try:
+                from docking_ui_bridge import public_result
+                history = public_result(result)
                 from auth_store import standalone_client, save_results_with
                 client = standalone_client()
                 saved, save_err = save_results_with(
                     client, conv_id,
-                    {"gene": result["meta"].get("gene"),
+                    {"gene": history["meta"].get("gene"),
                      "run_id": result['run_id'],
-                     "rows": result["rows"], "meta": result["meta"],
-                     "viz": result["viz"],
+                     "rows": history["rows"], "meta": history["meta"],
+                     "viz": history["viz"],
                      "saved_at": time.time()})
             except Exception as e:
                 save_err = f"{type(e).__name__}: {e}"

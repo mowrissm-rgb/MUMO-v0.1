@@ -106,7 +106,8 @@ def structure_validation(target, data_dir, progress=lambda m: None):
     return res
 
 
-def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, checkpoint=None):
+def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, checkpoint=None,
+            cache_context=None, reuse_decision=None):
     """Run the whole docking pipeline for one chat request. See module docstring
     for the return contract. `convo` is the chat's conversation dict (disease /
     target / ligand_objs / n_ligands / tier)."""
@@ -118,7 +119,11 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
     import pandas as pd
 
     c = dict(convo or {})
+    import uuid
+    source_run_id = str(uuid.uuid4())
     tier = c.get("tier") or "Standard"
+    from docking_protocol import resolve_protocol
+    protocol = resolve_protocol(c.get('docking_mode'))
 
     # resolve a disease into its top target (Open Targets) if we don't have one
     if not c.get("target") and c.get("disease"):
@@ -191,7 +196,9 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
             combined_rows += [dict(row, Target=target) for row in target_rows]
             combined_viz.update({f'{target} · {label}' if multi else label: entry
                                  for label, entry in (target_viz or {}).items()})
-            combined_meta['per_target'][target] = target_meta or {}
+            combined_meta['per_target'][target] = {k: v for k, v in (target_meta or {}).items() if k != 'cache_entries'}
+        combined_meta.pop('cache_entries', None)
+        combined_meta.update(protocol)
         combined_meta.update(gene=' + '.join(targets), targets=targets,
                              expected_pairs=expected_pairs, partial=True)
         checkpoint(json_safe({'ok': True, 'partial': True, 'rows': combined_rows,
@@ -199,6 +206,9 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
             'say_text': f'Partial run: {len(combined_rows)} of {expected_pairs} target–ligand pairs '
                         'have been attempted and saved. Unfinished pairs have no result.'}))
     failed_targets = []
+    cache_entries = []
+    cache_export_bytes = 0
+    cache_meta = {'status': 'fresh', 'hit_count': 0, 'notice': (cache_context or {}).get('notice')}
     def record_target_failure(name, error):
         # Every requested pair remains visible; missing scores are never zero.
         for ligand in ligands:
@@ -208,11 +218,56 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
                 'H-bond residues': '-', 'All interacting residues': '-',
                 'Interaction status': 'unavailable', 'Interaction note': str(error),
                 'Failure stage': 'target preparation', 'Failure reason': str(error)})
+    prepared_targets = {}
+    reuse_entries = {}
+    if cache_context is not None:
+        # All actual inputs exist before matching or executing any requested pair.
+        from pipeline import prepare_docking
+        from docking_memory import plan_reuse, execution_keys
+        manifests = []
+        for index, name in enumerate(targets):
+            t_dir = os.path.join(data_dir, 't%02d_%s' % (index,
+                re.sub(r'[^A-Za-z0-9_.-]', '_', str(name))[:32]))
+            os.makedirs(t_dir, exist_ok=True)
+            try:
+                target = build_target(dict(c, target=name), t_dir)
+                prepared = prepare_docking(target, ligands, vina, t_dir, venv,
+                    status=progress, exhaustiveness=protocol['exhaustiveness'],
+                    n_replicas=protocol['replicas'], seed=protocol['seed'])
+                prepared_targets[name] = (target, t_dir, prepared)
+                manifests.extend(item.get('manifest') for item in prepared['ligands'])
+            except Exception as exc:
+                prepared_targets[name] = None
+                failed_targets.append(f'{name} ({exc})')
+                record_target_failure(name, exc)
+                save_checkpoint()
+        reuse_plan = plan_reuse(manifests, cache_context.get('candidates'), cache_context.get('owner_id'))
+        cache_meta['hit_count'] = reuse_plan['hit_count']
+        choice = None
+        if reuse_plan['hit_count']:
+            offer = {'hit_count': reuse_plan['hit_count'], 'total_pairs': expected_pairs,
+                     'docking_mode': protocol['docking_mode'],
+                     'matches': [{'source_run_id': entry['source_run_id'], 'created_at': entry['created_at'],
+                         'key': key, 'qualifications': entry['row'].get('Reliability'),
+                         'interaction_note': entry['interactions'].get('note'),
+                         'validation': (entry.get('target_meta') or {}).get('validation')}
+                         for key, entry in reuse_plan['hits'].items()]}
+            if reuse_decision is None:
+                raise RuntimeError('Explicit reuse/redock choice required before any pair executes')
+            choice = reuse_decision(offer)
+            if execution_keys(reuse_plan, choice) is None:
+                raise RuntimeError('Invalid or missing reuse choice; no requested pair executed')
+        if choice == 'reuse':
+            reuse_entries = reuse_plan['hits']
+        cache_meta['status'] = choice or 'fresh'
     for n_t, name in enumerate(targets):
+        if cache_context is not None and prepared_targets.get(name) is None:
+            continue
         try:
             if multi:
                 progress(f"Preparing target {name} ({n_t + 1} of {len(targets)})…")
-            t_obj = build_target(dict(c, target=name), data_dir)
+            t_obj = (prepared_targets[name][0] if cache_context is not None
+                     else build_target(dict(c, target=name), data_dir))
         except Exception as e:
             # one unreachable target must not sink the whole screen
             failed_targets.append(f"{name} ({e})")
@@ -235,11 +290,28 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
         t_dir = os.path.join(data_dir, "t%02d_%s" % (
             n_t, re.sub(r"[^A-Za-z0-9_.-]", "_", str(t_obj.get("gene") or name))[:32]))
         os.makedirs(t_dir, exist_ok=True)
+        if cache_context is not None:
+            t_dir = prepared_targets[name][1]
         try:
             checkpoint_args = ({'checkpoint': lambda r, v, m: save_checkpoint(
                 t_obj['gene'], r, v, m)} if checkpoint else {})
+            checkpoint_args['source_run_id'] = source_run_id
+            if cache_context is not None:
+                checkpoint_args.update(prepared=prepared_targets[name][2],
+                    reuse_entries=reuse_entries, owner_id=cache_context.get('owner_id'))
             t_rows, t_viz, t_meta = dock_pipeline(t_obj, ligands, vina, t_dir, venv,
-                                                status=progress, **checkpoint_args)
+                status=progress, exhaustiveness=protocol['exhaustiveness'],
+                n_replicas=protocol['replicas'], seed=protocol['seed'], **checkpoint_args)
+            t_meta = dict(t_meta or {}, **protocol)
+            import json
+            for entry in t_meta.pop('cache_entries', []) or []:
+                entry_bytes = len(json.dumps(entry, allow_nan=False).encode())
+                if len(cache_entries) < 64 and cache_export_bytes + entry_bytes < 64*1024*1024:
+                    cache_entries.append(entry); cache_export_bytes += entry_bytes
+                else:
+                    cache_meta['notice'] = 'Private cache evidence limit reached; finished docking remains available.'
+            if t_meta.get('cache_notice'):
+                cache_meta['notice'] = t_meta['cache_notice']
         except Exception as exc:
             failed_targets.append(f"{name} ({type(exc).__name__}: {exc})")
             record_target_failure(name, exc)
@@ -259,8 +331,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
             meta.setdefault("per_target", {})[t_obj["gene"]] = {
                 k: t_meta.get(k) for k in ("pocket", "validation", "reliability_by",
                     "ramachandran", "run_records", "validation_pdb_text", "pdb_id",
-                    "accession", "center", "size", "seed", "dropped_residues",
-                    "exhaustiveness", "replicas")}
+                    "accession", "species", "chains", "center", "size", "seed", "dropped_residues",
+                    "exhaustiveness", "replicas", "docking_mode", "replica_seeds", "reused_provenance")}
         save_checkpoint()
 
     if not rows:
@@ -269,8 +341,12 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
                 "say_text": f"The docking didn't produce any results — {note}." + skipped_note}
 
     meta = dict(meta or {})
+    meta.update(protocol)
     meta["failed_targets"] = failed_targets
     meta['expected_pairs'] = expected_pairs
+    meta['cache'] = cache_meta
+    cache_meta['reused_pairs'] = sum(row.get('Calculation origin') == 'reused' for row in rows)
+    cache_meta['new_pairs'] = sum(row.get('Calculation origin') == 'new' for row in rows)
     if multi:
         meta["gene"] = " + ".join(t for t in
                                   dict.fromkeys(r["Target"] for r in rows))
@@ -287,8 +363,8 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
     meta_store = {k: meta.get(k) for k in
                   ("gene", "pocket", "exhaustiveness", "replicas", "validation",
                    "reliability_by", "targets", "per_target", "ramachandran", "run_records", "failed_targets",
-                   "validation_pdb_text", "pdb_id", "accession", "center", "size", "seed", "dropped_residues",
-                   "expected_pairs")
+                   "validation_pdb_text", "pdb_id", "accession", "species", "chains", "center", "size", "seed", "dropped_residues",
+                   "expected_pairs", "docking_mode", "replica_seeds", "cache", "reused_provenance")
                   if k in meta}
 
     # narrative report on the best hit
@@ -343,5 +419,6 @@ def run_job(convo, vina, data_dir, venv, llm=None, progress=lambda m: None, chec
 
     # a ligand that was screened out must be accounted for even on a good run,
     # so the results table is never quietly shorter than what the user asked for
-    return json_safe({"ok": True, "rows": sorted_rows, "meta": meta_store,
-            "viz": serialize_viz(viz), "say_text": say_text + skipped_note, "tier": tier})
+    return json_safe({"ok": True, "rows": sorted_rows, "meta": meta_store, "run_id": source_run_id,
+            "viz": serialize_viz(viz), "say_text": say_text + skipped_note, "tier": tier,
+            "cache_entries": cache_entries})

@@ -9,6 +9,9 @@ reported through a `status(message)` callback the caller provides.
 """
 
 import os
+import hashlib
+import copy
+from pathlib import Path
 from verification import validate_box, validate_docking_result, capture_artifacts, run_record
 from agents.target_analyst import analyze_target
 from agents.interaction_analyst import analyze_interactions, prepare_receptor_context
@@ -27,7 +30,66 @@ def resolve_receptor(tgt, data_dir):
     return info["pdb_path"], info["center"], info["size"], info["pocket_source"]
 
 
-def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
+def prepared_manifest(target, receptor, ligand, center, size, exhaustiveness,
+                      replicas, seed, versions, source_smiles=None):
+    """Read chemistry from the actual Meeko output, never infer prepared charge."""
+    from rdkit import Chem
+    text = Path(ligand).read_text(encoding='utf-8')
+    smiles = next((line[len('REMARK SMILES '):].strip() for line in text.splitlines()
+                   if line.startswith('REMARK SMILES ')), None)
+    mol = Chem.MolFromSmiles(smiles) if smiles else None
+    state = {'isomeric_smiles': smiles, 'charge': Chem.GetFormalCharge(mol) if mol else None,
+             'ph': 7.4}
+    if source_smiles is not None:
+        state['source_smiles'] = source_smiles
+    return {'schema_version': 1,
+            'receptor_sha256': hashlib.sha256(Path(receptor).read_bytes()).hexdigest(),
+            'ligand_sha256': hashlib.sha256(Path(ligand).read_bytes()).hexdigest(),
+            'target_identity': {k: target.get(k) for k in ('accession', 'species', 'chains')},
+            'chemical_state': state, 'grid': {'center': list(center), 'size': list(size)},
+            'protocol': {'scoring': 'vina', 'exhaustiveness': exhaustiveness,
+                         'seeds': [seed+i for i in range(replicas)]},
+            'versions': versions,
+            'settings': {'preparation': {'ph': 7.4, 'seed': seed, 'n_confs': 4, 'max_rot': 10,
+                                        'receptor': 'clean standard complete amino acids; Meeko templates'},
+                         'interactions': {'method': 'configured ProLIF contacts',
+                                          'hydrogens': 'RDKit residue templates; unoptimized'},
+                         'docking': {'num_modes': 6, 'energy_range': 3.0, 'cpu': 'auto',
+                                     'consensus': 'Vinardo score-only'}}}
+
+
+def runtime_versions(vina, venv_dir):
+    """Unknown identities cause cache misses. Fingerprint implementation and binary."""
+    import importlib.metadata
+    import subprocess
+    import shutil
+    versions = {}
+    for name in ('rdkit', 'meeko', 'prolif'):
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            versions[name] = 'unknown'
+    root = Path(__file__).parent
+    for name, files in {'preparation': ['docking_engine.py'],
+                        'interactions': ['agents/interaction_analyst.py']}.items():
+        versions[name] = hashlib.sha256(b''.join((root/f).read_bytes() for f in files)).hexdigest()
+    try:
+        binary = Path(vina if Path(vina).is_file() else shutil.which(vina) or vina)
+        proc = subprocess.run([str(binary), '--version'], capture_output=True, text=True, timeout=10)
+        versions['vina'] = (proc.stdout.strip() + ':' + hashlib.sha256(binary.read_bytes()).hexdigest()
+                            if proc.returncode == 0 and proc.stdout.strip() else 'unknown')
+    except (OSError, subprocess.SubprocessError):
+        versions['vina'] = 'unknown'
+    # prepare_receptor uses sys.executable, the same installed Meeko as this process.
+    versions['receptor_meeko'] = versions['meeko']
+    try:
+        versions['openbabel'] = importlib.metadata.version('openbabel-wheel')
+    except importlib.metadata.PackageNotFoundError:
+        versions['openbabel'] = 'unknown'
+    return versions
+
+
+def prepare_docking(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                   exhaustiveness=None, n_replicas=None, seed=42, checkpoint=None):
     """
     Prepare the receptor once and dock every ligand.
@@ -160,7 +222,7 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     # fingerprint), reused across every ligand — instead of re-protonating the
     # whole protein per ligand, which dominated multi-ligand runtime and, when it
     # failed under batch load, left ligands with no 2D/3D/zip data.
-    receptor_ctx = prepare_receptor_context(cleaned)
+    receptor_ctx = None  # Interactions and native redocking begin only after consent.
 
     # Gold-standard validation: if the structure has a co-crystal ligand, redock it
     # and report RMSD to the real pose (only experimental complexes — not AlphaFold).
@@ -173,11 +235,6 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
     # Vina's own default of 8 costs roughly 20-30s per target and reproduces
     # crystal poses well (measured: 3PTB 0.40 A, 1STP 0.68 A, 1AZM 1.08 A).
     validation = None
-    if "co-crystal" in pocket.lower():
-        status("Validating setup: re-docking the native co-crystal ligand…")
-        validation = validate_native_redock(pdb_path, receptor, vina, center, size,
-                                            data_dir, exhaustiveness=max(8, min(eff_exh, 16)),
-                                            seed=seed)
 
     rows, viz, reliability_by, records = [], {}, {}, {}
     with open(pdb_path, encoding='utf-8') as source:
@@ -195,13 +252,103 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                    "exhaustiveness": eff_exh, "replicas": eff_rep,
                    "validation": validation, "reliability_by": reliability_by,
                    "ramachandran": rama, "run_records": records}
+    identity = dict(tgt)
+    identity['chains'] = sorted({line[21].strip() or '_'
+        for line in validation_pdb_text.splitlines() if line.startswith('ATOM')})
+    from protein_identity import extract_identity
+    extracted = extract_identity(original_pdb_text, chains=identity['chains'])
+    for field in ('accession', 'species'):
+        if identity.get(field) and extracted.get(field) and identity[field] != extracted[field]:
+            raise ValueError(f'Provided target {field} disagrees with source structure metadata')
+        # Missing/ambiguous file identity is never made a hit by a display label.
+        identity[field] = extracted.get(field)
+    target_meta.update({k: identity.get(k) for k in ('accession', 'species', 'chains')})
+    target_meta['identity_source'] = extracted.get('identity_source')
+    target_meta['pdb_id'] = extracted.get('pdb_id')
+    versions = runtime_versions(vina, venv_dir)
+    prepared_ligands = []
+    for k, lig in enumerate(ligands):
+        item = {'ligand': dict(lig), 'index': k}
+        try:
+            ligf = os.path.join(data_dir, f'c_lig_{k}.pdbqt')
+            prepare_ligand(lig['smiles'], ligf, seed=seed)
+            item.update(path=ligf, sha256=hashlib.sha256(Path(ligf).read_bytes()).hexdigest())
+        except Exception as exc:
+            item.update(error=str(exc), manifest=None)
+        if not item.get('error'):
+            try:
+                item['manifest'] = prepared_manifest(identity, receptor, ligf,
+                    center, size, eff_exh, eff_rep, seed, versions, source_smiles=lig['smiles'])
+            except Exception:
+                item['manifest'] = None
+                target_meta['cache_notice'] = 'Private cache fingerprint unavailable; calculate fresh.'
+        prepared_ligands.append(item)
+    return {'tgt': tgt, 'pdb_path': pdb_path, 'cleaned': cleaned, 'receptor': receptor,
+            'center': center, 'size': size, 'pocket': pocket, 'data_dir': data_dir,
+            'eff_exh': eff_exh, 'eff_rep': eff_rep, 'seed': seed, 'rama': rama,
+            'meta': target_meta, 'ligands': prepared_ligands,
+            'receptor_sha256': hashlib.sha256(Path(receptor).read_bytes()).hexdigest()}
+
+
+def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
+                  exhaustiveness=None, n_replicas=None, seed=42, checkpoint=None,
+                  prepared=None, reuse_entries=None, owner_id=None, source_run_id=None):
+    from docking_memory import pair_key, eligible_entry
+    from datetime import datetime, timezone
+    import uuid
+    plan = prepared or prepare_docking(tgt, ligands, vina, data_dir, venv_dir,
+        status, exhaustiveness, n_replicas, seed)
+    pdb_path, cleaned, receptor = (plan[k] for k in ('pdb_path', 'cleaned', 'receptor'))
+    center, size, pocket = (plan[k] for k in ('center', 'size', 'pocket'))
+    eff_exh, eff_rep, seed, rama = (plan[k] for k in ('eff_exh', 'eff_rep', 'seed', 'rama'))
+    target_meta = plan['meta']
+    rows, viz = [], {}
+    reliability_by, records = target_meta['reliability_by'], target_meta['run_records']
+    validation = target_meta.get('validation')
+    receptor_ctx = None
+    source_run_id, created_at = source_run_id or str(uuid.uuid4()), datetime.now(timezone.utc).isoformat()
+    target_meta['cache_entries'] = []
+    cache_bytes = 0
     for k, lig in enumerate(ligands):
         label = lig["label"]
         status(f"Docking {label} ({k+1}/{len(ligands)})…")
         try:
             ligf = os.path.join(data_dir, f"c_lig_{k}.pdbqt")
             cmplx = os.path.join(data_dir, f"c_complex_{k}.pdb")
-            prepare_ligand(lig["smiles"], ligf, seed=seed)
+            item = plan['ligands'][k]
+            if item.get('error'):
+                raise ValueError(item['error'])
+            manifest = item['manifest']
+            key = pair_key(manifest)
+            receptor_hash = (manifest or {}).get('receptor_sha256') or plan.get('receptor_sha256')
+            ligand_hash = (manifest or {}).get('ligand_sha256') or item.get('sha256')
+            if (hashlib.sha256(Path(receptor).read_bytes()).hexdigest() != receptor_hash
+                    or hashlib.sha256(Path(ligf).read_bytes()).hexdigest() != ligand_hash):
+                raise ValueError('Prepared inputs changed after preflight')
+            cached = (reuse_entries or {}).get(key)
+            if cached and eligible_entry(cached, owner_id, key):
+                from viz import rehydrate_viz
+                row = copy.deepcopy(cached['row'])
+                row.update(Ligand=label, **{'Calculation origin': 'reused',
+                    'Original run ID': cached['source_run_id'], 'Original calculation date': cached['created_at'],
+                    'Pair key': key})
+                rows.append(row)
+                viz.update(rehydrate_viz({label: copy.deepcopy(cached.get('viz') or {})}, data_dir))
+                prior = cached.get('target_meta') or {}
+                reliability_by[label] = copy.deepcopy(prior.get('reliability_by', {}).get(cached['row'].get('Ligand'), {}))
+                records[label] = copy.deepcopy(cached.get('viz', {}).get('verification', {}))
+                target_meta.setdefault('reused_provenance', {})[label] = {
+                    'source_run_id': cached['source_run_id'], 'created_at': cached['created_at'],
+                    'validation': copy.deepcopy(prior.get('validation'))}
+                if checkpoint:
+                    checkpoint(rows, viz, target_meta)
+                continue
+            if receptor_ctx is None:
+                receptor_ctx = prepare_receptor_context(cleaned)
+            if validation is None and 'co-crystal' in pocket.lower():
+                validation = validate_native_redock(pdb_path, receptor, vina, center, size,
+                    data_dir, exhaustiveness=max(8, min(eff_exh, 16)), seed=seed)
+                target_meta['validation'] = validation
             res = dock_with_replicas(
                 vina, receptor, ligf,
                 os.path.join(data_dir, f"c_out_{k}"), os.path.join(data_dir, f"c_cfg_{k}"),
@@ -215,7 +362,6 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 "docking_receptor": receptor, "docking_ligand": ligf,
                 "selected_docking_output": outp, "source_receptor": pdb_path}))
             # Every replica's raw log, configuration and pose stays with the run.
-            from pathlib import Path
             for evidence_path in Path(data_dir).glob(f"c_*_{k}_r*.*"):
                 artifacts.update(capture_artifacts({evidence_path.name: str(evidence_path)}))
             record = run_record('docking', {'target': tgt['gene'], 'ligand': label,
@@ -262,9 +408,45 @@ def dock_pipeline(tgt, ligands, vina, data_dir, venv_dir, status=lambda m: None,
                 "Interaction status": ia.get("status", "unavailable"),
                 "Interaction note": ia.get("note", ""),
                 "Verification status": record['status'], "Run ID": record['run_id'],
+                "Calculation origin": "new", "Original run ID": source_run_id,
+                "Original calculation date": created_at, "Pair key": key,
             })
             viz[label] = {"complex": cmplx,
                           "ia": ia, "artifact_texts": artifacts, "verification": record}
+            if key and owner_id:
+                try:
+                    from viz import serialize_viz
+                    from docking_engine import parse_docking_results
+                    replicas = []
+                    for i in range(eff_rep):
+                        pose_path = os.path.join(data_dir, f'c_out_{k}_r{i}.pdbqt')
+                        log_path = os.path.join(data_dir, f'c_out_{k}_r{i}_vina.log')
+                        replicas.append({'seed': seed+i, 'score': parse_docking_results(log_path)[0],
+                            'pose': capture_artifacts({'pose': pose_path})['pose'],
+                            'log': Path(log_path).read_text(),
+                            'config': Path(data_dir, f'c_cfg_{k}_r{i}.txt').read_text()})
+                        for field in ('log', 'config'):
+                            replicas[-1][field+'_sha256'] = hashlib.sha256(replicas[-1][field].encode()).hexdigest()
+                    entry = {'owner_id': owner_id, 'key': key, 'manifest': manifest,
+                        'source_run_id': source_run_id, 'created_at': created_at,
+                        'row': copy.deepcopy(rows[-1]), 'interactions': ia, 'replicas': replicas,
+                        'artifacts': {'selected_pose': capture_artifacts({'pose': outp})['pose']},
+                        'viz': serialize_viz({label: viz[label]})[label],
+                        'target_meta': {name: copy.deepcopy(target_meta.get(name)) for name in
+                            ('validation', 'ramachandran', 'dropped_residues')}}
+                    entry['target_meta']['reliability_by'] = {label: copy.deepcopy(rel)}
+                    if eligible_entry(entry, owner_id, key):
+                        import json
+                        from docking_cache_store import MAX_RAW_BYTES
+                        entry_bytes = len(json.dumps(entry, allow_nan=False).encode())
+                        if (entry_bytes <= MAX_RAW_BYTES and cache_bytes + entry_bytes <= 64*1024*1024
+                                and len(target_meta['cache_entries']) < 64):
+                            target_meta['cache_entries'].append(entry)
+                            cache_bytes += entry_bytes
+                        else:
+                            target_meta['cache_notice'] = 'Private cache evidence limit reached; finished docking remains available.'
+                except Exception:
+                    target_meta['cache_notice'] = 'Cache evidence incomplete; finished docking remains available.'
         except Exception as le:
             # MUMO attempts every ligand rather than pre-filtering, so a
             # molecule Vina genuinely cannot handle lands HERE. Name the real

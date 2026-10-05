@@ -39,6 +39,54 @@ import json
 import time
 import tempfile
 import subprocess
+import uuid
+from contextlib import contextmanager
+
+
+def validate_job_spec(value):
+    """Reject credentials recursively before any job file is written."""
+    forbidden = {'access_token', 'refresh_token', 'jwt', 'password', 'service_role',
+                 'service_role_key', 'api_key', 'authorization', 'supabase_key'}
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if str(key).lower() in forbidden:
+                raise ValueError('Credentials must not be written to docking job files')
+            validate_job_spec(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            validate_job_spec(child)
+
+
+@contextmanager
+def _job_lock(jd):
+    """OS lock releases on crashes; serialize launch and choice writers."""
+    os.makedirs(jd, exist_ok=True)
+    handle = open(os.path.join(jd, 'launch.lock'), 'a+b')
+    acquired = False
+    try:
+        handle.seek(0, 2)
+        if handle.tell() == 0:
+            handle.write(b'0'); handle.flush()
+        handle.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            acquired = True
+        except OSError:
+            pass
+        yield acquired
+    finally:
+        if acquired:
+            handle.seek(0)
+            if os.name == 'nt':
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 _RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dock_runner.py")
 
@@ -154,6 +202,15 @@ def _pid_alive(pid):
 # ─────────────────────────────── public API ──────────────────────────────
 
 def start(job_id, spec, jobs_dir=None, python_exe=None, runner=None, extra_env=None):
+    validate_job_spec(spec)
+    jobs_dir = jobs_dir or default_jobs_dir()
+    with _job_lock(job_dir(jobs_dir, job_id)) as acquired:
+        if not acquired:
+            return False
+        return _start_locked(job_id, spec, jobs_dir, python_exe, runner, extra_env)
+
+
+def _start_locked(job_id, spec, jobs_dir=None, python_exe=None, runner=None, extra_env=None):
     """Launch the docking worker for `spec` in a DETACHED subprocess.
 
     Idempotent: if a job with this id is already running, returns False and does
@@ -166,19 +223,20 @@ def start(job_id, spec, jobs_dir=None, python_exe=None, runner=None, extra_env=N
 
     # already running? don't double-launch.
     st = read_status(job_id, jobs_dir)
-    if st and st.get("status") == "running":
+    if st and st.get("status") in ("running", "awaiting_reuse"):
         return False
 
     os.makedirs(jd, exist_ok=True)
+    spec = dict(spec, generation=str(uuid.uuid4()))
     _write_json(os.path.join(jd, "spec.json"), spec)
     # clear any stale result from a previous run of this id
-    for stale in ("result.json", "checkpoint.json", "persist.json", "worker_persist.json"):
+    for stale in ("result.json", "checkpoint.json", "persist.json", "worker_persist.json", "reuse_choice.json"):
         try:
             os.remove(os.path.join(jd, stale))
         except OSError:
             pass
     _write_json(os.path.join(jd, "status.json"),
-                {"status": "running", "progress": "Starting…", "pid": None,
+                {"status": "running", "generation": spec['generation'], "owner_id": spec.get('owner_id'), "progress": "Starting…", "pid": None,
                  "started": time.time(), "updated": time.time(), "error": None})
 
     python_exe = python_exe or sys.executable
@@ -221,7 +279,7 @@ def read_status(job_id, jobs_dir=None):
     st = _read_json(os.path.join(jd, "status.json"))
     if st is None:
         return None
-    if st.get("status") == "running":
+    if st.get("status") in ("running", "awaiting_reuse"):
         pid = st.get("pid")
         alive = _pid_alive(pid)
         result_path = os.path.join(jd, "result.json")
@@ -253,9 +311,57 @@ def read_checkpoint(job_id, jobs_dir=None):
     return _read_json(os.path.join(job_dir(jobs_dir, job_id), 'checkpoint.json'))
 
 
+def read_reuse_choice(jd, generation, owner_id):
+    choice = _read_json(os.path.join(jd, 'reuse_choice.json')) or {}
+    if (generation and owner_id and choice.get('generation') == generation
+            and choice.get('owner_id') == owner_id and choice.get('action') in ('reuse', 'redock')):
+        return choice['action']
+    return None
+
+
+def submit_reuse_choice(job_id, generation, action, owner_id, jobs_dir=None):
+    """Call from explicit authenticated UI buttons, never from LLM tool output."""
+    if action not in ('reuse', 'redock') or not generation or not owner_id:
+        return False
+    jd = job_dir(jobs_dir or default_jobs_dir(), job_id)
+    with _job_lock(jd) as acquired:
+        if not acquired:
+            return False
+        spec = _read_json(os.path.join(jd, 'spec.json')) or {}
+        state = read_status(job_id, jobs_dir) or {}
+        if (state.get('status') != 'awaiting_reuse' or state.get('generation') != generation
+                or spec.get('generation') != generation or spec.get('owner_id') != owner_id
+                or read_reuse_choice(jd, generation, owner_id) is not None):
+            return False
+        _write_json(os.path.join(jd, 'reuse_choice.json'),
+            {'generation': generation, 'owner_id': owner_id, 'action': action, 'chosen_at': time.time()})
+        return True
+
+
+def await_reuse_choice(jd, generation, owner_id, offer, timeout=900, poll_interval=1):
+    if not generation or not owner_id:
+        raise ValueError('Authenticated generation required for cache consent')
+    deadline = time.monotonic() + max(0, min(float(timeout), 86400))
+    update_status(jd, status='awaiting_reuse', generation=generation, owner_id=owner_id,
+                  reuse_offer=offer, progress='Choose reuse matching pairs or redock all.')
+    while True:
+        state = _read_json(os.path.join(jd, 'status.json')) or {}
+        if state.get('generation') != generation:
+            raise RuntimeError('Docking generation changed while awaiting consent')
+        choice = read_reuse_choice(jd, generation, owner_id)
+        if choice:
+            update_status(jd, status='running', reuse_choice=choice,
+                          progress='Reuse choice recorded; continuing…')
+            return choice
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Reuse choice expired; no missing pair was executed. Start a new run to continue.')
+        update_status(jd, status='awaiting_reuse')
+        time.sleep(max(.01, min(float(poll_interval), 2)))
+
+
 def is_running(job_id, jobs_dir=None):
     st = read_status(job_id, jobs_dir)
-    return bool(st and st.get("status") == "running")
+    return bool(st and st.get("status") in ("running", "awaiting_reuse"))
 
 
 def mark_consumed(job_id, jobs_dir=None):
@@ -298,11 +404,12 @@ def find_for_conversations(conversation_ids, jobs_dir=None):
         st = read_status(spec.get("job_id") or name, jobs_dir)
         if not st or st.get("consumed"):
             continue
-        if st.get("status") in ("running", "done", "error"):
+        if st.get("status") in ("running", "awaiting_reuse", "done", "error"):
             out.append({"job_id": spec.get("job_id") or name,
                         "conversation_id": conv,
                         "status": st.get("status"),
-                        "started": st.get("started") or 0})
+                        "started": st.get("started") or 0,
+                        "generation": st.get('generation'), "reuse_offer": st.get('reuse_offer')})
     out.sort(key=lambda j: -(j.get("started") or 0))
     return out
 
@@ -347,7 +454,7 @@ def prune(jobs_dir=None, keep_recent=8, max_age_hours=48):
     removed = 0
     for jd, st in entries[keep_recent:]:
         status = st.get("status")
-        if status == "running" and _pid_alive(st.get("pid")):
+        if status in ("running", "awaiting_reuse"):
             continue                                  # live work — leave alone
         if status in ("done", "error") and not st.get("consumed"):
             continue                                  # unseen result — leave alone
