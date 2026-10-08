@@ -6,8 +6,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-ATOM_COLORS = {'C': '#00d94f', 'H': '#ffe000', 'S': '#ffad00',
-               'O': '#ff173c', 'N': '#2457ff'}
+ATOM_COLORS = {'C': '#707780', 'H': '#eeeeee', 'S': '#e6bd28',
+               'O': '#e32636', 'N': '#2457dc'}
 
 def compute_surfaces(q, python=None, timeout=120):
     """Evaluate captured wavefunctions in an isolated interpreter, not Streamlit."""
@@ -64,9 +64,9 @@ viewer.addModel({safe(xyz)},'xyz');
 viewer.setStyle({{}},{{stick:{{radius:0.10}},sphere:{{scale:0.26}}}});
 {styles}
 const data=new $3Dmol.VolumeData({safe(cube)},'cube');
-viewer.addIsosurface(data,{{isoval:0.03,color:'#ff991f',alpha:0.78,smoothness:1}});
-viewer.addIsosurface(data,{{isoval:-0.03,color:'#36b5ff',alpha:0.78,smoothness:1}});
-viewer.zoomTo(); viewer.zoom(1.10); viewer.rotate(12,'x'); viewer.rotate(10,'y'); viewer.render();
+viewer.addIsosurface(data,{{isoval:0.03,color:'#e02020',alpha:0.90,smoothness:1}});
+viewer.addIsosurface(data,{{isoval:-0.03,color:'#163cdb',alpha:0.90,smoothness:1}});
+viewer.zoomTo(); viewer.zoom(0.92); viewer.rotate(12,'x'); viewer.rotate(10,'y'); viewer.render();
 window.__mumoOrbitalReady=true;
 </script></body></html>'''
 
@@ -101,26 +101,48 @@ def render_pair(q, label, surfaces, browser):
     return compose_pair(images, q, label)
 
 
+def ladder_levels(q):
+    """Use recorded levels only; frontier-only results stay frontier-only."""
+    import math
+    energies = [q['homo_ev'], q['lumo_ev']]
+    energies.extend(level['energy_ev'] for level in q.get('levels', [])
+                    if isinstance(level, dict) and 'energy_ev' in level)
+    if not all(isinstance(e, (int, float)) and math.isfinite(e) for e in energies):
+        raise ValueError('Orbital energies must be finite numbers.')
+    return sorted(set(energies))
+
+
 def compose_pair(images, q, label):
-    """Separate orbital views with a dotted capital-I energy-gap connector."""
+    """Reference-style LUMO/HOMO card with a recorded energy ladder and gap."""
     from PIL import Image, ImageDraw
-    panel = Image.new('RGB', (620, 1270), 'white')
+    panel = Image.new('RGB', (620, 880), 'white')
     draw = ImageDraw.Draw(panel)
-    panel.paste(images['lumo'], (0, 0))
-    panel.paste(images['homo'], (0, 560))
-    draw.text((310, 372), f"LUMO {q['lumo_ev']:.3f} eV", font=_font(40), fill='#161616', anchor='mt')
-    draw.line((125, 430, 225, 430), fill='#333333', width=3)
-    draw.line((125, 530, 225, 530), fill='#333333', width=3)
-    for y in range(438, 525, 12):
-        draw.line((175, y, 175, min(y + 4, 525)), fill='#333333', width=3)
-    draw.text((390, 438), 'HOMO–LUMO gap', font=_font(28), fill='#555555', anchor='mt')
-    draw.text((390, 480), f"{q['gap_ev']:.3f} eV", font=_font(40), fill='#161616', anchor='mt')
-    draw.text((310, 938), f"HOMO {q['homo_ev']:.3f} eV", font=_font(40), fill='#161616', anchor='mt')
+    for name, top in (('lumo', 20), ('homo', 470)):
+        panel.paste(images[name].resize((520, 300), Image.Resampling.LANCZOS), (100, top))
+    energies = ladder_levels(q)
+    lo, hi = min(energies), max(energies)
+    span = hi - lo or 1.0
+    for name, top in (('lumo', 25), ('homo', 475)):
+        draw.rectangle((12, top, 92, top + 275), fill='#f0faf5')
+        draw.line((22, top + 12, 22, top + 263), fill='#8cafa0', width=1)
+        for energy in energies:
+            y = round(top + 255 - (energy - lo) / span * 235)
+            color = '#d62977' if energy == q[name + '_ev'] else '#789e90'
+            draw.line((30, y, 82, y), fill=color, width=3 if color == '#d62977' else 1)
+        draw.text((52, top + 276), 'eV', font=_font(15), fill='#555555', anchor='mt')
+    for y in (350, 440):
+        draw.line((30, y, 190, y), fill='#333333', width=3)
+    draw.line((70, 363, 70, 427), fill='#333333', width=3)
+    draw.polygon([(70, 358), (62, 373), (78, 373)], fill='#333333')
+    draw.polygon([(70, 432), (62, 417), (78, 417)], fill='#333333')
+    draw.text((210, 335), f"E LUMO = {q['lumo_ev']:.3f} eV", font=_font(26), fill='#161616')
+    draw.text((110, 382), f"ΔE = {q['gap_ev']:.3f} eV", font=_font(29), fill='#161616')
+    draw.text((210, 425), f"E HOMO = {q['homo_ev']:.3f} eV", font=_font(26), fill='#161616')
     # Wrap long scientific names rather than silently dropping their identity.
     words, lines, current = label.split(), [], ''
     for word in words:
         candidate = (current + ' ' + word).strip()
-        if draw.textlength(candidate, font=_font(34)) > 585 and current:
+        if draw.textlength(candidate, font=_font(26)) > 585 and current:
             lines.append(current)
             current = word
         else:
@@ -129,18 +151,9 @@ def compose_pair(images, q, label):
     if len(lines) > 2:
         raise ValueError('Compound name needs a wider panel; it cannot fit without truncation.')
     for i, line in enumerate(lines):
-        draw.text((310, 995 + i * 38), line, font=_font(34), fill='black', anchor='mt')
-    draw.line((35, 1075, 585, 1075), fill='#dddddd', width=1)
-    labels = [('C', 'carbon'), ('H', 'hydrogen'), ('S', 'sulfur'),
-              ('O', 'oxygen'), ('N', 'nitrogen')]
-    positions = [(45, 1100), (235, 1100), (440, 1100), (130, 1145), (335, 1145)]
-    for (element, name), (x, y) in zip(labels, positions):
-        draw.ellipse((x, y + 4, x + 16, y + 20), fill=ATOM_COLORS[element])
-        draw.text((x + 24, y), f'{element}: {name}', font=_font(20), fill='#333333')
-    draw.text((310, 1200), 'Orange / blue: opposite orbital phases',
-              font=_font(20), fill='#555555', anchor='mt')
-    draw.text((310, 1230), 'Color key lists elements; not all occur in each compound.',
-              font=_font(17), fill='#666666', anchor='mt')
+        draw.text((310, 790 + i * 29), line, font=_font(26), fill='black', anchor='mt')
+    draw.text((310, 854), 'Red / blue: opposite orbital phases',
+              font=_font(18), fill='#555555', anchor='mt')
     output = io.BytesIO()
     panel.save(output, format='PNG')
     return output.getvalue()
@@ -163,20 +176,20 @@ def prepare_entry(entry, browser):
 
 
 def contact_sheets(entries, compact=False):
-    """Six verified surface panels per sheet, preserving input order and all names."""
+    """Four verified panels per portrait sheet, preserving order and identity."""
     from PIL import Image
     valid = [e for e in entries if e.get('surface_png')]
     sheets = []
-    for offset in range(0, len(valid), 6):
-        batch = valid[offset:offset + 6]
-        columns = min(3, len(batch)) if compact else 3
+    for offset in range(0, len(valid), 4):
+        batch = valid[offset:offset + 4]
+        columns = min(2, len(batch)) if compact else 2
         rows = (len(batch) + columns - 1) // columns if compact else 2
-        image = Image.new('RGB', (620 * columns, 1270 * rows), 'white')
+        image = Image.new('RGB', (620 * columns, 880 * rows), 'white')
         for i, entry in enumerate(batch):
             panel = Image.open(io.BytesIO(entry['surface_png'])).convert('RGB')
-            panel.thumbnail((620, 1270))
-            x, y = (i % columns) * 620, (i // columns) * 1270
-            image.paste(panel, (x + (620 - panel.width) // 2, y + (1270 - panel.height) // 2))
+            panel.thumbnail((620, 880))
+            x, y = (i % columns) * 620, (i // columns) * 880
+            image.paste(panel, (x + (620 - panel.width) // 2, y + (880 - panel.height) // 2))
         output = io.BytesIO()
         image.save(output, format='PNG')
         sheets.append({'png': output.getvalue(), 'labels': [e['label'] for e in batch]})

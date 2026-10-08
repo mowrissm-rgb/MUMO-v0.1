@@ -66,16 +66,16 @@ class ReportLayoutTests(unittest.TestCase):
         from PIL import Image
         import orbital_figures
         buf = io.BytesIO()
-        Image.new('RGB', (620, 1270), 'blue').save(buf, format='PNG')
+        Image.new('RGB', (620, 880), 'blue').save(buf, format='PNG')
         try:
             sheets = orbital_figures.contact_sheets(
                 [{'label': 'Aspirin', 'surface_png': buf.getvalue()}], compact=True)
         except TypeError:
             self.fail('Compact report sheets are not supported')
         image = Image.open(io.BytesIO(sheets[0]['png'])).convert('RGB')
-        # A full-page six-cell canvas would leave 5/6 of this image empty.
-        self.assertEqual(image.getbbox(), (0, 0, 620, 1270))
-        self.assertEqual(image.getpixel((619, 1269)), (0, 0, 255))
+        # A full-page four-cell canvas would leave 3/4 of this image empty.
+        self.assertEqual(image.getbbox(), (0, 0, 620, 880))
+        self.assertEqual(image.getpixel((619, 879)), (0, 0, 255))
 
 
 if __name__ == '__main__':

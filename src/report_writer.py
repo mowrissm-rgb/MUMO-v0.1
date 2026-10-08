@@ -472,7 +472,7 @@ def build_docking_docx(r, llm=None):
                     picture(sheet['png'], sheet_width)
                     doc.paragraphs[-1].paragraph_format.keep_with_next = True
                     caption('Figure', '; '.join(sheet['labels']) + '. '
-                            'LUMO above HOMO. Orange/blue indicate opposite orbital phases '
+                            'LUMO above HOMO. Red/blue indicate opposite orbital phases '
                             'at +0.03/-0.03 a.u., not charge. GFN2-xTB predictions.')
         except Exception as e:
             doc.add_paragraph(f"(Ligand validation unavailable: {type(e).__name__}: {e})")
@@ -1386,7 +1386,7 @@ def build_structure_zip(r):
 
 
 def _add_qm_surface_pages(doc, entries):
-    """Place only genuine orbital-surface images in six-compound sheets."""
+    """Place genuine orbital surfaces in four-compound portrait sheets."""
     from docx.shared import Inches, Pt
     from orbital_figures import contact_sheets
     sheets = contact_sheets(entries)
@@ -1396,13 +1396,97 @@ def _add_qm_surface_pages(doc, entries):
         doc.add_picture(io.BytesIO(sheet['png']), width=Inches(5.65))
         p = doc.add_paragraph(
             f"Figure {index}. " + "; ".join(sheet['labels']) + ". "
-            "LUMO above HOMO for each compound. Orbital phase is shown in orange and blue "
+            "LUMO above HOMO for each compound. Orbital phase colors show opposite signs "
             "at isovalues +0.03 and -0.03 a.u.; these colors do not represent charge. "
             "GFN2-xTB single-point predictions on the recorded MMFF geometry.")
         p.paragraph_format.space_after = Pt(6)
         for run in p.runs:
             run.font.size = Pt(9)
     return len(sheets)
+
+
+def _build_compact_qm_docx(entries):
+    """Named, matched orbital results: four compounds on each A4 portrait page."""
+    from docx import Document
+    from docx.shared import Inches, Mm, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from orbital_figures import contact_sheets
+    import pandas as pd
+
+    doc = Document()
+    section = doc.sections[0]
+    section.page_width, section.page_height = Mm(210), Mm(297)
+    section.top_margin = section.bottom_margin = Mm(12)
+    section.left_margin = section.right_margin = Mm(12)
+    normal = doc.styles['Normal']
+    normal.font.name, normal.font.size = 'Arial', Pt(10)
+    normal.paragraph_format.space_after = Pt(3)
+    normal.paragraph_format.line_spacing = 1.0
+    for name in ('Title', 'Heading 1'):
+        doc.styles[name].font.color.rgb = RGBColor(0, 0, 0)
+        doc.styles[name].paragraph_format.space_before = Pt(0)
+        doc.styles[name].paragraph_format.space_after = Pt(5)
+    doc.styles['Title'].font.size = Pt(18)
+    doc.styles['Heading 1'].font.size = Pt(14)
+    lookup = {e['label']: e for e in entries}
+    sheets = contact_sheets(entries, compact=True)
+    for index, sheet in enumerate(sheets):
+        if index:
+            doc.add_page_break()
+        doc.add_heading('Ligand HOMO and LUMO analysis' + (' continued' if index else ''),
+                        level=1 if index else 0)
+        if not index:
+            doc.add_paragraph(
+                'Gas-phase GFN2-xTB single-point calculations used RDKit ETKDG/MMFF geometries. '
+                'Captured orbital coefficients supplied the surfaces and energy ladders. '
+                'These computational predictions are not measured excitation energies or proof of stability.')
+        batch = [lookup[label] for label in sheet['labels']]
+        _add_df_table(doc, pd.DataFrame([{
+            'Compound': e['label'], 'HOMO (eV)': f"{e['qm']['homo_ev']:.3f}",
+            'LUMO (eV)': f"{e['qm']['lumo_ev']:.3f}",
+            'Gap (eV)': f"{e['qm']['gap_ev']:.3f}"} for e in batch]))
+        table = doc.tables[-1]
+        table.autofit = False
+        borders = OxmlElement('w:tblBorders')
+        for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+            border = OxmlElement('w:' + edge)
+            for key, value in (('val', 'single'), ('sz', '4'), ('color', 'D9D9D9')):
+                border.set(qn('w:' + key), value)
+            borders.append(border)
+        table._tbl.tblPr.append(borders)
+        for i, column in enumerate(table.columns):
+            column.width = Mm(99 if i == 0 else 28)
+        for row in table.rows:
+            for i, cell in enumerate(row.cells):
+                cell.width = Mm(99 if i == 0 else 28)
+                for p in cell.paragraphs:
+                    p.paragraph_format.space_after = Pt(2)
+                    p.paragraph_format.space_before = Pt(2)
+                    p.paragraph_format.line_spacing = 1.0
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT if i == 0 else WD_ALIGN_PARAGRAPH.CENTER
+                    for run in p.runs:
+                        run.font.size = Pt(10)
+        paragraph = doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        paragraph.paragraph_format.keep_with_next = True
+        # Fits four cards plus a four-row table without a separate title/details page.
+        paragraph.add_run().add_picture(io.BytesIO(sheet['png']), width=Inches(5.35))
+        caption = doc.add_paragraph(
+            f"Figure {index + 1}. " + '; '.join(sheet['labels']) + '. '
+            'LUMO above HOMO. Orbital phase colors show opposite signs, not charge; '
+            'isovalues +0.03 and -0.03 a.u. The arrow marks the calculated gap.')
+        for run in caption.runs:
+            run.font.size = Pt(9)
+        if index == len(sheets) - 1:
+            p = doc.add_paragraph('Method: GFN2-xTB (Bannwarth et al., 2019); '
+                                  'RDKit molecular geometry; PySCF evaluation of retained coefficients.')
+            for run in p.runs:
+                run.font.size = Pt(9)
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
 
 
 def build_qm_docx(r):
@@ -1419,7 +1503,17 @@ def build_qm_docx(r):
     entries = r.get("entries") or []
     ok = [e for e in entries if e.get("qm")]
 
+    if (ok and len(ok) <= 8 and len(ok) == len(entries)
+            and len({e['label'] for e in ok}) == len(ok)
+            and all(e.get('surface_png') for e in ok)):
+        return _build_compact_qm_docx(ok)
+
     doc = Document()
+    from docx.shared import Mm
+    for section in doc.sections:
+        section.page_width, section.page_height = Mm(210), Mm(297)
+        section.top_margin = section.bottom_margin = Mm(16)
+        section.left_margin = section.right_margin = Mm(16)
     doc.add_heading("MUMO Frontier Orbital Report", level=0)
     doc.add_paragraph(
         "Frontier molecular orbital energies computed with GFN2-xTB, a "

@@ -3499,7 +3499,7 @@ def _render_qm_report(r):
         c3.metric("Gap", f"{q['gap_ev']:.2f} eV")
         if e.get('surface_png'):
             st.image(e['surface_png'], use_container_width=True)
-            st.caption("Orange and blue represent opposite orbital phases, not charge.")
+            st.caption("The two surface colors represent opposite orbital phases, not charge.")
         else:
             st.info("Genuine orbital surfaces unavailable: "
                     + e.get('surface_error', 'No wavefunction surface was recorded.'))

@@ -26,10 +26,11 @@ class OrbitalFigureTests(unittest.TestCase):
                    for i in range(7)]
         sheets = orbital_figures.contact_sheets(entries)
         self.assertEqual([s['labels'] for s in sheets],
-                         [[f'Compound {i}' for i in range(6)], ['Compound 6']])
+                         [[f'Compound {i}' for i in range(4)],
+                          [f'Compound {i}' for i in range(4, 7)]])
         self.assertEqual(len(sheets), 2)
         for sheet in sheets:
-            self.assertEqual(Image.open(io.BytesIO(sheet['png'])).size, (1860, 2540))
+            self.assertEqual(Image.open(io.BytesIO(sheet['png'])).size, (1240, 1760))
 
     def test_gap_connector_is_between_distinct_orbital_views_without_changing_values(self):
         self.assertTrue(hasattr(orbital_figures, 'compose_pair'),
@@ -40,22 +41,29 @@ class OrbitalFigureTests(unittest.TestCase):
                   'homo': Image.new('RGB', (620, 360), '#e85465')}
         png = orbital_figures.compose_pair(images, values, 'Aspirin')
         panel = Image.open(io.BytesIO(png)).convert('RGB')
-        self.assertEqual(panel.size, (620, 1270))
+        self.assertEqual(panel.size, (620, 880))
         self.assertEqual(panel.getpixel((310, 200)), (69, 115, 210))
-        self.assertEqual(panel.getpixel((310, 760)), (232, 84, 101))
-        self.assertLess(max(panel.getpixel((130, 430))), 80)  # top cap
-        self.assertLess(max(panel.getpixel((130, 530))), 80)  # bottom cap
-        self.assertLess(max(panel.getpixel((175, 438))), 80)  # dotted stem
-        self.assertEqual(panel.getpixel((175, 446)), (255, 255, 255))  # gap in stem
+        self.assertEqual(panel.getpixel((310, 650)), (232, 84, 101))
+        self.assertLess(max(panel.getpixel((130, 350))), 80)  # LUMO line
+        self.assertLess(max(panel.getpixel((130, 440))), 80)  # HOMO line
+        self.assertLess(max(panel.getpixel((70, 395))), 80)  # continuous arrow
         self.assertEqual(values, before)
 
     def test_approved_bright_palette_preserves_surface_isovalues(self):
         html = orbital_figures.surface_html('1\nxyz\nH 0 0 0', 'real cube')
-        for color in ('#00d94f', '#ffe000', '#ffad00', '#ff173c', '#2457ff',
-                      '#ff991f', '#36b5ff'):
+        for color in ('#707780', '#eeeeee', '#e6bd28', '#e32636', '#2457dc',
+                      '#e02020', '#163cdb'):
             self.assertIn(color, html)
         self.assertIn('isoval:0.03', html)
         self.assertIn('isoval:-0.03', html)
+
+    def test_ladder_uses_recorded_energies_and_never_fills_missing_levels(self):
+        self.assertEqual(orbital_figures.ladder_levels({
+            'homo_ev': -5., 'lumo_ev': -2.}), [-5., -2.])
+        self.assertEqual(orbital_figures.ladder_levels({
+            'homo_ev': -5., 'lumo_ev': -2.,
+            'levels': [{'energy_ev': -9.}, {'energy_ev': -5.},
+                       {'energy_ev': -2.}, {'energy_ev': 1.}]}), [-9., -5., -2., 1.])
 
     def test_energy_diagram_is_not_promoted_to_a_surface(self):
         self.assertEqual(orbital_figures.contact_sheets([
@@ -85,6 +93,24 @@ class OrbitalFigureTests(unittest.TestCase):
         text = '\n'.join(p.text for p in doc.paragraphs)
         self.assertIn('Ligand 6', text)
         self.assertIn('Orbital phase', text)
+
+    def test_eight_surface_results_share_two_compact_report_sections(self):
+        from docx import Document
+        import report_writer
+        buffer = io.BytesIO()
+        Image.new('RGB', (620, 880), 'white').save(buffer, format='PNG')
+        entries = [{'label': f'Compound {i}', 'smiles': 'CC',
+                    'surface_png': buffer.getvalue(),
+                    'qm': {'homo_ev': -5., 'lumo_ev': -2., 'gap_ev': 3.}}
+                   for i in range(8)]
+        doc = Document(io.BytesIO(report_writer.build_qm_docx({'entries': entries})))
+        # Extra title/details pages defeat the compact, two-page report request.
+        self.assertEqual(len(doc.element.xpath('.//w:br[@w:type="page"]')), 1)
+        self.assertEqual(len(doc.inline_shapes), 2)
+        self.assertEqual(len(doc.tables), 2)
+        names = [row.cells[0].text for t in doc.tables for row in t.rows[1:]]
+        self.assertEqual(names, [f'Compound {i}' for i in range(8)])
+        self.assertAlmostEqual(doc.sections[0].page_height.mm, 297, places=1)
 
 
 if __name__ == '__main__':

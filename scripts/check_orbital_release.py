@@ -24,8 +24,8 @@ finally:
     browser.close()
     pw.stop()
 image = Image.open(io.BytesIO(png)).convert('RGB')
-for name, top in [('LUMO', 0), ('HOMO', 560)]:
-    pixels = image.crop((0, top, 620, top + 360)).getdata()
+for name, top in [('LUMO', 20), ('HOMO', 470)]:
+    pixels = image.crop((100, top, 620, top + 300)).getdata()
     colored = sum(1 for p in pixels if max(p) - min(p) > 25)
     if colored < 100:
         raise RuntimeError(name + ' rendered blank')
