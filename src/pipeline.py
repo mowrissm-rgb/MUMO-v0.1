@@ -27,6 +27,12 @@ def resolve_receptor(tgt, data_dir):
     info = analyze_target(tgt["gene"], data_dir)
     if info.get('accession'):
         tgt.setdefault('accession', info['accession'])
+    for key in ('structure_source', 'pdb_id', 'chains', 'fallback_reason', 'annotation_warning'):
+        if info.get(key) is not None:
+            tgt[key] = info[key]
+    if info.get('structure_source'):
+        tgt['source'] = info['structure_source']
+    tgt.setdefault('species', 9606)
     return info["pdb_path"], info["center"], info["size"], info["pocket_source"]
 
 

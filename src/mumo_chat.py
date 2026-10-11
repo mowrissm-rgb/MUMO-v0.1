@@ -323,6 +323,7 @@ ss.setdefault("job_id", None)     # id of an in-flight background docking job (s
 ss.setdefault("anon_job_id", None)  # throwaway job id for a not-logged-in session
 ss.setdefault("upload_pending", None)  # in-flight file-upload choice flow
 ss.setdefault("awaiting_ligand", None)  # a dock that stalled for lack of a resolvable ligand — {target, …}
+ss.setdefault("awaiting_nfkb", None)
 ss.setdefault("pending_actions", [])   # steps queued behind a running dock
 ss.setdefault("stored_runs", [])       # every docking run in this conversation
 ss.setdefault("run_index", 0)          # which stored run the panel is showing
@@ -1196,6 +1197,23 @@ def converse(msg):
     _persist("user", msg)
     c = ss.convo
 
+    # A subunit answer resumes the exact saved batch without another LLM guess.
+    from target_names import resume_nfkb_choice, preserve_nfkb_request
+    if ss.get('awaiting_nfkb'):
+        resumed = resume_nfkb_choice(ss.awaiting_nfkb, msg)
+        if resumed:
+            ss.awaiting_nfkb = None
+            ss.convo = resumed['convo']
+            say('Using your selected NF-κB structure and keeping the rest of your request.')
+            _run_plan(resumed['actions'], ss.convo)
+            return
+        if str(msg).strip().lower() in {'cancel', 'stop', 'never mind'}:
+            ss.awaiting_nfkb = None
+            say('Cancelled the pending NF-κB request.')
+            return
+        say(ss.awaiting_nfkb['prompt'])
+        return
+
     # ── a dock left waiting for a ligand structure ──────────────────────────
     # When a dock stalled only because a named ligand wouldn't resolve, MUMO
     # remembered the target. A pasted SMILES (or a short corrected name/CAS)
@@ -1213,6 +1231,7 @@ def converse(msg):
         intent = parse_intent(msg, None)["intent"]
         if intent["target"] or intent["disease"]:
             c.update({"target": intent["target"], "disease": intent["disease"], "tier": "Standard"})
+            c['target'] = preserve_nfkb_request(c.get('target'), msg)
             if intent["ligand"]:
                 c["ligand"] = intent["ligand"]
             # Route through the same planner as the LLM path: without a key MUMO
@@ -1303,6 +1322,7 @@ def converse(msg):
             c[k] = data[k]
     if data.get("ligand"):
         c["ligand"] = data["ligand"]
+    c['target'] = preserve_nfkb_request(c.get('target'), msg)
 
     # "run ADMET on the top hit" / "re-dock the best one" — the winner's name
     # only ever existed inside the results table, so a back-reference has to be
@@ -1713,6 +1733,15 @@ def _run_plan(actions, c):
     queued ADMET step with it.
     """
     queue = list(actions or [])
+    from target_names import nfkb_clarification, split_targets
+    # Parenthesized IDs take priority over family names even in basic mode.
+    if c.get('target'):
+        c['target'] = split_targets(c['target'])
+    clarification = nfkb_clarification(queue, c)
+    if clarification:
+        ss.awaiting_nfkb = clarification
+        say(clarification['prompt'])
+        return
     while queue:
         action = queue.pop(0)
         if action != "dock":
@@ -2305,6 +2334,7 @@ with st.sidebar:
         ss.active_conversation_id = None
         ss.job_id = None
         ss.anon_job_id = None   # a new session gets a fresh job slot
+        ss.awaiting_nfkb = None
         ss.stored_runs, ss.run_index = [], 0
         ss.pending_actions = []
         st.rerun()
@@ -2336,6 +2366,7 @@ with st.sidebar:
                 ss.run_index = 0
                 ss.results = _run_to_results(runs[0]) if runs else None
                 ss.stage, ss.active_conversation_id = "start", h["id"]
+                ss.awaiting_nfkb = None
                 # clear any job id from the previous conversation; the poller will
                 # re-discover a job for THIS conversation from its id if one is live.
                 ss.job_id = None
@@ -2347,6 +2378,7 @@ with st.sidebar:
         for i, h in enumerate(ss.history[:15]):
             if st.button(f"{h['title']}", key=f"h{i}", use_container_width=True):
                 ss.messages, ss.results, ss.stage = h["messages"], h["results"], "start"
+                ss.awaiting_nfkb = None
                 ss.panel_open = bool(h["results"])
                 st.rerun()
 
@@ -2356,6 +2388,7 @@ with st.sidebar:
         if st.button("Log out", use_container_width=True):
             authdb.sign_out()
             ss.messages, ss.results, ss.active_conversation_id = [], None, None
+            ss.awaiting_nfkb = None
             ss.job_id = None
             ss.anon_job_id = None
             ss.stored_runs, ss.run_index = [], 0
