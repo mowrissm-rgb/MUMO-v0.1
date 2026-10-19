@@ -1000,15 +1000,31 @@ def build_admet_docx(r):
             ("HOMO-LUMO gap", f"{qm['gap_ev']:.3f} eV"),
         ] + ([("Dipole moment", f"{qm['dipole_debye']:.2f} D")]
              if qm.get("dipole_debye") is not None else []))
-        try:
-            import viz_string as _vs
-            png = _vs.orbital_png(qm, width=700, height=430)
-            if png:
-                doc.add_picture(io.BytesIO(png), width=Inches(5.2))
-        except Exception as e:
-            doc.add_paragraph(f"(Orbital diagram could not be rendered: {e})")
         if qm.get("interpretation"):
             doc.add_paragraph(qm["interpretation"])
+
+    from orbital_presentation import admet_entries
+    entries = admet_entries(r)
+    if entries:
+        doc.add_heading('Orbit — calculated frontier-orbital surfaces', level=1)
+        verified = [entry for entry in entries if entry.get('surface_status') == 'verified']
+        _add_qm_surface_pages(doc, verified)
+        for entry in entries:
+            q = entry.get('qm') or {}
+            if q and not q.get('_error'):
+                doc.add_paragraph(f"{entry['label']}: HOMO {q['homo_ev']:.3f} eV; "
+                                  f"LUMO {q['lumo_ev']:.3f} eV; gap {q['gap_ev']:.3f} eV.")
+                if not entry.get('surface_png') or entry.get('surface_status') != 'verified':
+                    doc.add_paragraph(f"{entry['label']}: orbital surfaces unavailable. "
+                                      + entry.get('surface_error', 'No verified surface image was recorded.'))
+            elif entry.get('unresolved') or entry.get('qm_error'):
+                doc.add_paragraph(f"{entry['label']}: " + entry.get('qm_error', 'Structure unavailable.'))
+
+    for entry in r.get('batch') or []:
+        doc.add_heading(entry['label'], level=1)
+        doc.add_paragraph(f"SMILES: {entry.get('smiles', '')}")
+        if entry.get('druglikeness'):
+            _add_kv_table(doc, [(k, v) for k, v in entry['druglikeness'].items() if not k.startswith('_')])
 
     narrative = r.get("narrative")
     if narrative:

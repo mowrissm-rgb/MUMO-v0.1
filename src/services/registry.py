@@ -34,7 +34,7 @@ import os
 SPECIALISTS = {
     "A": {
         "id": "A",
-        "name": "Docking & structure",
+        "name": "Pose",
         "blurb": "molecular docking, poses, interactions and backbone geometry",
         "capabilities": ("dock", "ramachandran", "md", "structure"),
         "env": "MUMO_SPACE_DOCKING",
@@ -44,7 +44,7 @@ SPECIALISTS = {
     },
     "B": {
         "id": "B",
-        "name": "Sequence & network",
+        "name": "Nexus",
         "blurb": "STRING interaction networks, BLAST homology and sequence relationships",
         "capabilities": ("string", "blast", "phylogeny"),
         "env": "MUMO_SPACE_SEQUENCE",
@@ -52,7 +52,7 @@ SPECIALISTS = {
     },
     "C": {
         "id": "C",
-        "name": "Cheminformatics",
+        "name": "Fate",
         "blurb": "ADMET prediction, metabolism and drug-likeness",
         "capabilities": ("admet", "metabolism", "druglikeness", "qm"),
         "env": "MUMO_SPACE_CHEM",
@@ -60,7 +60,7 @@ SPECIALISTS = {
     },
     "D": {
         "id": "D",
-        "name": "Reporting",
+        "name": "Quill",
         "blurb": "full .docx reports, figures and structure exports",
         "capabilities": ("report", "export"),
         "env": "MUMO_SPACE_REPORT",
@@ -110,6 +110,7 @@ def referral(capability, current_sid):
     better-suited specialist, but do not refuse — offering to run it anyway is
     the difference between helpful and obstructive.
     """
+    from agent_catalog import agent_for
     owner = owner_of(capability)
     if not owner or owner == current_sid:
         return ""
@@ -118,7 +119,7 @@ def referral(capability, current_sid):
         return ""
     mine = f" My own speciality is {me['blurb']}." if me else ""
     return (f"A note on scope: {capability} analysis is handled by the "
-            f"{them['name']} specialist, which is optimised for {them['blurb']}."
+            f"{agent_for(capability) or them['name']} workflow, backed by the {them['name']} service."
             f"{mine} I can still run this for you here — results are identical, "
             f"the specialist is simply better resourced for it.")
 

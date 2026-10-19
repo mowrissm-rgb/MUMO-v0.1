@@ -58,7 +58,7 @@ ACTION_CUES = {
     # word, and "validate 1NFK" plainly means "check this structure". Over-
     # triggering is cheap here — it is a read-only geometry check that needs a
     # target it already has — whereas missing it strands an obvious request.
-    "ramachandran": (r"ramachandran", r"\bbackbone geometry\b",
+    "ramachandran": (r"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?atlas\b", r"ramachandran", r"\bbackbone geometry\b",
                      r"\bphi[/ -]?psi\b", r"\btorsion angle", r"\bvalidat",
                      r"\bstructure quality\b", r"\bstereochemistr",
                      r"\bbackbone quality\b"),
@@ -66,19 +66,19 @@ ACTION_CUES = {
     # ("electronic properties" of a candidate), and routing an orbital request
     # to the ADMET screen answers a different question. "lomo" is included
     # deliberately - that is how it gets typed in practice.
-    "qm": (r"\bhomo\b", r"\blumo\b", r"\blomo\b", r"homo[\s\-/]*l[uo]mo",
+    "qm": (r"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?orbit\b", r"\bhomo\b", r"\blumo\b", r"\blomo\b", r"homo[\s\-/]*l[uo]mo",
            r"\bfrontier orbital", r"\borbital energ", r"\bband gap\b",
            r"\benergy gap\b", r"\belectronic propert", r"\bmolecular orbital"),
-    "metabolism": (r"\bmetaboli", r"\bmetabolite", r"\bbiotransform",
+    "metabolism": (r"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?flux\b", r"\bmetaboli", r"\bmetabolite", r"\bbiotransform",
                    r"\bphase (i|ii|1|2)\b", r"\bglucuronid",
                    r"\bfirst[- ]pass\b", r"\bconjugat"),
-    "analyze": (r"\badmet?\b", r"\bdrug-?likeness\b", r"\btoxicity\b", r"\btoxic\b",
+    "analyze": (r"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?fate\b", r"\badmet?\b", r"\bdrug-?likeness\b", r"\btoxicity\b", r"\btoxic\b",
                 r"\bpharmacokinetic", r"\babsorption\b", r"\bbioavailab",
                 r"\blipinski\b", r"\bherg\b", r"\bames\b"),
-    "blast":   (r"\bblast\b", r"\bsequence similar", r"\bhomolog", r"\bsimilar protein"),
-    "string":  (r"\bstring\b", r"\binteraction network\b", r"\bppi\b",
+    "blast":   (r"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?helix\b", r"\bblast\b", r"\bsequence similar", r"\bhomolog", r"\bsimilar protein"),
+    "string":  (r"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?nexus\b", r"\bstring\b", r"\binteraction network\b", r"\bppi\b",
                 r"\bfunctional partner", r"\bprotein[-–\s]protein\b", r"\bpathway network\b"),
-    "dock":    (r"\bdock\b", r"\bdocking\b", r"\bbinding affinity\b", r"\bbind to\b",
+    "dock":    (r"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?pose\b", r"\bdock\b", r"\bdocking\b", r"\bbinding affinity\b", r"\bbind to\b",
                 r"\bsimulat"),
 }
 

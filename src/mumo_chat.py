@@ -22,6 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from llm_client import get_llm
 from setup_env import ensure_vina
 import auth_store as authdb
+from agent_catalog import AGENTS, agent_for
+from orbital_presentation import admet_entries, render_orbital_entries, report_cache_key
 # NOTE: the heavy scientific stack (RDKit, AutoDock Vina, OpenBabel, PLIP,
 # Meeko, gemmi) is imported LAZILY inside the functions that need it —
 # brain, agents.*, pipeline, viz — NOT here at module top. Importing them
@@ -48,14 +50,14 @@ ACCENT2 = "#2f7fc4"  # gradient end stop (used on buttons/bubbles for the same l
 # against its darker end stop.
 THEMES = {
     "dark": {
-        "bg": "#0a0d0f", "sidebar": "#0d1114",
+        "bg": "#131314", "sidebar": "#1e1f20",
         "ink": "#eef5fa", "ink_strong": "#f2f7fa", "ink_2": "#cdd8df",
         "muted": "#93a0aa",
         "glass": "rgba(255,255,255,0.03)",
         "border": "rgba(255,255,255,0.08)",
         "border_2": "rgba(255,255,255,0.10)",
         "border_3": "rgba(255,255,255,0.12)",
-        "input_bg": "rgba(255,255,255,0.04)",
+        "input_bg": "#282a2c",
         "scroll": "rgba(255,255,255,0.14)",
         # Chat-box chrome is deliberately NOT the accent: everything in that
         # control except its background is plain white here / plain black in
@@ -177,9 +179,9 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
 /* Chat bubbles */
 .mumo-msg-user {{ display:flex; justify-content:flex-end; margin:10px 0; }}
 .mumo-msg-user .bubble {{
-    max-width:78%; background-image: linear-gradient(90deg, {ACCENT} 0%, {ACCENT2} 100%); color: var(--on-accent);
-    border-radius:18px 18px 4px 18px; padding:13px 18px;
-    font:15px/1.55 'Inter',sans-serif; font-weight:500; box-shadow:0 8px 20px -10px rgba(47,127,196,.45);
+    max-width:85%; background:var(--input-bg); color:var(--ink);
+    border:1px solid var(--border-2); border-radius:24px 24px 6px 24px; padding:16px 20px;
+    font:15px/1.65 'Inter',sans-serif; font-weight:400;
 }}
 .mumo-msg-assistant {{ max-width:88%; margin:14px 0; }}
 .mumo-msg-assistant .label {{
@@ -187,7 +189,7 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
     margin-bottom:6px; text-transform:uppercase;
 }}
 .mumo-msg-assistant .body {{
-    font:17px/1.65 'IBM Plex Serif',serif; color: var(--ink);
+    font:15px/1.75 'Inter',sans-serif; color: var(--ink);
 }}
 .mumo-msg-assistant .body p {{ margin: 0 0 .6em; }}
 /* The chat box is monochrome by design, in BOTH themes: background aside,
@@ -197,7 +199,8 @@ html, body, [class*="css"] {{ font-family:'Inter', system-ui, sans-serif; color:
    from a different app depending on the theme. */
 [data-testid="stChatInput"] {{
     border: 1px solid var(--chrome-faint) !important;
-    border-radius: 14px !important; background: var(--input-bg) !important;
+    border-radius: 28px !important; background: var(--input-bg) !important;
+    padding: 8px 12px !important; box-shadow: 0 6px 24px var(--shadow);
 }}
 [data-testid="stChatInput"]:focus-within {{ border-color: var(--chrome) !important; }}
 [data-testid="stChatInput"] [data-baseweb="textarea"],
@@ -749,6 +752,11 @@ if authdb.is_configured() and not authdb.current_user():
 
 # ── LLM-driven conversation — the brain reads every reply IN CONTEXT ──
 CONV_SYSTEM = (
+    'Available named workflows: ' + '; '.join('{name}: {role}'.format(**a) for a in AGENTS) + '. '
+    'Use their short names without a MUMO prefix. They are workflows, not separately trained models. '
+    'Map Pose to dock, Fate to analyze, Orbit to qm, Nexus to string, Flux to metabolism, '
+    'Atlas to ramachandran and Helix to blast. Do not invent standalone actions for report export, '
+    'target discovery or ligand scouting; use their existing controls or docking workflow. '
     "You are MUMO — a warm, brilliant drug-discovery partner: part pharmacologist, part "
     "computational chemist, part toxicologist, and a patient TUTOR. You talk like a smart, "
     "kind expert helping a curious student.\n\n"
@@ -1437,7 +1445,16 @@ def _run_sync_action(action, c):
     "dock X then run ADMET" resumes here once the background dock lands, and
     gets exactly the same code path as if it had been asked on its own.
     """
-    from agents.admet import resolve_ligand, druglikeness, admet_ml
+    from agents.admet import druglikeness, admet_ml
+    from orbital_presentation import resolve_input_ligand
+    def resolve_ligand(value):
+        return resolve_input_ligand(value, c)
+
+    # A failed new request must never leave another molecule's old result
+    # presented as the current calculation. Stored docking history is retained.
+    if action in {'analyze', 'qm', 'metabolism'} and c.get('ligand'):
+        ss.results = None
+        ss.panel_open = False
 
     # analyze-only → drug-likeness + ADMET-AI predictions, no docking
     if action == "analyze" and c.get("ligand"):
@@ -1489,7 +1506,7 @@ def _run_sync_action(action, c):
                     if qm_ok:
                         try:
                             from agents.qm_analyst import orbitals as _orb
-                            _q = _orb(_smi)
+                            _q = res['qm'] if _nm == one and res.get('qm') else _orb(_smi)
                             if not _q.get("_error"):
                                 entry["qm"] = _q
                             else:
@@ -1500,6 +1517,25 @@ def _run_sync_action(action, c):
                     batch.append(entry)
                 prog.empty()
                 res["batch"] = batch
+            if any(e.get('qm') for e in admet_entries(res)):
+                _pw = _browser = None
+                try:
+                    import report_writer as _rw
+                    from orbital_presentation import prepare_admet_surfaces
+                    with st.spinner('Orbit — preparing calculated HOMO/LUMO surfaces…'):
+                        _pw, _browser = _rw.new_browser()
+                        prepare_admet_surfaces(res, _browser)
+                except Exception as exc:
+                    entries = admet_entries(res)
+                    for entry in entries:
+                        entry['surface_error'] = f'{type(exc).__name__}: {exc}'
+                    if not res.get('batch') and entries:
+                        res['orbital_entry'] = entries[0]
+                finally:
+                    if _browser is not None:
+                        _browser.close()
+                    if _pw is not None:
+                        _pw.stop()
             with st.spinner("Writing the ADMET report…"):
                 res["narrative"] = _admet_narrative(res)
             ss.results = res
@@ -2293,6 +2329,10 @@ with st.sidebar:
                  help='Medium: 8, Standard: 16, High: 32 exhaustiveness. '
                       'Each uses 3 independently seeded searches. Higher search '
                       'effort takes longer and does not prove biological activity.')
+    with st.expander('Agents', expanded=True):
+        for _agent in AGENTS:
+            st.markdown(f"**{_agent['name']}** · {_agent['role']}")
+        st.caption('Named workflows using the available scientific engines—not separately trained AI models.')
     # ── why is chat off? ──────────────────────────────────────────────────
     # Shown ONLY when there is no LLM, because "add a key in secrets" is
     # useless advice to someone who just added one. The actionable question is
@@ -2493,6 +2533,24 @@ def _handle_upload(files, text=""):
             say("I couldn't find any compounds or a structure in that file. "
                 "Supported: SDF, MOL, MOL2, PDB, CSV/Excel (with a SMILES or "
                 "name column), and text-based PDF/Word reports.")
+        return
+
+    # Honor an explicit non-docking request accompanying chemical structures.
+    # Previously this text was discarded and an unrelated docking confirmation
+    # could appear while an older ADME/QM result stayed visible.
+    import dispatch
+    upload_actions = dispatch.requested_actions(text)
+    if upload_actions and all(a in {'analyze', 'qm', 'metabolism'} for a in upload_actions):
+        objs = _upload_ligand_objs(all_compounds)
+        if not objs:
+            say('No usable ligand structures were found in the uploaded file.')
+            return
+        ss.upload_pending = None
+        c = dict(ss.convo)
+        c['ligand_objs'] = objs
+        c['ligand'] = [obj['label'] for obj in objs]
+        ss.convo = c
+        _run_plan(upload_actions, c)
         return
 
     # ── a SINGLE structure to fix a name ──
@@ -2782,6 +2840,8 @@ REPORT_TITLES = {
     "alignment": "Sequence alignment",
     "phylogeny": "Phylogenetic tree",
 }
+REPORT_TITLES = {kind: f'{agent_for(kind) or "Quill"} · {title}'
+                 for kind, title in REPORT_TITLES.items()}
 _REPORT_RENDERERS = {}   # kind -> render fn(r); docking + admet handled inline below
 
 
@@ -2933,7 +2993,7 @@ def render_results():
                     "Note": ("not found" if b.get("unresolved")
                              else (b.get("qm_error", "")[:40] if b.get("qm_error") else "")),
                 })
-            # smallest gap first — the most electronically reactive end of the set
+            # Rank calculated gap only; it does not by itself prove reactivity.
             def _gapkey(x):
                 try:
                     return float(x["Gap (eV)"])
@@ -2941,41 +3001,9 @@ def render_results():
                     return 1e9
             st.dataframe(pd.DataFrame(sorted(rows, key=_gapkey)),
                          hide_index=True, use_container_width=True)
-            st.caption("Ranked by HOMO–LUMO gap, smallest first — a smaller gap means "
-                       "the molecule engages more readily in electron transfer.")
-            with st.expander("Orbital diagrams for each ligand"):
-                import viz_string as _vs
-                for b in batch:
-                    q = b.get("qm")
-                    if not q:
-                        continue
-                    try:
-                        png = _vs.orbital_png(q, title=f"Frontier orbitals — {b['label']}")
-                    except Exception as _e:
-                        st.info(f"{b['label']}: diagram unavailable "
-                                f"({type(_e).__name__}: {_e})")
-                        continue
-                    if png:
-                        st.image(png, use_container_width=True)
-            st.markdown("---")
+            st.caption('Ranked by calculated gap only; this does not establish activity or stability.')
 
-        qm = r.get("qm")
-        if qm and not qm.get("_error"):
-            st.markdown("#### Frontier molecular orbitals")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("HOMO", f"{qm['homo_ev']:.2f} eV")
-            c2.metric("LUMO", f"{qm['lumo_ev']:.2f} eV")
-            c3.metric("HOMO–LUMO gap", f"{qm['gap_ev']:.2f} eV")
-            try:
-                import viz_string as _vs
-                _png = _vs.orbital_png(qm)
-                if _png:
-                    st.image(_png, use_container_width=True)
-            except Exception as _e:
-                st.info(f"Diagram unavailable: {type(_e).__name__}: {_e}")
-            if qm.get("interpretation"):
-                st.caption(qm["interpretation"])
-            st.markdown("---")
+        render_orbital_entries(admet_entries(r), st)
 
         adm = r.get("admet_ml")
         if adm and "_error" not in adm:
@@ -2988,7 +3016,10 @@ def render_results():
             st.caption(f"ADMET-AI predictions unavailable — {adm['_error']}")
         import report_writer
         _trace("report_writer:import+build (RDKit/Playwright)")
-        st.download_button("Download report (.docx)", report_writer.build_admet_docx(r),
+        _adme_doc_key = report_cache_key('admedoc', r)
+        if _adme_doc_key not in ss:
+            ss[_adme_doc_key] = report_writer.build_admet_docx(r)
+        st.download_button("Quill — Download report (.docx)", ss[_adme_doc_key],
                            file_name=f"MUMO_ADMET_{r['lig_label']}.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     else:
@@ -3537,10 +3568,8 @@ def _render_qm_report(r):
             st.info("Genuine orbital surfaces unavailable: "
                     + e.get('surface_error', 'No wavefunction surface was recorded.'))
         if e.get("png"):
-            st.image(e["png"], use_container_width=True)
-            st.caption("Orbital energy levels—not a 3D orbital-surface image.")
-        else:
-            st.info("Orbital diagram not available for this compound.")
+            with st.expander('Numerical energy-level diagram (not an orbital surface)', expanded=False):
+                st.image(e["png"], use_container_width=True)
         if q.get("interpretation"):
             st.caption(q["interpretation"])
         if e.get("also_given_as"):
@@ -3558,9 +3587,9 @@ def _render_qm_report(r):
         st.markdown("**No structure found for:** " + ", ".join(r["missing"]))
 
     st.markdown("---")
-    doc_key = f"qmdoc_{id(r)}"
+    doc_key = report_cache_key('qmdoc', r)
     if doc_key not in ss:
-        if st.button("Generate report (.docx)", key=f"genqm_{id(r)}"):
+        if st.button("Quill — Generate report (.docx)", key=f"gen_{doc_key}"):
             import report_writer
             with st.spinner("Building the report…"):
                 ss[doc_key] = report_writer.build_qm_docx(r)
@@ -3570,7 +3599,7 @@ def _render_qm_report(r):
                            file_name="MUMO_frontier_orbitals_report.docx",
                            mime=("application/vnd.openxmlformats-officedocument"
                                  ".wordprocessingml.document"),
-                           key=f"dlqm_{id(r)}")
+                           key=f"dl_{doc_key}")
 
 
 _REPORT_RENDERERS["qm"] = _render_qm_report
