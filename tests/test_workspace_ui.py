@@ -6,6 +6,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 
 class WorkspaceUITests(unittest.TestCase):
+    def test_models_menu_and_send_share_bottom_composer(self):
+        import workspace_ui
+        self.assertTrue(hasattr(workspace_ui, 'render_composer'))
+        from streamlit.testing.v1 import AppTest
+        src = str(Path(__file__).resolve().parents[1] / 'src')
+        script = f'''import sys
+sys.path.insert(0, {src!r})
+import streamlit as st
+from workspace_ui import render_composer
+value = render_composer(st, placeholder='Message MUMO...', file_types=['pdb', 'sdf'])
+if value is not None:
+    st.session_state.submitted = value.text
+'''
+        app = AppTest.from_string(script, default_timeout=30).run()
+        self.assertFalse(app.exception)
+        self.assertEqual(len(app.sidebar.get('popover')), 0)
+        self.assertTrue(any(p.proto.popover.label == 'Models' for p in app.get('popover')))
+        self.assertEqual(len(app.chat_input), 1)
+        app.chat_input[0].set_value('Run HOMO LUMO for aspirin').run()
+        self.assertEqual(app.session_state.submitted, 'Run HOMO LUMO for aspirin')
+
     def test_repeated_chat_updates_keep_one_reply_before_job_status(self):
         import ast
         from streamlit.testing.v1 import AppTest
@@ -75,6 +96,7 @@ render_messages(st, st.session_state.messages)
         app = AppTest.from_string(script, default_timeout=30).run()
         self.assertFalse(app.exception)
         self.assertEqual(app.selectbox(key='docking_mode').value, 'Standard')
+        self.assertEqual(app.selectbox(key='docking_mode').options, ['Low', 'Medium', 'High'])
         self.assertEqual(len(app.main.selectbox), 0, 'Settings must not occupy the conversation')
         self.assertEqual(len(app.sidebar.selectbox), 1)
         self.assertTrue(any(m.value == '**aspirin** result' for m in app.markdown))

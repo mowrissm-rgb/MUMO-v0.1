@@ -11,16 +11,25 @@ def metric_grid(metrics):
 
 
 def render_sidebar_top(ui, state):
-    from agent_catalog import AGENTS
     ui.markdown('<div class="workspace-brand"><span class="workspace-logo">✦</span>'
                 '<span>mumo</span><small>WORKSPACE</small></div>', unsafe_allow_html=True)
     new_session = ui.button('＋ New session', key='workspace_new_session', use_container_width=True)
-    with ui.popover('Agents', use_container_width=True):
-        for agent in AGENTS:
-            ui.markdown(f"**{agent['name']}** · {agent['role']}")
     with ui.popover('Appearance', use_container_width=True):
         ui.radio('Theme', ['dark', 'light'], key='theme', format_func=str.title)
     return new_session
+
+
+def render_composer(ui, placeholder='Message MUMO...', file_types=None, max_chars=4000):
+    from agent_catalog import AGENTS
+    with ui.bottom, ui.container(key='workspace_composer'):
+        message, models = ui.columns([7, 2], gap='small', vertical_alignment='center')
+        value = message.chat_input(placeholder, accept_file=True, file_type=file_types,
+                                   max_chars=max_chars, key='workspace_message_input')
+        with models.popover('Models', use_container_width=True):
+            ui.caption('Specialized workflows using the configured AI and scientific engines.')
+            for model in AGENTS:
+                ui.markdown(f"**{model['name']}** · {model['role']}")
+    return value
 
 
 def render_toolbar(ui, state, messages):
@@ -31,8 +40,8 @@ def render_toolbar(ui, state, messages):
                           '<span>Research workspace</span></div>', unsafe_allow_html=True)
         cells[1].selectbox('Docking mode', ['Medium', 'Standard', 'High'], index=1,
                           key='docking_mode', label_visibility='collapsed',
-                          format_func=lambda mode: f'{mode} · ' + {'Medium': '8', 'Standard': '16', 'High': '32'}[mode],
-                          help='Vina exhaustiveness. Each mode retains three independently seeded searches.',
+                          format_func=lambda mode: {'Medium': 'Low', 'Standard': 'Medium', 'High': 'High'}[mode],
+                          help='Low: 8; Medium: 16; High: 32 Vina exhaustiveness. Each retains three independently seeded searches.',
                           disabled=bool(state.get('job_id')))
         with cells[2].popover('Sources', use_container_width=True):
             ui.markdown('**Public data sources**\n\nPubChem · PDB · UniProt · AlphaFold · STRING · ChEMBL')
@@ -76,6 +85,24 @@ def workspace_css(panel_width=384, panel_showing=False):
     return '''<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root { --workspace-sidebar:256px; --workspace-header:0px; }
+.stApp, [data-testid="stAppViewContainer"] { color:var(--ink)!important; color-scheme:normal; }
+[data-testid="stHeader"], [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] { background:var(--bg)!important; color:var(--ink)!important; }
+[data-testid="stHeader"] [data-testid="stIconMaterial"], [data-testid="stSidebar"] [data-testid="stIconMaterial"] { color:var(--ink)!important; opacity:1!important; }
+[data-testid="stMarkdownContainer"] { color:var(--ink)!important; }
+[data-testid="stMarkdownContainer"] :is(h1,h2,h3,h4,h5,h6) { color:var(--ink-strong)!important; }
+[data-testid="stCaptionContainer"] { color:var(--muted)!important; }
+.stApp button, [data-baseweb="popover"] button { color:var(--ink)!important; background:var(--input-bg)!important; border-color:var(--border-2)!important; }
+.stApp button [data-testid="stMarkdownContainer"], [data-baseweb="popover"] button [data-testid="stMarkdownContainer"] { color:inherit!important; }
+.stApp button:hover { border-color:var(--accent)!important; }
+.stApp button:disabled { color:var(--muted)!important; }
+[data-testid="stPopoverBody"], [data-baseweb="popover"] > div, [role="listbox"], [role="option"], [data-baseweb="select"] > div { color:var(--ink)!important; background:var(--sidebar)!important; border-color:var(--border-2)!important; }
+.stApp :is(input,textarea), [data-baseweb="popover"] :is(input,textarea) { color:var(--ink)!important; caret-color:var(--ink)!important; }
+[data-testid="stChatInput"] { background:var(--input-bg)!important; }
+[data-testid="stChatInput"] div, [data-testid="stChatInput"] textarea { background:transparent!important; color:var(--ink)!important; }
+[data-testid="stChatInput"] textarea::placeholder { color:var(--muted)!important; opacity:1; }
+[data-testid="stChatInput"] button { background:transparent!important; color:var(--ink)!important; }
+[data-testid="stChatInput"] button svg { color:currentColor!important; fill:currentColor!important; }
+[data-testid="stChatInput"] button:disabled { color:var(--muted)!important; }
 .stApp { background:radial-gradient(ellipse 65vw 55vh at 58% 26%,rgba(40,110,255,.19),transparent 75%),radial-gradient(ellipse 45vw 35vh at 58% 96%,rgba(40,125,255,.13),transparent 78%),var(--bg)!important; background-attachment:fixed!important; }
 [data-testid="stChatInput"] { border:1px solid rgba(85,151,255,.55)!important; box-shadow:0 0 22px rgba(55,125,255,.20),0 8px 48px rgba(35,100,240,.15)!important; }
 [data-testid="stChatInput"]:focus-within { border-color:#75adff!important; box-shadow:0 0 26px rgba(55,135,255,.32),0 8px 52px rgba(35,100,240,.22)!important; }
@@ -93,7 +120,7 @@ def workspace_css(panel_width=384, panel_showing=False):
 .workspace-engine { display:flex; align-items:center; gap:8px; white-space:nowrap; color:var(--ink); font:500 13px Inter,sans-serif; }
 .workspace-engine strong { font:600 17px Outfit,Inter,sans-serif; }
 .workspace-engine span { color:var(--muted); font-size:11px; }
-[data-testid="stMainBlockContainer"] { padding-top:32px!important; padding-bottom:150px!important; }
+[data-testid="stMainBlockContainer"] { padding-top:80px!important; padding-bottom:150px!important; }
 [class*="st-key-workspace_message_"] { margin:8px 0 16px; }
 [class*="st-key-workspace_message_"] [data-testid="stMarkdownContainer"] { font:400 14px/1.8 Inter,sans-serif!important; }
 .workspace-assistant-label { font:600 12px Inter,sans-serif; color:var(--accent); margin-bottom:4px; }
@@ -106,10 +133,15 @@ def workspace_css(panel_width=384, panel_showing=False):
 .st-key-mumo_panel { top:var(--workspace-header)!important; height:calc(100dvh - var(--workspace-header))!important; padding:18px!important; box-shadow:none!important; }
 [data-testid="stChatInput"] { border-radius:28px!important; padding:10px 14px!important; }
 [data-testid="stChatInput"] textarea { font:400 14px/1.6 Inter,sans-serif!important; }
+.st-key-workspace_composer [data-testid="stHorizontalBlock"] { position:relative; flex-wrap:nowrap!important; align-items:center; gap:0; }
+.st-key-workspace_composer [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child { flex:1 1 0!important; min-width:0!important; width:auto!important; }
+.st-key-workspace_composer [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { position:absolute; right:calc(64px + 1mm); top:calc(50% - 1mm); transform:translateY(-50%); z-index:2; min-width:100px!important; width:100px!important; }
+.st-key-workspace_composer [data-testid="stChatInput"] textarea { padding-right:124px!important; }
+.st-key-workspace_composer [data-testid="stPopover"] button { min-height:36px; border-radius:18px; font:500 12px Inter,sans-serif; }
 .stApp:has([data-testid="stSidebar"][aria-expanded="false"]) .st-key-workspace_toolbar { left:0; }
 @media (max-width:1100px) { .workspace-engine span { display:none; } }
 @media (max-width:900px) { .st-key-workspace_toolbar { left:0; padding-left:48px; } .workspace-engine strong { font-size:13px; } }
-@media (max-width:600px) { .st-key-workspace_toolbar { position:relative; height:auto; left:auto; padding:8px 0; } .st-key-workspace_toolbar [data-testid="stHorizontalBlock"] { flex-wrap:wrap; } [data-testid="stMainBlockContainer"] { padding-top:24px!important; } }
+@media (max-width:600px) { .st-key-workspace_toolbar { position:relative; height:auto; left:auto; padding:8px 0; } .st-key-workspace_toolbar [data-testid="stHorizontalBlock"] { flex-wrap:wrap; } [data-testid="stMainBlockContainer"] { padding-top:80px!important; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
 ''' + f'''.st-key-mumo_panel {{ position:fixed; right:0; width:{int(panel_width)}px; overflow-y:auto; z-index:999; background:var(--sidebar); border-left:1px solid var(--border-2); }}
 @media (max-width:900px) {{ .st-key-mumo_panel {{ width:100vw; }} }}

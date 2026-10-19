@@ -24,7 +24,7 @@ from setup_env import ensure_vina
 import auth_store as authdb
 from agent_catalog import AGENTS, agent_for
 from orbital_presentation import admet_entries, render_orbital_entries, report_cache_key
-from workspace_ui import render_sidebar_top, render_toolbar, render_messages, render_welcome, metric_grid, workspace_css
+from workspace_ui import render_sidebar_top, render_toolbar, render_messages, render_welcome, render_composer, metric_grid, workspace_css
 # NOTE: the heavy scientific stack (RDKit, AutoDock Vina, OpenBabel, PLIP,
 # Meeko, gemmi) is imported LAZILY inside the functions that need it —
 # brain, agents.*, pipeline, viz — NOT here at module top. Importing them
@@ -2784,9 +2784,9 @@ _chat_area = st.empty()
 _refresh_chat_messages()
 
 _UPLOAD_TYPES = ["pdb", "sdf", "mol", "mol2", "csv", "tsv", "xlsx", "xls", "pdf", "docx"]
-user_input = st.chat_input(
+user_input = render_composer(st,
     "Message MUMO…  e.g. “find a drug for cystic fibrosis”  ·  or attach a file with +",
-    accept_file=True, file_type=_UPLOAD_TYPES, max_chars=4000)
+    file_types=_UPLOAD_TYPES, max_chars=4000)
 
 if user_input is not None:
     _files = getattr(user_input, "files", None) or []
