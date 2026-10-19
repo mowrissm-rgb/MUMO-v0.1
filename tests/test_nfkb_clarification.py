@@ -15,7 +15,9 @@ class NFkBClarificationTests(unittest.TestCase):
         tree = ast.parse(source.read_text(encoding='utf-8'))
         node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
         scope = dict(globals_)
-        exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), scope)
+        dependencies = [n for n in tree.body if isinstance(n, ast.FunctionDef)
+                        and n.name == '_refresh_chat_messages']
+        exec(compile(ast.Module(body=dependencies + [node], type_ignores=[]), str(source), 'exec'), scope)
         return scope[function]
 
     def test_actual_chat_plan_pauses_before_ligand_resolution(self):

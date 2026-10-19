@@ -24,6 +24,7 @@ from setup_env import ensure_vina
 import auth_store as authdb
 from agent_catalog import AGENTS, agent_for
 from orbital_presentation import admet_entries, render_orbital_entries, report_cache_key
+from workspace_ui import render_sidebar_top, render_toolbar, render_messages, render_welcome, metric_grid, workspace_css
 # NOTE: the heavy scientific stack (RDKit, AutoDock Vina, OpenBabel, PLIP,
 # Meeko, gemmi) is imported LAZILY inside the functions that need it —
 # brain, agents.*, pipeline, viz — NOT here at module top. Importing them
@@ -395,8 +396,19 @@ def _persist(role, content):
         st.warning("This message could not be saved to cloud storage. Keep a local copy before closing this session.")
 
 
+def _refresh_chat_messages():
+    # A reserved slot keeps replies before status output, even on polling reruns.
+    area = globals().get('_chat_area')
+    if area is not None:
+        render_id = globals().get('_chat_render_count', 0) + 1
+        globals()['_chat_render_count'] = render_id
+        with area.container():
+            render_messages(st, ss.messages, render_id=render_id)
+
+
 def say(text):
     ss.messages.append({"role": "assistant", "content": text})
+    _refresh_chat_messages()
     _persist("assistant", text)
 
 
@@ -1202,6 +1214,7 @@ def converse(msg):
     # fires — so answering a question no longer drags the native chemistry
     # stack into the main Streamlit process for nothing.
     ss.messages.append({"role": "user", "content": msg})
+    _refresh_chat_messages()
     _persist("user", msg)
     c = ss.convo
 
@@ -2307,32 +2320,7 @@ def _render_job_progress():
 # ── left sidebar: history ──
 _user = authdb.current_user()
 with st.sidebar:
-    st.markdown(f"<div class='mumo-brand'>{mol_logo(20, 26, 'mgSide')}<span class='wm'>mumo</span></div>",
-                unsafe_allow_html=True)
-    # ── light / dark ──────────────────────────────────────────────────────
-    # A plain two-button row rather than a toggle widget: the current mode is
-    # visible at a glance instead of having to work out which way the switch
-    # points, and each button says what it does.
-    _is_dark = ss.get("theme", "dark") == "dark"
-    _tc = st.columns(2)
-    if _tc[0].button("Dark", use_container_width=True, disabled=_is_dark,
-                     key="theme_dark", help="Use the dark theme"):
-        ss.theme = "dark"
-        st.rerun()
-    if _tc[1].button("Light", use_container_width=True, disabled=not _is_dark,
-                     key="theme_light", help="Use the light theme"):
-        ss.theme = "light"
-        st.rerun()
-
-    st.selectbox('Docking mode', ['Medium', 'Standard', 'High'], index=1,
-                 key='docking_mode',
-                 help='Medium: 8, Standard: 16, High: 32 exhaustiveness. '
-                      'Each uses 3 independently seeded searches. Higher search '
-                      'effort takes longer and does not prove biological activity.')
-    with st.expander('Agents', expanded=True):
-        for _agent in AGENTS:
-            st.markdown(f"**{_agent['name']}** · {_agent['role']}")
-        st.caption('Named workflows using the available scientific engines—not separately trained AI models.')
+    _new_session = render_sidebar_top(st, ss)
     # ── why is chat off? ──────────────────────────────────────────────────
     # Shown ONLY when there is no LLM, because "add a key in secrets" is
     # useless advice to someone who just added one. The actionable question is
@@ -2366,7 +2354,7 @@ with st.sidebar:
             except Exception as _e:
                 st.caption(f"Diagnostics unavailable: {type(_e).__name__}: {_e}")
 
-    if st.button("+ New session", use_container_width=True):
+    if _new_session:
         if not _user and ss.messages:
             title = next((m["content"] for m in ss.messages if m["role"] == "user"), "Chat")
             ss.history.insert(0, {"title": title[:40], "messages": ss.messages, "results": ss.results})
@@ -2786,6 +2774,15 @@ def _render_upload_pending():
 # ── read chat input (pinned at bottom), with the "+" file attach ──
 # accept_file puts a native attach control at the edge of the input; the CSS
 # block above restyles its icon to a "+". Returns a value with .text + .files.
+if render_toolbar(st, ss, ss.messages):
+    ss.messages = []
+    st.rerun()
+
+st.markdown(workspace_css(760 if ss.panel_expanded else 384,
+                          bool(ss.results and ss.panel_open)), unsafe_allow_html=True)
+_chat_area = st.empty()
+_refresh_chat_messages()
+
 _UPLOAD_TYPES = ["pdb", "sdf", "mol", "mol2", "csv", "tsv", "xlsx", "xls", "pdf", "docx"]
 user_input = st.chat_input(
     "Message MUMO…  e.g. “find a drug for cystic fibrosis”  ·  or attach a file with +",
@@ -3054,18 +3051,7 @@ def render_results():
                 ("Total interactions", (str(top["Total interactions"]) if pd.notna(top.get("Total interactions")) else "Unavailable")),
                 ("H-bonds", (str(top["H-bonds"]) if pd.notna(top.get("H-bonds")) else "Unavailable")),
             ]
-            cells = "".join(
-                f"<div style='min-width:110px;'>"
-                f"<div style='font:10.5px \"Inter\",sans-serif;color:#93a0aa;"
-                f"margin-bottom:4px;'>{label}</div>"
-                f"<div style='font:600 20px \"IBM Plex Serif\",serif;color:#eef5fa;'>{value}</div>"
-                f"</div>"
-                for label, value in metrics
-            )
-            st.markdown(
-                f"<div style='display:flex;flex-wrap:wrap;gap:18px;margin:12px 0 18px;'>{cells}</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(metric_grid(metrics), unsafe_allow_html=True)
         bits = []
         if meta.get("exhaustiveness"):
             bits.append(f"exhaustiveness {meta['exhaustiveness']}")
@@ -3779,25 +3765,11 @@ _REPORT_RENDERERS["md"] = _render_md_report
 
 def render_chat():
     if not ss.messages:
-        st.markdown(
-            "<div class='mumo-hero'>"
-            f"<div class='mumo-hero-logo'>{mol_logo(40, 52, 'mgHero')}"
-            "<span class='mumo-hero-title'>mumo</span></div>"
-            "<p class='mumo-hero-sub'>Tell me what to work on — a disease, a target, "
-            "or a molecule. I'll ask what I need, then dock it.</p>"
-            "</div>", unsafe_allow_html=True)
-    for m in ss.messages:
-        if m["role"] == "user":
-            st.markdown(
-                f"<div class='mumo-msg-user'><div class='bubble'>{m['content']}</div></div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                "<div class='mumo-msg-assistant'><div class='label'>MUMO</div>"
-                f"<div class='body'>{m['content']}</div></div>",
-                unsafe_allow_html=True,
-            )
+        prompt = render_welcome(st)
+        if prompt:
+            converse(prompt)
+            st.rerun()
+    render_messages(st, ss.messages)
 
 
 # ── chat: always full width, never resizes ──
@@ -3807,7 +3779,7 @@ def render_chat():
 # The drawer has two widths: a compact default and an expanded view (for wide
 # tables, the 3D pose and reports). The chat column's width is derived from this,
 # so it reflows automatically when the panel is expanded/collapsed.
-PANEL_WIDTH = 760 if ss.panel_expanded else 420
+PANEL_WIDTH = 760 if ss.panel_expanded else 384
 panel_showing = bool(ss.results and ss.panel_open)
 
 st.markdown(f"""
@@ -3825,7 +3797,9 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-render_chat()
+st.markdown(workspace_css(PANEL_WIDTH, panel_showing), unsafe_allow_html=True)
+with _chat_area.container():
+    render_chat()
 
 if panel_showing:
     with st.container(key="mumo_panel"):
