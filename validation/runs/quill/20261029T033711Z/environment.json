@@ -1,0 +1,27 @@
+{
+  "created_utc": "20261029T033711Z",
+  "git": {
+    "branch": "docs/validation-manuscript-plan",
+    "commit": "a1311b3d5503058d1c0fed6da458c2cfa4a10694",
+    "dirty_files": [],
+    "protocol_tag": "validation-protocol-v0.2a"
+  },
+  "manifest": {
+    "path": "validation\\manifests\\quill.json",
+    "sha256": "dac4c510bf9bc0ed00ae1e0659712f7f08ab309fdc4bdaa7485799f2e58000c7"
+  },
+  "packages": {
+    "pandas": "3.0.3",
+    "python-docx": "1.2.0",
+    "rdkit": "2025.9.6",
+    "requests": "2.34.2"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "protocol": {
+    "path": "validation/PROTOCOL.md",
+    "sha256": "c7bdaef01f37849ed64de0d0375a7e61113236fe72fd33aa17396397786144ee"
+  },
+  "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+  "seeds": "none: checks are deterministic given the recorded inputs",
+  "wall_seconds": 8.48
+}
