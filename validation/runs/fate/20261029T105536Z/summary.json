@@ -1,0 +1,226 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 26
+  },
+  "criteria": [
+    {
+      "description": "MW within tolerance and heavy atoms equal to PubChem (100% of drugs)",
+      "id": "F1",
+      "passed": true,
+      "value": "20/20 drugs"
+    },
+    {
+      "description": "Lipinski, Veber, Egan and Verdict match published definitions (100%)",
+      "id": "F2",
+      "passed": true,
+      "value": "20/20 drugs"
+    },
+    {
+      "description": "ADMET-AI wrapper behaves as specified on 6 stub cases",
+      "id": "F3",
+      "passed": true,
+      "value": "6/6 cases"
+    },
+    {
+      "description": "druglikeness identical across 3 runs (100% of drugs)",
+      "id": "F4",
+      "passed": true,
+      "value": "20/20 drugs"
+    }
+  ],
+  "extras": {
+    "admet_ai_accuracy_tested": false,
+    "admet_ai_installed": false,
+    "ghose_heavy_vs_all_atoms_disagreements": [
+      "aspirin",
+      "atenolol",
+      "ibuprofen",
+      "lidocaine",
+      "naproxen",
+      "propranolol"
+    ],
+    "ghose_mumo_label_differs_from_all_atoms_reading": [],
+    "per_drug_pubchem_diffs": {
+      "aspirin": {
+        "HBA": 1.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.11,
+        "RotB": 1.0,
+        "TPSA": 0.0
+      },
+      "atenolol": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.25,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "caffeine": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.93,
+        "RotB": 0.0,
+        "TPSA": 3.4
+      },
+      "chlorpromazine": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.31,
+        "RotB": 0.0,
+        "TPSA": 25.3
+      },
+      "ciprofloxacin": {
+        "HBA": 3.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 2.68,
+        "RotB": 0.0,
+        "TPSA": 1.7
+      },
+      "diazepam": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.15,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "fluoxetine": {
+        "HBA": 3.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.44,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "ibuprofen": {
+        "HBA": 1.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.43,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "imatinib": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 1.09,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "lidocaine": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.28,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "metformin": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.06,
+        "RotB": 2.0,
+        "TPSA": 0.0
+      },
+      "naproxen": {
+        "HBA": 1.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.26,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "nifedipine": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.02,
+        "RotB": 1.0,
+        "TPSA": 2.2
+      },
+      "omeprazole": {
+        "HBA": 1.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.7,
+        "RotB": 0.0,
+        "TPSA": 19.2
+      },
+      "paracetamol": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.85,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "propranolol": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.42,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "sildenafil": {
+        "HBA": 1.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.11,
+        "RotB": 0.0,
+        "TPSA": 4.6
+      },
+      "simvastatin": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.11,
+        "RotB": 1.0,
+        "TPSA": 0.0
+      },
+      "tamoxifen": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 1.1,
+        "RotB": 0.0,
+        "TPSA": 0.0
+      },
+      "warfarin": {
+        "HBA": 0.0,
+        "HBD": 0.0,
+        "LogP_vs_XLogP": 0.91,
+        "RotB": 0.0,
+        "TPSA": 3.9
+      }
+    },
+    "pubchem_requests": 20,
+    "pubchem_vs_mumo": {
+      "HBA": {
+        "exact_agreement": 0.65,
+        "max_abs_diff": 3.0,
+        "mean_abs_diff": 0.55,
+        "n": 20
+      },
+      "HBD": {
+        "exact_agreement": 1.0,
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "n": 20
+      },
+      "LogP_vs_XLogP": {
+        "exact_agreement": 0.0,
+        "max_abs_diff": 2.68,
+        "mean_abs_diff": 0.5605,
+        "n": 20
+      },
+      "RotB": {
+        "exact_agreement": 0.8,
+        "max_abs_diff": 2.0,
+        "mean_abs_diff": 0.25,
+        "n": 20
+      },
+      "TPSA": {
+        "exact_agreement": 0.65,
+        "max_abs_diff": 25.3,
+        "mean_abs_diff": 3.015,
+        "n": 20
+      }
+    }
+  },
+  "n_items": 26,
+  "protocol_version": "0.3",
+  "workflow": "Fate"
+}
