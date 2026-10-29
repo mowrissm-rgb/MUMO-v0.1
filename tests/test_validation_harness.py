@@ -155,5 +155,39 @@ class FluxEmptyInputTests(unittest.TestCase):
             self.assertEqual(out['_verification']['status'], 'failed')
 
 
+
+
+class AtlasHelperTests(unittest.TestCase):
+    def test_angle_difference_wraps(self):
+        from validation.checks import atlas
+        self.assertAlmostEqual(atlas.angle_diff(179.9, -179.9), 0.2, places=6)
+        self.assertEqual(atlas.angle_diff(10, 10), 0)
+
+    def test_report_parser_keeps_model1_blank_altcode_only(self):
+        from validation.checks import atlas
+        xml = ('<r><ModelledSubgroup model="1" chain="A" resnum="5" icode=" " resname="ALA" altcode=" " '
+               'phi="-60.0" psi="-40.0" rama="Favored"/>'
+               '<ModelledSubgroup model="1" chain="A" resnum="6" icode=" " resname="ALA" altcode="B" '
+               'phi="-60.0" psi="-40.0" rama="Favored"/>'
+               '<ModelledSubgroup model="2" chain="A" resnum="7" icode=" " resname="ALA" altcode=" " '
+               'phi="-60.0" psi="-40.0" rama="Allowed"/></r>')
+        self.assertEqual(list(atlas.report_residues(xml)), [('A', 5, '', 'ALA')])
+
+    def test_ligand_centroid_uses_first_residue_heavy_atoms(self):
+        from validation.checks import atlas
+        text = ('HETATM    1  C1  LIG A   1       0.000   0.000   0.000  1.00  0.00           C\n'
+                'HETATM    2  C2  LIG A   1       2.000   0.000   0.000  1.00  0.00           C\n'
+                'HETATM    3  H1  LIG A   1      50.000   0.000   0.000  1.00  0.00           H\n'
+                'HETATM    4  C1  LIG B   1     100.000   0.000   0.000  1.00  0.00           C\n')
+        _, centroid, n = atlas.parse_complex(text, 'LIG')
+        self.assertEqual((centroid, n), ((1.0, 0.0, 0.0), 2))
+
+    def test_short_structure_gives_error_record(self):
+        import ramachandran
+        from validation.checks import atlas
+        self.assertIn('_error', ramachandran.compute(atlas.minimal_pdb(2)))
+        self.assertIn('_error', ramachandran.compute(''))
+
+
 if __name__ == "__main__":
     unittest.main()
