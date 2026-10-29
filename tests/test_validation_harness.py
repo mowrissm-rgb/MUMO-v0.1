@@ -55,5 +55,17 @@ class NexusHelperTests(unittest.TestCase):
         self.assertGreater(nexus.combined_from_channels(record), 0.5)
 
 
+
+
+class ReportMissingValueTests(unittest.TestCase):
+    def test_kv_table_never_prints_none_or_nan(self):
+        from docx import Document
+        import report_writer
+        doc = Document()
+        table = report_writer._add_kv_table(doc, [('a', None), ('b', float('nan')), ('c', 1.5), ('d', 'Pass')])
+        cells = [row.cells[1].text for row in table.rows]
+        self.assertEqual(cells, ['Not calculated', 'Not calculated', '1.5', 'Pass'])
+
+
 if __name__ == "__main__":
     unittest.main()
