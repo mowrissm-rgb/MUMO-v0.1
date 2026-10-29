@@ -1,0 +1,122 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 13
+  },
+  "criteria": [
+    {
+      "description": "STRING IDs from gene symbols equal IDs via UniProt (100% of items)",
+      "id": "N1",
+      "passed": true,
+      "value": "11/11 items"
+    },
+    {
+      "description": "partner list equals independent STRING call (100% of items)",
+      "id": "N2",
+      "passed": true,
+      "value": "11/11 items"
+    },
+    {
+      "description": "score range, count, enrichment and SVG integrity (100% of items)",
+      "id": "N3",
+      "passed": true,
+      "value": "11/11 items"
+    },
+    {
+      "description": "bad input raises ValueError (2 of 2)",
+      "id": "N4",
+      "passed": true,
+      "value": "2/2 faults"
+    }
+  ],
+  "extras": {
+    "channel_formula_mean_fraction_within_0.002": 1.0,
+    "http_requests_independent": 37,
+    "per_item_diagnostics": {
+      "AKT1": {
+        "channel_formula_max_abs_diff": 0.0009969585273945647,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 789,
+        "n_partners": 20
+      },
+      "BRCA1": {
+        "channel_formula_max_abs_diff": 0.0009966292660171794,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 767,
+        "n_partners": 20
+      },
+      "CFTR": {
+        "channel_formula_max_abs_diff": 0.0009737952616177825,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 308,
+        "n_partners": 20
+      },
+      "EGFR": {
+        "channel_formula_max_abs_diff": 0.000995724250757779,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 551,
+        "n_partners": 20
+      },
+      "IL6": {
+        "channel_formula_max_abs_diff": 0.0009921383177067256,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 1028,
+        "n_partners": 20
+      },
+      "MAPK1": {
+        "channel_formula_max_abs_diff": 0.0009964774868668203,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 758,
+        "n_partners": 20
+      },
+      "MTOR": {
+        "channel_formula_max_abs_diff": 0.0009978865592035202,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 346,
+        "n_partners": 20
+      },
+      "SRC": {
+        "channel_formula_max_abs_diff": 0.0009919312018659143,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 668,
+        "n_partners": 20
+      },
+      "TNF": {
+        "channel_formula_max_abs_diff": 0.0009963570357944818,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 500,
+        "n_partners": 20
+      },
+      "TP53": {
+        "channel_formula_max_abs_diff": 0.0009984199082113676,
+        "channel_formula_within_0.002": 1.0,
+        "descending": true,
+        "n_enrichment_terms": 642,
+        "n_partners": 20
+      },
+      "set:EGFR+ERBB2+GRB2": {
+        "channel_formula_max_abs_diff": 0.000996459154094298,
+        "channel_formula_within_0.002": 1.0,
+        "descending": null,
+        "n_enrichment_terms": 803,
+        "n_partners": 60
+      }
+    },
+    "string_version": "12.5"
+  },
+  "n_items": 13,
+  "protocol_version": "0.2",
+  "workflow": "Nexus"
+}
