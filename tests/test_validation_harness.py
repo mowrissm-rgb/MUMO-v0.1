@@ -257,5 +257,45 @@ class LigandSelectionTests(unittest.TestCase):
             self.assertIn(code, crystal_additives.NOT_LIGAND)
 
 
+
+class OrbitHelperTests(unittest.TestCase):
+    MOLDEN = ("[MO]
+ Sym= a
+Ene= -0.7
+Spin= Alpha
+Occup= 2.0
+ 1 0.1
+"
+              "Sym= a
+Ene= -0.4
+Spin= Alpha
+Occup= 2.0
+ 1 0.1
+"
+              "Sym= a
+Ene= 0.1
+Spin= Alpha
+Occup= 0.0
+ 1 0.1
+")
+
+    def test_molden_frontier_orbitals(self):
+        from validation.checks import orbit
+        mos = orbit.parse_molden(self.MOLDEN)
+        self.assertEqual(mos, [(-0.7, 2.0), (-0.4, 2.0), (0.1, 0.0)])
+        self.assertEqual(orbit.frontier(mos), (-0.4, 0.1, 2))
+        with self.assertRaises(ValueError):
+            orbit.frontier([(-0.5, 2.0)])
+
+    def test_correlations_and_error_stats(self):
+        from validation.checks import orbit
+        self.assertAlmostEqual(orbit.pearson([1, 2, 3, 4], [2, 4, 6, 8]), 1.0)
+        self.assertAlmostEqual(orbit.spearman([1, 2, 3, 4], [1, 8, 27, 64]), 1.0)
+        self.assertAlmostEqual(orbit.pearson([1, 2, 3], [3, 2, 1]), -1.0)
+        st = orbit.error_stats([1.0, 2.0, 4.0], [1.0, 3.0, 3.0])
+        self.assertAlmostEqual(st['mae'], 2 / 3)
+        self.assertAlmostEqual(st['bias'], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
