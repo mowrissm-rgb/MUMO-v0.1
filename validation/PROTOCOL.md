@@ -220,3 +220,65 @@ Fixture note: ADMET-AI is not installed in the validation environment, so the AD
 - ChEMBL release version.
 
 **Known limits.** Flux has 20 rules, far fewer than published tools, so low recall for cytochrome-driven or less common transformations is expected and is a finding, not a defect. SyGMa (the published comparator) is GPL-3.0 and failed to build in this environment, so no comparator is run in this version. A comparison with SyGMa or BioTransformer is a candidate for a later protocol version.
+
+---
+
+# Version 0.6 (draft), 2026-10-29. Adds Atlas. Earlier criteria are unchanged.
+
+## Atlas: Ramachandran validation, pocket detection and target identity
+
+**Question.** Does Atlas compute backbone torsions and Ramachandran classes that agree with the wwPDB's own validation, does its geometric pocket detector find real ligand sites, and does it fetch the right protein?
+
+Three parts. Entry lists are fixed in `manifests/atlas.json`. Every PDB ID and ligand code was confirmed to exist, and every entry to have a validation report, before this protocol was frozen. That confirmation looked at file availability only, not at Atlas output.
+
+### Part R: Ramachandran against wwPDB validation reports
+
+**Independent source.** The wwPDB validation report XML (`*_validation.xml.gz`) for each entry. It lists, per residue, phi, psi and a Ramachandran class (`Favored`, `Allowed`, `OUTLIER`) computed by the wwPDB's MolProbity-based pipeline. It is independent of MUMO's code and of MUMO's angle routine.
+
+**Items.** 23 X-ray entries, including some with many reported outliers (1TIM, 3HFM) so the outlier path is tested.
+
+**Method.** `ramachandran.compute(pdb_text)` on the PDB file. Residues are matched to report records by chain, residue number, insertion code and residue name. Only report records of model 1 with phi, psi and class present, and alternate-location blank or `A`, are used.
+
+**Check R1, angles.** Fraction of matched residues where phi and psi each differ from the report by at most 0.2 degrees (angles wrapped at 360; the report rounds to 0.1).
+- Pass: at least 99.5% of matched residues, pooled.
+
+**Check R2, classes.** Pooled three-class agreement between MUMO's region (`favoured`, `allowed`, `outlier`) and the report class.
+- Pass: agreement of at least 0.95.
+- The 0.95 floor is a methodological choice made before the run. The wwPDB and MUMO may use different Top8000 reference releases, so exact agreement is not expected. Class cutoffs are the thing under test.
+
+**Recorded, no pass/fail.** Per-entry agreement, the full confusion matrix, outlier precision and recall (wwPDB as truth), residues present in the report but not scored by MUMO and the reverse, and the largest angle differences with their residues.
+
+### Part P: pocket detection against bound-ligand position
+
+**Independent source.** The position of the co-crystallised ligand in the same PDB file.
+
+**Items.** 13 holo complexes with a named ligand code (`manifests/atlas.json`).
+
+**Method.** `target_analyst.detect_pocket` on the **protein ATOM records only** (all chains, first model, no hetero atoms, no waters), with default parameters. The reference point is the mean position of the heavy atoms of the first residue with the ligand code. A distance-to-centre (DCC) is measured from the predicted pocket centre to that point. A `None` result counts as a failure.
+
+**Baseline.** The centroid of the protein atoms, scored the same way. This represents blind docking over the whole protein.
+
+**Check P1.** Success means DCC of at most 4.0 angstrom.
+- Pass: success rate of at least 0.5, **and** strictly more successes than the centroid baseline.
+- The 0.5 floor is a methodological choice made before the run, a bar for "clearly better than guessing".
+
+**Recorded, no pass/fail.** Every DCC, the baseline distances, predicted box size, whether the ligand centroid lies inside the predicted box, and timing.
+
+**Limits.** Only the top-ranked pocket is returned, so no top-3 figure exists. P2Rank is the natural published comparator (it ships in `bin/`), but it needs Java and none is installed, so it is not run. A later version can add it.
+
+### Part I: target identity and structure fetching
+
+**Independent source.** UniProt accessions and canonical sequences from UniProt itself.
+
+**Items.** 10 gene symbols (same targets as Scout).
+
+**Check I1.** `target_analyst.gene_to_uniprot(gene)` with no cache must equal the manifest UniProt accession.
+- Pass: 10 of 10.
+
+**Check I2.** `download_alphafold(accession)` must return a model whose residue sequence equals the UniProt canonical sequence (the sliced range when the model covers a fragment), with every atom coordinate finite and every B-factor (pLDDT) between 0 and 100. A download failure counts as an error.
+- Pass: 10 of 10.
+
+**Check I3, honest failure.** Four cases must each fail safely: `gene_to_uniprot` on an unknown symbol raises `ValueError`; `ramachandran.compute` on the empty string, on non-PDB text, and on a structure with fewer than three residues each return an error record and do not raise.
+- Pass: 4 of 4.
+
+**Known limits.** wwPDB agreement shows MUMO's torsions and classes match the community standard on these entries. It does not show that a structure is suitable for docking. Pocket detection on 13 chosen complexes shows a rough success rate, not performance on a blind benchmark.
