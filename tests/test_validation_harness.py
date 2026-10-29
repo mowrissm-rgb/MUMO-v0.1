@@ -90,5 +90,30 @@ class FateHelperTests(unittest.TestCase):
         self.assertEqual(failed, [])
 
 
+
+
+class CompassHelperTests(unittest.TestCase):
+    def test_equal_rankings_pass(self):
+        from validation.checks import compass
+        ind = [('A', 0.9), ('B', 0.8), ('C', 0.7)]
+        self.assertTrue(compass.tie_aware_equal(ind[:2], ind))
+
+    def test_tied_scores_may_swap_order(self):
+        from validation.checks import compass
+        ind = [('A', 0.9), ('B', 0.8), ('C', 0.8)]
+        self.assertTrue(compass.tie_aware_equal([('A', 0.9), ('C', 0.8), ('B', 0.8)], ind))
+
+    def test_page_boundary_may_cut_a_tie_group(self):
+        from validation.checks import compass
+        ind = [('A', 0.9), ('B', 0.8), ('C', 0.8)]
+        self.assertTrue(compass.tie_aware_equal([('A', 0.9), ('C', 0.8)], ind))
+
+    def test_different_ids_or_scores_fail(self):
+        from validation.checks import compass
+        ind = [('A', 0.9), ('B', 0.8), ('C', 0.7)]
+        self.assertFalse(compass.tie_aware_equal([('A', 0.9), ('X', 0.8)], ind))
+        self.assertFalse(compass.tie_aware_equal([('A', 0.9), ('B', 0.79)], ind))
+
+
 if __name__ == "__main__":
     unittest.main()
