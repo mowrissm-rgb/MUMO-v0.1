@@ -329,3 +329,41 @@ Three parts. Entry lists are fixed in `manifests/atlas.json`. Every PDB ID and l
 **Known limits.** Eleven complexes give a wide interval and no claim about performance across target classes. Native redocking is the easiest docking task (the pocket and ligand are known). The ligand-selection rule inside `validate_native_redock` and the receptor box come from MUMO and are part of what is tested. Rotatable-bond capping (`max_rot=10`) changes flexible ligands such as indinavir, so a failure may reflect that preparation choice.
 
 **Addendum 0.7a (written after the first Pose run, disclosed as such).** The first Pose run failed D3 on all 3 complexes. The cause was an error in the protocol and check, not in MUMO: the D3 text and code assumed `consensus` is a finite number, but in MUMO it is a text verdict (`Both functions agree` or `Functions disagree — interpret with care`). The other four D3 sub-checks passed on all 3 complexes. D3's last bullet is therefore amended to: `vinardo` is a finite number and `consensus` is one of those two labels (not an `unavailable (...)` message). The original run is kept as recorded. The descriptive `--score_only` comparison also failed to parse Vina's output because the check passed a box; it now uses `--autobox` as MUMO does.
+
+---
+
+# Version 0.8 (draft), 2026-10-29. Adds Orbit. Earlier criteria are unchanged.
+
+## Orbit: GFN2-xTB orbital energies
+
+**Question.** Does `agents.qm_analyst.orbitals` report what xTB computed, handle charge and spin correctly, fail safely, and give orbital energies that track DFT?
+
+**Software.** xTB 6.7.1pre, the official Windows build from the `grimme-lab/xtb` GitHub release (zip SHA-256 `043e578d…d28d9c`, matching the published checksum; executable hash in `manifests/orbit.json`). The check refuses to run if the executable hash differs. MUMO is pointed at it through its own `MUMO_XTB` setting.
+
+**Scope, stated up front.** This tests orbital **energies**, charge and spin handling, and the exported Molden file. It does **not** test orbital surface rendering (`orbital_figures`, `orbital_worker`), excitation energies, or any property other than HOMO, LUMO, gap and the recorded total energy. GFN2-xTB is a semiempirical method. The DFT comparison measures how far its orbital energies sit from B3LYP, which is a known and expected deviation, not a software defect.
+
+**Part O, fidelity to xTB (20 drugs, same SMILES as Quill).** For each drug MUMO's `orbitals(smiles)` is run. The check then runs xTB itself on the XYZ geometry MUMO recorded in its evidence (same settings: `--gfn 2 --sp --chrg --uhf`, plus `--molden`), in a separate folder, and reads orbital energies and occupations from the **Molden file**, which is a different output channel from the stdout text MUMO parses.
+
+- **O1.** MUMO's `homo_eh`, `lumo_eh` equal the Molden values (highest occupied and lowest empty orbital) to within 1e-4 Eh, and `gap_ev` equals (LUMO − HOMO) in eV to within 1e-3 eV. Pass: 20 of 20.
+- **O2.** `homo_index` equals the number of occupied orbitals (electron count divided by two for closed shells), `lumo_index` equals `homo_index + 1`, and MUMO's captured Molden export reports the same occupied-orbital count. Pass: 20 of 20.
+- **O3.** Two MUMO runs on the same SMILES give identical HOMO, LUMO and gap. Pass: 20 of 20.
+
+**Part Q, electronic state and failure handling (8 cases in `manifests/orbit.json`).**
+1. An open-shell radical without a stated spin returns an error record.
+2. The same radical with `unpaired_electrons=1` returns a verified result with finite values.
+3. An anion (acetate) returns a verified result, and xTB's own output reports net charge −1.
+4. A disconnected salt returns an error record.
+5. An invalid SMILES returns an error record.
+6. An empty string returns an error record.
+7. A requested charge that disagrees with the structure returns an error record.
+8. With `MUMO_XTB` pointing at a nonexistent file, `orbitals` returns an error record and does not raise.
+- **Q1 (criterion).** Pass: 8 of 8 behave as listed. An error record means a dict with `_error`; nothing may raise.
+
+**Part G, agreement with DFT (QM9).** A fixed random sample of 200 molecules from the QM9 table (seeded, seed in the manifest; file hash in the manifest) is run through `orbitals(smiles)` with a 90-second timeout. QM9 gives B3LYP/6-31G(2df,p) HOMO, LUMO and gap in Hartree (converted at 27.211386 eV per Hartree). MUMO uses its own RDKit MMFF geometry, not QM9's DFT geometry, so part of the difference is geometry.
+- A molecule MUMO cannot compute (error record, timeout, unsupported structure) counts against coverage and is listed. Error statistics use only molecules that were computed.
+- **G1 (criterion).** Pass: coverage of at least 0.9 **and** Pearson correlation of the gap of at least 0.6 between MUMO and QM9 over the computed molecules.
+- Both thresholds are methodological choices fixed before the run: a floor for "tracks DFT at all" and "computes almost everything". They are not published standards.
+
+**Recorded, no pass/fail.** For HOMO, LUMO and gap: mean absolute error, root-mean-square error, mean signed error (bias) and Spearman correlation against QM9, plus the error of a mean-only predictor for the gap as a reference. Total-energy and dipole values, xTB wall time, the molecules that failed and why, and xTB and file hashes.
+
+**Known limits.** Agreement with xTB's own output shows MUMO transcribes it correctly; it says nothing about whether GFN2 is accurate. Agreement with B3LYP on small QM9 molecules does not carry over to large drug-like or charged systems, and Kohn-Sham orbital energies are themselves only approximate. A systematic offset between GFN2 and DFT gaps is expected, so the paper should quote bias along with error.
