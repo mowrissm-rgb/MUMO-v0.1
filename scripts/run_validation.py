@@ -7,6 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'src'))
 
+try:  # use the OS certificate store (needed behind TLS-scanning antivirus); verification stays on
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 from validation.harness import run_workflow  # noqa: E402
 
 
