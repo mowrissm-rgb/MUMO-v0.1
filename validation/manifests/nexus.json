@@ -1,0 +1,26 @@
+{
+  "workflow": "Nexus",
+  "protocol_version": "0.2",
+  "source": "STRING REST API https://string-db.org/api",
+  "licence": "CC BY 4.0 (STRING)",
+  "species": 9606,
+  "limit": 20,
+  "items": [
+    {"name": "EGFR",  "genes": ["EGFR"],  "uniprot": ["P00533"]},
+    {"name": "MAPK1", "genes": ["MAPK1"], "uniprot": ["P28482"]},
+    {"name": "CFTR",  "genes": ["CFTR"],  "uniprot": ["P13569"]},
+    {"name": "TP53",  "genes": ["TP53"],  "uniprot": ["P04637"]},
+    {"name": "BRCA1", "genes": ["BRCA1"], "uniprot": ["P38398"]},
+    {"name": "AKT1",  "genes": ["AKT1"],  "uniprot": ["P31749"]},
+    {"name": "TNF",   "genes": ["TNF"],   "uniprot": ["P01375"]},
+    {"name": "IL6",   "genes": ["IL6"],   "uniprot": ["P05231"]},
+    {"name": "SRC",   "genes": ["SRC"],   "uniprot": ["P12931"]},
+    {"name": "MTOR",  "genes": ["MTOR"],  "uniprot": ["P42345"]},
+    {"name": "set:EGFR+ERBB2+GRB2", "genes": ["EGFR", "ERBB2", "GRB2"],
+     "uniprot": ["P00533", "P04626", "P62993"]}
+  ],
+  "faults": [
+    {"name": "fault:unrecognised_symbol", "input": "XQZNOTAGENE123"},
+    {"name": "fault:empty_string", "input": "   "}
+  ]
+}

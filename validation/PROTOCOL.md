@@ -54,3 +54,38 @@ Fixture note: ADMET-AI is not installed in the validation environment, so the AD
 **Recorded, no pass/fail.** ChEMBL release version, request counts, per-target resolved ID, top pChEMBL, any ligand whose independent record carries a data-validity comment. Scout does not filter on assay confidence or validity flags. That is a limitation to state in the paper, not hidden here.
 
 **Known limit.** ChEMBL is a living database. Results are valid for the recorded release only.
+
+---
+
+# Version 0.2 (draft), 2026-10-29. Adds Nexus. Quill and Scout criteria above are unchanged.
+
+## Nexus: STRING retrieval fidelity
+
+**Question.** Does `agents.string_analyst.analyze_string` return what STRING itself returns for the same proteins, and does it fail honestly on bad input?
+
+**Items.** 10 single human proteins and 1 three-protein set in `manifests/nexus.json`, each with a gene symbol (the query a user would type) and a UniProt accession. Plus 2 fault-injection inputs (an unrecognised symbol and an empty string).
+
+**Ground truth.** Independent STRING REST calls made by the check, by a different route from Nexus: POST requests, identifiers given as STRING IDs, and resolution through the UniProt accession instead of the gene symbol.
+
+**Check N1, identifier resolution.** The STRING ID that Nexus resolves from the gene symbol must equal the STRING ID resolved independently from the UniProt accession, for every protein in the item.
+- Pass: 100% of items.
+
+**Check N2, partner fidelity.** Nexus is called with `limit=20`. Its partner list must equal an independent `interaction_partners` call with the same limit: same partner STRING IDs in the same order, and the combined score and every per-channel score equal to within 1e-9.
+- Pass: 100% of items.
+
+**Check N3, result integrity.** For every item:
+- (a) every combined score is in [0, 1] and no partner equals a query protein;
+- (b) the returned partner count equals the independent count;
+- (c) Nexus's enrichment list equals an independent `enrichment` call on the same protein set (same terms, categories and false-discovery rates);
+- (d) the network SVG parses as XML and is non-empty.
+- Pass: 100% of items satisfy (a)–(d).
+
+**Check N4, honest failure.** The unrecognised symbol and the empty string must each raise `ValueError`, not return a result and not raise any other exception type.
+- Pass: 2 of 2.
+
+**Recorded, no pass/fail.**
+- STRING data version and request counts.
+- Whether partners come back in descending score order.
+- Consistency of each combined score with its channel scores under STRING's published prior-corrected combination rule (prior 0.041). The rule is applied from memory of the STRING documentation, so a mismatch is ambiguous between a wrong formula and a data issue. It is therefore reported as a diagnostic, not a criterion. A later protocol version may promote it once the rule is confirmed against the documentation.
+
+**Known limits.** This shows fidelity to STRING, not that STRING's scores are biologically correct. UniProt dossiers and ChEMBL druggability blocks that `string_deep` adds are not covered by this check.
