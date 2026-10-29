@@ -259,25 +259,10 @@ class LigandSelectionTests(unittest.TestCase):
 
 
 class OrbitHelperTests(unittest.TestCase):
-    MOLDEN = ("[MO]
- Sym= a
-Ene= -0.7
-Spin= Alpha
-Occup= 2.0
- 1 0.1
-"
-              "Sym= a
-Ene= -0.4
-Spin= Alpha
-Occup= 2.0
- 1 0.1
-"
-              "Sym= a
-Ene= 0.1
-Spin= Alpha
-Occup= 0.0
- 1 0.1
-")
+    MOLDEN = chr(10).join([
+        "[MO]", "Sym= a", "Ene= -0.7", "Spin= Alpha", "Occup= 2.0", "1 0.1",
+        "Sym= a", "Ene= -0.4", "Spin= Alpha", "Occup= 2.0", "1 0.1",
+        "Sym= a", "Ene= 0.1", "Spin= Alpha", "Occup= 0.0", "1 0.1"])
 
     def test_molden_frontier_orbitals(self):
         from validation.checks import orbit
@@ -293,8 +278,8 @@ Occup= 0.0
         self.assertAlmostEqual(orbit.spearman([1, 2, 3, 4], [1, 8, 27, 64]), 1.0)
         self.assertAlmostEqual(orbit.pearson([1, 2, 3], [3, 2, 1]), -1.0)
         st = orbit.error_stats([1.0, 2.0, 4.0], [1.0, 3.0, 3.0])
-        self.assertAlmostEqual(st['mae'], 2 / 3)
-        self.assertAlmostEqual(st['bias'], 0.0)
+        self.assertAlmostEqual(st["mae"], 2 / 3)
+        self.assertAlmostEqual(st["bias"], 0.0)
 
 
 if __name__ == "__main__":
