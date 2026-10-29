@@ -189,5 +189,35 @@ class AtlasHelperTests(unittest.TestCase):
         self.assertIn('_error', ramachandran.compute(''))
 
 
+
+
+class PoseHelperTests(unittest.TestCase):
+    def test_wilson_interval_brackets_the_rate(self):
+        from validation.checks import pose
+        lo, hi = pose.wilson(6, 11)
+        self.assertLess(lo, 6 / 11)
+        self.assertGreater(hi, 6 / 11)
+        self.assertEqual(pose.wilson(0, 0), (None, None))
+
+    def _report(self, **override):
+        res = {'best_score': -7.1, 'all_best': [-7.1, -6.9, -6.8], 'mean': -6.933, 'sd': 0.125,
+               'confidence': 'High', 'modes': [(1, -7.1), (2, -6.5), (3, -6.0)],
+               'vinardo': -8.0, 'consensus': -7.5}
+        res.update(override)
+        return res
+
+    def test_consistent_report_passes_every_check(self):
+        from validation.checks import pose
+        self.assertTrue(all(pose.check_replica_report(self._report()).values()))
+
+    def test_each_inconsistency_is_caught(self):
+        from validation.checks import pose
+        self.assertFalse(pose.check_replica_report(self._report(best_score=-6.9))['best_is_min'])
+        self.assertFalse(pose.check_replica_report(self._report(sd=0.9))['mean_sd'])
+        self.assertFalse(pose.check_replica_report(self._report(confidence='Lower'))['confidence_rule'])
+        self.assertFalse(pose.check_replica_report(self._report(modes=[(1, -6.0), (2, -7.1)]))['modes_sorted'])
+        self.assertFalse(pose.check_replica_report(self._report(vinardo=None))['vinardo_finite'])
+
+
 if __name__ == "__main__":
     unittest.main()
