@@ -134,3 +134,45 @@ Fixture note: ADMET-AI is not installed in the validation environment, so the AD
 - GI-absorption and BBB labels follow BOILED-Egg-style thresholds but use Crippen LogP rather than WLOGP, so they are heuristics. Recorded only.
 
 **Known limits.** Agreement with PubChem shows the descriptors are computed correctly. It does not show the rule-based absorption labels predict real absorption.
+
+---
+
+# Version 0.4 (draft), 2026-10-29. Adds Compass. Earlier criteria are unchanged.
+
+## Compass: disease-to-target fidelity and sanity recall
+
+**Question.** Does `agents.target_finder.find_targets` resolve a typed disease name to the right ontology term, return Open Targets' ranking faithfully, and surface known drug targets near the top?
+
+**Items.** 10 disease names in `manifests/compass.json`, typed as a user would, plus 3 fault-injection inputs.
+
+**What this does and does not show.** The answer key for C3 comes from ChEMBL approved-drug mechanisms. Open Targets itself uses ChEMBL clinical evidence in its scores, so C3 is **partly circular**. It is a sanity floor (does the tool surface known drug targets at all), not a measure of discovery power. To make that visible, the run also records which recovered targets have supporting evidence from datatypes other than `clinical` and `literature`. No claim that Compass finds *new* targets is supported by this check.
+
+**Independent sources.**
+- C1: the EBI Ontology Lookup Service (OLS), exact label match on the typed name in EFO and MONDO.
+- C2: a second Open Targets query with a different page size, plus `targets(ensemblIds)` entity lookups for symbol and name.
+- C3: ChEMBL approved-drug indications and mechanisms.
+
+**Check C1, disease resolution.** The ID Compass resolves must be one of the ontology IDs OLS returns for an exact label match of the typed name.
+- Pass: at least 9 of 10 diseases. Failures are listed by name.
+
+**Check C2, ranking fidelity.** For every disease Compass resolved, `find_targets(limit=10)` is compared with the first 10 rows of an independent query (page size 50, same disease ID):
+- (a) association scores (rounded to 3 decimals) are equal in order;
+- (b) target Ensembl IDs match, tie-aware: within a group of equal scores the ID sets must be equal, except the last group, where Compass's IDs must be a subset of the independent group (page boundaries can cut a tie group);
+- (c) for every returned target, approved symbol and approved name equal those from the independent `targets(ensemblIds)` lookup.
+- Pass: 100% of resolved diseases satisfy (a)–(c).
+
+**Check C3, sanity recall against known drug targets.** The answer key for a disease is the set of UniProt accessions of targets in ChEMBL mechanisms of drugs with `max_phase_for_ind = 4` for that disease. Disease matching uses the ChEMBL indication whose `mesh_id` is a MeSH cross-reference of the resolved Open Targets disease, or whose `efo_id` equals the resolved ID written with a colon. Compass's top-10 targets are mapped to UniProt (Swiss-Prot) accessions through the independent `targets` lookup. A disease **hits** if at least one key target is in Compass's top 10.
+- Applies only to diseases whose key is non-empty. Diseases with an empty key are listed and excluded from the C3 denominator.
+- Pass: hit rate of at least 0.7 over diseases with a non-empty key.
+- The 0.7 threshold is a methodological choice made before the run. It is a floor, not a published standard.
+
+**Check C4, honest failure.** The unrecognised name, the empty string and the whitespace-only string must each raise `ValueError`.
+- Pass: 3 of 3.
+
+**Recorded, no pass/fail.**
+- Open Targets API and data versions.
+- Key size, recall at 10 and at 25, and which key targets were found, per disease.
+- Per recovered target: whether it has evidence from datatypes other than `clinical` and `literature` (a rough view of non-circular support).
+- The docstring in `target_finder.py` cites `EFO_0000341` for cystic fibrosis. That ID returns nothing in the current Open Targets platform (the live ID is `MONDO_0009061`). The code resolves IDs by search, so it is not affected, but the comment is out of date.
+
+**Known limits.** Open Targets is a living resource. Results are valid for the recorded data version only. The key counts only exact-term indications and may miss drugs approved for child terms, so recall is conservative.

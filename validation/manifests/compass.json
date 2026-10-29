@@ -1,0 +1,26 @@
+{
+  "workflow": "Compass",
+  "protocol_version": "0.4",
+  "source": "Open Targets Platform GraphQL https://api.platform.opentargets.org/api/v4/graphql",
+  "licence": "CC0 (Open Targets Platform data)",
+  "limit": 10,
+  "independent_pool": 50,
+  "hit_threshold": 0.7,
+  "diseases": [
+    "cystic fibrosis",
+    "asthma",
+    "bronchitis",
+    "chronic obstructive pulmonary disease",
+    "type 2 diabetes mellitus",
+    "rheumatoid arthritis",
+    "Parkinson disease",
+    "hypertension",
+    "psoriasis",
+    "Alzheimer disease"
+  ],
+  "faults": [
+    {"name": "fault:unrecognised_disease", "input": "zzqxnotadisease"},
+    {"name": "fault:empty_string", "input": ""},
+    {"name": "fault:whitespace", "input": "   "}
+  ]
+}
