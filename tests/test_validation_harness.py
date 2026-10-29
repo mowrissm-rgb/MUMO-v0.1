@@ -115,5 +115,34 @@ class CompassHelperTests(unittest.TestCase):
         self.assertFalse(compass.tie_aware_equal([('A', 0.9), ('B', 0.79)], ind))
 
 
+
+
+class FluxHelperTests(unittest.TestCase):
+    def test_auc_perfect_inverse_and_ties(self):
+        from validation.checks import flux
+        self.assertEqual(flux.roc_auc([0.9, 0.8, 0.2, 0.1], [1, 1, 0, 0]), 1.0)
+        self.assertEqual(flux.roc_auc([0.1, 0.2, 0.8, 0.9], [1, 1, 0, 0]), 0.0)
+        self.assertEqual(flux.roc_auc([0.5, 0.5, 0.5, 0.5], [1, 0, 1, 0]), 0.5)
+        self.assertIsNone(flux.roc_auc([0.1, 0.2], [1, 1]))
+
+    def test_structure_key_ignores_stereo_and_salts(self):
+        from validation.checks import flux
+        self.assertEqual(flux.structure_key('C[C@H](N)C(=O)O'), flux.structure_key('C[C@@H](N)C(=O)O'))
+        self.assertEqual(flux.structure_key('CCO.[Na+].[Cl-]'), flux.structure_key('CCO'))
+        self.assertIsNone(flux.structure_key('not a smiles'))
+
+    def test_aspirin_to_salicylic_acid_is_a_hit(self):
+        from validation.checks import flux
+        from agents.metabolism import predict_metabolites
+        pred = predict_metabolites('CC(=O)Oc1ccccc1C(=O)O')
+        keys = {flux.structure_key(m['smiles']) for m in pred['metabolites']}
+        self.assertIn(flux.structure_key('O=C(O)c1ccccc1O'), keys)
+
+    def test_bootstrap_is_seeded(self):
+        from validation.checks import flux
+        data = [([0.9, 0.1], [1, 0]), ([0.8, 0.3, 0.2], [1, 0, 0])]
+        self.assertEqual(flux.bootstrap_auc(data, 50, 1), flux.bootstrap_auc(data, 50, 1))
+
+
 if __name__ == "__main__":
     unittest.main()
