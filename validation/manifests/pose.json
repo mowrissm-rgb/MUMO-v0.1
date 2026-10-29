@@ -1,0 +1,28 @@
+{
+  "workflow": "Pose",
+  "protocol_version": "0.7",
+  "source": "RCSB PDB holo complexes; RCSB chemical component dictionary for ligand SMILES",
+  "licence": "CC0 (PDB, RCSB chemical component dictionary)",
+  "vina_binary": "bin/vina.exe",
+  "vina_expected_version": "1.2.5",
+  "vina_expected_sha256": "b5a23b226ee5dc1b028df04082d13a7b0e5b9b12b988bbcf9498cb351e20b38f",
+  "exhaustiveness": 16,
+  "seed": 42,
+  "n_replicas": 3,
+  "rmsd_threshold_angstrom": 2.0,
+  "min_success_rate": 0.5,
+  "complexes": [
+    {"pdb": "1HSG", "ligand": "MK1"}, {"pdb": "1M17", "ligand": "AQ4"},
+    {"pdb": "3ERT", "ligand": "OHT"}, {"pdb": "1STP", "ligand": "BTN"},
+    {"pdb": "4DFR", "ligand": "MTX"}, {"pdb": "2OJG", "ligand": "19A"},
+    {"pdb": "1HCK", "ligand": "ATP"}, {"pdb": "1CX2", "ligand": "S58"},
+    {"pdb": "3PTB", "ligand": "BEN"}, {"pdb": "2RH1", "ligand": "CAU"},
+    {"pdb": "1ATP", "ligand": "ATP"}
+  ],
+  "excluded_by_rule": [
+    {"pdb": "1AKE", "ligand": "AP5", "reason": "ligand has more than 50 heavy atoms"},
+    {"pdb": "6LU7", "ligand": "02J", "reason": "ligand is covalently bound to the protein"}
+  ],
+  "repeat_subset": ["3PTB", "1STP", "4DFR"],
+  "no_ligand_structure": "1UBQ"
+}

@@ -282,3 +282,48 @@ Three parts. Entry lists are fixed in `manifests/atlas.json`. Every PDB ID and l
 - Pass: 4 of 4.
 
 **Known limits.** wwPDB agreement shows MUMO's torsions and classes match the community standard on these entries. It does not show that a structure is suitable for docking. Pocket detection on 13 chosen complexes shows a rough success rate, not performance on a blind benchmark.
+
+---
+
+# Version 0.7 (draft), 2026-10-29. Adds Pose (docking only). Earlier criteria are unchanged.
+
+## Pose: native redocking, reproducibility and bookkeeping
+
+**Question.** Does MUMO's docking workflow, run end to end as the app runs it, put a known ligand back where the crystal structure has it, give reproducible results, and report its own replica statistics correctly?
+
+**Scope, stated up front.** This version tests **pose reproduction only**. It does **not** test scoring power (whether scores track experimental affinity), screening power, cross-docking, AlphaFold or apo targets, or the ProLIF interaction analysis. Interaction analysis (ProLIF against PLIP on crystal complexes) is left for a separate protocol version. Docking scores must not be described in the manuscript as validated predictors of affinity on the strength of this check.
+
+**Software.** AutoDock Vina 1.2.5, the official Windows build downloaded from the AutoDock-Vina GitHub release (1,203,712 bytes, SHA-256 in `manifests/pose.json`, recorded again in every run). The check refuses to run if the binary's hash or version differs.
+
+**Items and selection rule, frozen.** The 13 holo complexes already used for pocket detection in Atlas, minus two excluded by a mechanical rule: ligands with more than 50 heavy atoms (1AKE) and ligands covalently bound to the protein (6LU7). That leaves 11 complexes. Membership does not depend on any docking result.
+
+**Method.** For each complex, the steps the app runs:
+1. `clean_protein_pdb`, then `prepare_receptor` (Meeko).
+2. `auto_grid_from_pdb` for the box.
+3. `validate_native_redock` with exhaustiveness 16, seed 42, 3 replicas (best replica by score).
+`validate_native_redock` picks its own ligand (the largest eligible hetero group), docks it from a SMILES taken from the RCSB chemical component dictionary, and returns heavy-atom RMSD to the crystal ligand with no alignment.
+
+**Check D1, redocking success.** A complex is a success when the returned RMSD is below 2.0 angstrom **and** the ligand MUMO selected equals the expected ligand code. A `None` result (skipped), an exception, or a different ligand counts as a failure. All 11 stay in the denominator.
+- Pass: success rate of at least 0.5.
+- The 0.5 floor is a methodological choice made before the run. Published Vina redocking rates on curated sets are higher, but this is a small mixed set and the floor is a bar for "clearly better than failing". The Wilson 95% interval is reported with the rate.
+
+**Check D2, reproducibility.** For the subset `3PTB, 1STP, 4DFR`, the full native redock is run a second time with identical inputs and settings.
+- Pass: the RMSD is identical to two decimals in all 3.
+
+**Check D3, replica bookkeeping.** For the same three complexes, `dock_with_replicas` is run on the prepared native ligand (3 replicas). Its report must satisfy all of:
+- `best_score` equals the minimum of `all_best`;
+- `sd` equals the population standard deviation of `all_best` to three decimals, and `mean` equals the arithmetic mean;
+- `confidence` follows the rule stated in the code (High if sd at most 0.5, Medium if at most 1.0, otherwise Lower);
+- `modes` are in non-decreasing score order and the first equals `best_score`;
+- `vinardo` and `consensus` are finite numbers.
+- Pass: all five hold for 3 of 3.
+
+**Check D4, honest failure.** Three cases:
+- (a) `validate_native_redock` on a structure with no ligand (1UBQ) returns `None`;
+- (b) `prepare_ligand` on `not a smiles` raises `ValueError`;
+- (c) `run_docking` with a ligand file that does not exist raises an exception and does not return a log path.
+- Pass: 3 of 3.
+
+**Recorded, no pass/fail.** Per-complex RMSD, ligand chosen versus expected, best score, replica spread, wall time, Vina version and binary hash. The difference between Vina's own `--score_only` of the returned pose and the reported best score. Which complexes failed and by which route (wrong ligand, skipped, RMSD above 2 angstrom).
+
+**Known limits.** Eleven complexes give a wide interval and no claim about performance across target classes. Native redocking is the easiest docking task (the pocket and ligand are known). The ligand-selection rule inside `validate_native_redock` and the receptor box come from MUMO and are part of what is tested. Rotatable-bond capping (`max_rot=10`) changes flexible ligands such as indinavir, so a failure may reflect that preparation choice.

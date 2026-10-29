@@ -21,3 +21,6 @@ Thumbs.db
 mumo_config.json
 .streamlit/secrets.toml
 src/refdata/rama8000.npz
+
+# Windows Vina binary placed manually (see validation/runs/*/environment.json for its SHA-256)
+bin/vina.exe
