@@ -1,0 +1,144 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 10
+  },
+  "criteria": [
+    {
+      "description": "at least 9 of 10 targets resolve to the UniProt-matched human target",
+      "id": "S1",
+      "passed": true,
+      "value": "10/10 resolved correctly"
+    },
+    {
+      "description": "every S1-passing target satisfies checks (a)-(e)",
+      "id": "S2",
+      "passed": true,
+      "value": "10/10 S1-passing targets pass"
+    }
+  ],
+  "extras": {
+    "chembl_release": "ChEMBL_37",
+    "flagged_ligand_counts": {
+      "ACHE": 0,
+      "BACE1": 0,
+      "CDK2": 0,
+      "CFTR": 0,
+      "DRD2": 0,
+      "EGFR": 0,
+      "ESR1": 0,
+      "HDAC1": 0,
+      "MAPK1": 0,
+      "PTGS2": 0
+    },
+    "http_requests": 31,
+    "target_resolution": [
+      {
+        "gene": "EGFR",
+        "name": "Epidermal growth factor receptor",
+        "resolved": "CHEMBL203",
+        "s1": true,
+        "truth": [
+          "CHEMBL203"
+        ],
+        "uniprot": "P00533"
+      },
+      {
+        "gene": "MAPK1",
+        "name": "Mitogen-activated protein kinase 1",
+        "resolved": "CHEMBL4040",
+        "s1": true,
+        "truth": [
+          "CHEMBL4040"
+        ],
+        "uniprot": "P28482"
+      },
+      {
+        "gene": "CFTR",
+        "name": "Cystic fibrosis transmembrane conductance regulator",
+        "resolved": "CHEMBL4051",
+        "s1": true,
+        "truth": [
+          "CHEMBL4051"
+        ],
+        "uniprot": "P13569"
+      },
+      {
+        "gene": "ACHE",
+        "name": "Acetylcholinesterase",
+        "resolved": "CHEMBL220",
+        "s1": true,
+        "truth": [
+          "CHEMBL220"
+        ],
+        "uniprot": "P22303"
+      },
+      {
+        "gene": "BACE1",
+        "name": "Beta-secretase 1",
+        "resolved": "CHEMBL4822",
+        "s1": true,
+        "truth": [
+          "CHEMBL4822"
+        ],
+        "uniprot": "P56817"
+      },
+      {
+        "gene": "DRD2",
+        "name": "D(2) dopamine receptor",
+        "resolved": "CHEMBL217",
+        "s1": true,
+        "truth": [
+          "CHEMBL217"
+        ],
+        "uniprot": "P14416"
+      },
+      {
+        "gene": "PTGS2",
+        "name": "Prostaglandin G/H synthase 2",
+        "resolved": "CHEMBL230",
+        "s1": true,
+        "truth": [
+          "CHEMBL230"
+        ],
+        "uniprot": "P35354"
+      },
+      {
+        "gene": "HDAC1",
+        "name": "Histone deacetylase 1",
+        "resolved": "CHEMBL325",
+        "s1": true,
+        "truth": [
+          "CHEMBL325"
+        ],
+        "uniprot": "Q13547"
+      },
+      {
+        "gene": "ESR1",
+        "name": "Estrogen receptor",
+        "resolved": "CHEMBL206",
+        "s1": true,
+        "truth": [
+          "CHEMBL206"
+        ],
+        "uniprot": "P03372"
+      },
+      {
+        "gene": "CDK2",
+        "name": "Cyclin-dependent kinase 2",
+        "resolved": "CHEMBL301",
+        "s1": true,
+        "truth": [
+          "CHEMBL301"
+        ],
+        "uniprot": "P24941"
+      }
+    ]
+  },
+  "n_items": 10,
+  "protocol_version": "0.1",
+  "workflow": "Scout"
+}
