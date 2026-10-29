@@ -1,0 +1,83 @@
+{
+  "all_criteria_passed": false,
+  "counts": {
+    "ERROR": 10,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 0
+  },
+  "criteria": [
+    {
+      "description": "at least 9 of 10 targets resolve to the UniProt-matched human target",
+      "id": "S1",
+      "passed": false,
+      "value": "0/10 resolved correctly"
+    },
+    {
+      "description": "every S1-passing target satisfies checks (a)-(e)",
+      "id": "S2",
+      "passed": false,
+      "value": "0/0 S1-passing targets pass"
+    }
+  ],
+  "extras": {
+    "chembl_release": "unavailable: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/status.json (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+    "flagged_ligand_counts": {},
+    "http_requests": 44,
+    "target_resolution": [
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P00533&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "EGFR",
+        "uniprot": "P00533"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P28482&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "MAPK1",
+        "uniprot": "P28482"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P13569&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "CFTR",
+        "uniprot": "P13569"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P22303&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "ACHE",
+        "uniprot": "P22303"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P56817&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "BACE1",
+        "uniprot": "P56817"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P14416&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "DRD2",
+        "uniprot": "P14416"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P35354&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "PTGS2",
+        "uniprot": "P35354"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=Q13547&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "HDAC1",
+        "uniprot": "Q13547"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P03372&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "ESR1",
+        "uniprot": "P03372"
+      },
+      {
+        "error": "SSLError: HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): Max retries exceeded with url: /chembl/api/data/target.json?target_components__accession=P24941&target_type=SINGLE+PROTEIN&organism=Homo+sapiens&limit=20 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1081)')))",
+        "gene": "CDK2",
+        "uniprot": "P24941"
+      }
+    ]
+  },
+  "n_items": 10,
+  "protocol_version": "0.1",
+  "workflow": "Scout"
+}
