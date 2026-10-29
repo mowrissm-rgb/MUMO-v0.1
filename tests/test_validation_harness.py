@@ -39,5 +39,21 @@ class QuillComparatorTests(unittest.TestCase):
             self.assertFalse(quill._missing_ok(bad))
 
 
-if __name__ == '__main__':
+
+
+class NexusHelperTests(unittest.TestCase):
+    def test_single_channel_combines_to_itself(self):
+        from validation.checks import nexus
+        record = {c: 0.0 for c in nexus.CHANNELS}
+        record['escore'] = 0.9
+        self.assertAlmostEqual(nexus.combined_from_channels(record), 0.9, places=9)
+
+    def test_two_channels_raise_the_total(self):
+        from validation.checks import nexus
+        record = {c: 0.0 for c in nexus.CHANNELS}
+        record['escore'] = record['tscore'] = 0.5
+        self.assertGreater(nexus.combined_from_channels(record), 0.5)
+
+
+if __name__ == "__main__":
     unittest.main()
