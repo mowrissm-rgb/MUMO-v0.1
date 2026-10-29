@@ -176,3 +176,47 @@ Fixture note: ADMET-AI is not installed in the validation environment, so the AD
 - The docstring in `target_finder.py` cites `EFO_0000341` for cystic fibrosis. That ID returns nothing in the current Open Targets platform (the live ID is `MONDO_0009061`). The code resolves IDs by search, so it is not affected, but the comment is out of date.
 
 **Known limits.** Open Targets is a living resource. Results are valid for the recorded data version only. The key counts only exact-term indications and may miss drugs approved for child terms, so recall is conservative.
+
+---
+
+# Version 0.5 (draft), 2026-10-29. Adds Flux. Earlier criteria are unchanged.
+
+## Flux: metabolite prediction against literature-curated metabolism
+
+**Question.** Does `agents.metabolism.predict_metabolites` reproduce known human metabolites, does its score ranking carry signal, and is its output internally sound?
+
+**Independent answer key.** The ChEMBL `metabolism` table: literature-curated drug-to-metabolite records with structures, independent of Flux's rule set (adapted from Ridder and Wagener 2008). No metabolite list is hand-typed.
+
+**Selection rule, frozen.** Keep records with `organism = Homo sapiens`. An *edge* is a record whose `substrate_chembl_id` equals its `drug_chembl_id` (a one-step metabolite of the drug). The items are **every** such drug with at least one edge where both drug and metabolite structures resolve in ChEMBL. Nothing is added or removed by hand. Drugs dropped for a missing structure are listed in the run. The resolved list and raw records are saved in the run folder with a SHA-256.
+
+**Matching.** A predicted metabolite matches a reference metabolite when the first block of their InChIKeys is equal (connectivity only, so stereochemistry and many charge or tautomer differences are ignored). Reference structures are reduced to their largest fragment first. This is a methodological choice and is a limit: a reference metabolite that differs from the prediction in connectivity is a miss.
+
+**Predictions.** `predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40)`, the settings the app uses.
+
+**Check X1, coverage.** Micro-averaged recall: reference edges matched by any of the (up to 40) predictions, divided by all reference edges.
+- Pass: micro recall at least 0.25.
+- The 0.25 floor is a methodological choice made before the run: "clearly better than nothing". It is not a published standard, and the actual recall is the result worth reporting.
+
+**Check X2, ranking signal.** Over all predicted metabolites pooled across drugs that have at least one hit, the ROC-AUC of Flux's `score` for separating predictions that match a reference from those that do not. Confidence interval: 95% percentile bootstrap resampling drugs (2000 resamples, seed 20261029).
+- Pass: lower bound of the interval above 0.5.
+- Caveat: a prediction that matches no reference is not proven wrong, because the curated table is incomplete. AUC under these weak negatives is a ranking sanity check, not a precision estimate.
+
+**Check X3, output integrity.** For every item, all of:
+- (a) every predicted SMILES parses in RDKit;
+- (b) no duplicate SMILES, and the parent is not listed as its own metabolite;
+- (c) scores are in (0, 1] and in descending order;
+- (d) each metabolite's `generation` equals the length of its `pathway`;
+- (e) two repeat runs give identical output.
+- Pass: 100% of drugs satisfy (a)–(e).
+
+**Check X4, honest failure.** Three fault inputs (invalid SMILES, empty SMILES, `depth=0`) must each return an error record (a dict with `_error`) and must not raise.
+- Pass: 3 of 3.
+
+**Recorded, no pass/fail.**
+- Recall at the top 10 (`top_k`) and at all predictions, by drug and pooled; macro (per-drug mean) recall alongside micro.
+- Number of predictions per drug, and the share of hits at generation 1 versus 2.
+- Which rule produced each hit, and the reference edges missed (so the paper can say which transformations are absent from the rule set).
+- Time per drug and any drug where the 400-metabolite ceiling was reached.
+- ChEMBL release version.
+
+**Known limits.** Flux has 20 rules, far fewer than published tools, so low recall for cytochrome-driven or less common transformations is expected and is a finding, not a defect. SyGMa (the published comparator) is GPL-3.0 and failed to build in this environment, so no comparator is run in this version. A comparison with SyGMa or BioTransformer is a candidate for a later protocol version.
