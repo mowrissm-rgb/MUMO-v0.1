@@ -1,0 +1,1083 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 69
+  },
+  "criteria": [
+    {
+      "description": "micro recall of reference metabolites >= 0.25",
+      "id": "X1",
+      "passed": true,
+      "value": "80/195 = 0.410 (top 10: 0.272; macro 0.378)"
+    },
+    {
+      "description": "bootstrap 95% CI lower bound of score AUC above 0.5",
+      "id": "X2",
+      "passed": true,
+      "value": "AUC 0.815, 95% CI [0.777, 0.852] over 39 drugs"
+    },
+    {
+      "description": "output integrity (a)-(e) on 100% of drugs",
+      "id": "X3",
+      "passed": true,
+      "value": "66/66 drugs"
+    },
+    {
+      "description": "bad input returns an error record, never raises (3 of 3)",
+      "id": "X4",
+      "passed": true,
+      "value": "3/3 faults"
+    }
+  ],
+  "extras": {
+    "auc_bootstrap_invalid": 0,
+    "auc_ci": [
+      0.7772922695328648,
+      0.8523435066957334
+    ],
+    "auc_pooled": 0.8146961746784022,
+    "ceiling_reached": [
+      "CHEMBL114 Saquinavir",
+      "CHEMBL428647 Paclitaxel",
+      "CHEMBL787 Montelukast",
+      "CHEMBL92 Docetaxel"
+    ],
+    "chembl_metabolism_records": 2147,
+    "chembl_release": "ChEMBL_37",
+    "dropped_edges": 24,
+    "drugs_evaluated": 66,
+    "hits_by_generation": {
+      "1": 80,
+      "2": 0
+    },
+    "hits_by_rule": {
+      "Aliphatic hydroxylation": 19,
+      "Amide hydrolysis": 3,
+      "Aromatic hydroxylation": 17,
+      "Ester hydrolysis": 1,
+      "N-acetylation": 1,
+      "N-dealkylation": 8,
+      "N-glucuronidation": 3,
+      "N-oxidation": 2,
+      "O-demethylation": 9,
+      "O-glucuronidation": 11,
+      "Primary alcohol to aldehyde": 1,
+      "S-oxidation": 4,
+      "Sulfation": 1
+    },
+    "http_requests": 10,
+    "human_records": 627,
+    "missed_reference_metabolites": [
+      {
+        "drug": "CHEMBL1068 OXC, Oxcarbazepine, Trileptal",
+        "metabolite": "O-SUL"
+      },
+      {
+        "drug": "CHEMBL1068 OXC, Oxcarbazepine, Trileptal",
+        "metabolite": "O-GLU"
+      },
+      {
+        "drug": "CHEMBL1068 OXC, Oxcarbazepine, Trileptal",
+        "metabolite": "(S)-MHD"
+      },
+      {
+        "drug": "CHEMBL1076930 2, Rp,Sp-2",
+        "metabolite": "1, Rp,Sp-1, dA-ps-U2'-OMe"
+      },
+      {
+        "drug": "CHEMBL1076930 2, Rp,Sp-2",
+        "metabolite": "10"
+      },
+      {
+        "drug": "CHEMBL109 Valproic acid",
+        "metabolite": "2-en(E) valproic acid"
+      },
+      {
+        "drug": "CHEMBL109 Valproic acid",
+        "metabolite": "3-en(E) valproic acid"
+      },
+      {
+        "drug": "CHEMBL109 Valproic acid",
+        "metabolite": "4-en valproic acid"
+      },
+      {
+        "drug": "CHEMBL109 Valproic acid",
+        "metabolite": "5-OH valproic acid"
+      },
+      {
+        "drug": "CHEMBL109 Valproic acid",
+        "metabolite": "3-keto-4'-en valproic acid"
+      },
+      {
+        "drug": "CHEMBL1111 Ambrisentan",
+        "metabolite": "4-hydroxymethyl ambrisentan (M3)"
+      },
+      {
+        "drug": "CHEMBL1117 Idarubicin",
+        "metabolite": "Idarubicinol"
+      },
+      {
+        "drug": "CHEMBL1117 Idarubicin",
+        "metabolite": "4-demethoxydaunomycinone"
+      },
+      {
+        "drug": "CHEMBL114 Saquinavir",
+        "metabolite": "M22"
+      },
+      {
+        "drug": "CHEMBL114 Saquinavir",
+        "metabolite": "M22"
+      },
+      {
+        "drug": "CHEMBL114 Saquinavir",
+        "metabolite": "M10"
+      },
+      {
+        "drug": "CHEMBL1140 NAM",
+        "metabolite": "MNAM"
+      },
+      {
+        "drug": "CHEMBL1140 NAM",
+        "metabolite": "NAM N-oxide"
+      },
+      {
+        "drug": "CHEMBL1200374 Aromasin, Exemestane",
+        "metabolite": "MII"
+      },
+      {
+        "drug": "CHEMBL1200374 Aromasin, Exemestane",
+        "metabolite": "MI"
+      },
+      {
+        "drug": "CHEMBL1201179 Lapatinib, Tykerb, Tyverb, GW572016",
+        "metabolite": "M8"
+      },
+      {
+        "drug": "CHEMBL1201772 Prasugrel",
+        "metabolite": "R-95913"
+      },
+      {
+        "drug": "CHEMBL1233 Carisoprodol",
+        "metabolite": "Meprobamate"
+      },
+      {
+        "drug": "CHEMBL1269025 Edoxaban",
+        "metabolite": "M3"
+      },
+      {
+        "drug": "CHEMBL1269025 Edoxaban",
+        "metabolite": "M7"
+      },
+      {
+        "drug": "CHEMBL1272 Repaglinide",
+        "metabolite": "M1"
+      },
+      {
+        "drug": "CHEMBL1272 Repaglinide",
+        "metabolite": "M0-OH"
+      },
+      {
+        "drug": "CHEMBL1272 Repaglinide",
+        "metabolite": "M5"
+      },
+      {
+        "drug": "CHEMBL1272307 SB-649868",
+        "metabolite": "M8"
+      },
+      {
+        "drug": "CHEMBL1272307 SB-649868",
+        "metabolite": "M32"
+      },
+      {
+        "drug": "CHEMBL1272307 SB-649868",
+        "metabolite": "inferred metabolite 1"
+      },
+      {
+        "drug": "CHEMBL1399 Anastrozole",
+        "metabolite": "Anastrozole N-glucuronide"
+      },
+      {
+        "drug": "CHEMBL1503 Omeprazole",
+        "metabolite": "5-OH-Omeprazole"
+      },
+      {
+        "drug": "CHEMBL1503 Omeprazole",
+        "metabolite": "Omeprazole sulfone"
+      },
+      {
+        "drug": "CHEMBL151649 PEITC",
+        "metabolite": "PEITC-GSH"
+      },
+      {
+        "drug": "CHEMBL151649 PEITC",
+        "metabolite": "PIC"
+      },
+      {
+        "drug": "CHEMBL1630842 BILR 355",
+        "metabolite": "BILR 402"
+      },
+      {
+        "drug": "CHEMBL1639 Aliskiren, SPP100",
+        "metabolite": "Metabolite M4"
+      },
+      {
+        "drug": "CHEMBL1639 Aliskiren, SPP100",
+        "metabolite": "Metabolite M9"
+      },
+      {
+        "drug": "CHEMBL1770248 Ertugliflozin, PF-04971729",
+        "metabolite": "M2, des-ethyl ertugliflozin"
+      },
+      {
+        "drug": "CHEMBL1771 Clopidogrel",
+        "metabolite": "R -115991"
+      },
+      {
+        "drug": "CHEMBL178 Daunorubicin",
+        "metabolite": "Daunorubicinol"
+      },
+      {
+        "drug": "CHEMBL1789842 QAB149, Indacaterol",
+        "metabolite": "P38.2"
+      },
+      {
+        "drug": "CHEMBL1789842 QAB149, Indacaterol",
+        "metabolite": "P39"
+      },
+      {
+        "drug": "CHEMBL191 Losartan",
+        "metabolite": "Losartan glucuronide"
+      },
+      {
+        "drug": "CHEMBL2095212 YM178, Mirabegron",
+        "metabolite": "M13, YM-538859"
+      },
+      {
+        "drug": "CHEMBL2095212 YM178, Mirabegron",
+        "metabolite": "M12, YM-538858"
+      },
+      {
+        "drug": "CHEMBL2095212 YM178, Mirabegron",
+        "metabolite": "M8, YM-538853"
+      },
+      {
+        "drug": "CHEMBL2095212 YM178, Mirabegron",
+        "metabolite": "M16, YM-208876"
+      },
+      {
+        "drug": "CHEMBL2095212 YM178, Mirabegron",
+        "metabolite": "M14, YM-554028"
+      },
+      {
+        "drug": "CHEMBL2095212 YM178, Mirabegron",
+        "metabolite": "M15, YM-9636324"
+      },
+      {
+        "drug": "CHEMBL2103817 CP-945,598",
+        "metabolite": "M1, CE-156,706"
+      },
+      {
+        "drug": "CHEMBL2104978 Peliglitazar",
+        "metabolite": "M10"
+      },
+      {
+        "drug": "CHEMBL2104978 Peliglitazar",
+        "metabolite": "M17"
+      },
+      {
+        "drug": "CHEMBL2104978 Peliglitazar",
+        "metabolite": "M4"
+      },
+      {
+        "drug": "CHEMBL2104993 Lu AA21004",
+        "metabolite": "N-hydroxylated Lu AA21004"
+      },
+      {
+        "drug": "CHEMBL2104993 Lu AA21004",
+        "metabolite": "Benzylic alcohol of Lu AA21004"
+      },
+      {
+        "drug": "CHEMBL259209 Rac-Milnacipran",
+        "metabolite": "N-Desethyl Milnacipran"
+      },
+      {
+        "drug": "CHEMBL259209 Rac-Milnacipran",
+        "metabolite": "Milnacipran carbamicacid"
+      },
+      {
+        "drug": "CHEMBL29 Benzylpenicillin",
+        "metabolite": "Benzylpenicilloic acid"
+      },
+      {
+        "drug": "CHEMBL3526439 Sipoglitazar",
+        "metabolite": "M-II"
+      },
+      {
+        "drug": "CHEMBL3527215 1",
+        "metabolite": "unknown 1"
+      },
+      {
+        "drug": "CHEMBL3527215 1",
+        "metabolite": "unknown 2"
+      },
+      {
+        "drug": "CHEMBL3527215 1",
+        "metabolite": "unknown 3"
+      },
+      {
+        "drug": "CHEMBL3527215 1",
+        "metabolite": "unknown 4"
+      },
+      {
+        "drug": "CHEMBL3542265 LY2452473",
+        "metabolite": "S4, LSN2519879"
+      },
+      {
+        "drug": "CHEMBL3542265 LY2452473",
+        "metabolite": "S10"
+      },
+      {
+        "drug": "CHEMBL3542265 LY2452473",
+        "metabolite": "S60, LSN3040393"
+      },
+      {
+        "drug": "CHEMBL375563 1, PPD",
+        "metabolite": "unnamed metabolite"
+      },
+      {
+        "drug": "CHEMBL383824 17-DMAG",
+        "metabolite": "M1"
+      },
+      {
+        "drug": "CHEMBL385517 Saxagliptin, Onglyza",
+        "metabolite": "D1"
+      },
+      {
+        "drug": "CHEMBL385517 Saxagliptin, Onglyza",
+        "metabolite": "M2"
+      },
+      {
+        "drug": "CHEMBL40 Phenobarbital",
+        "metabolite": "dihydrodiol metabolite of phenobarbital"
+      },
+      {
+        "drug": "CHEMBL40 Phenobarbital",
+        "metabolite": "hydroxyethyl metabolite"
+      },
+      {
+        "drug": "CHEMBL40 Phenobarbital",
+        "metabolite": "phenobarbital-N-glucoside"
+      },
+      {
+        "drug": "CHEMBL40 Phenobarbital",
+        "metabolite": "alpha-phenyl-gamma-butyrolactone"
+      },
+      {
+        "drug": "CHEMBL417 Epirubicin",
+        "metabolite": "7d-Aon"
+      },
+      {
+        "drug": "CHEMBL417 Epirubicin",
+        "metabolite": "Doxorubicin aglycone"
+      },
+      {
+        "drug": "CHEMBL417 Epirubicin",
+        "metabolite": "Epidoxorubicinol, 4'-epiadriamycinol"
+      },
+      {
+        "drug": "CHEMBL42 CLZ",
+        "metabolite": "Nitrenium ion"
+      },
+      {
+        "drug": "CHEMBL42 CLZ",
+        "metabolite": "Iminium ion-1"
+      },
+      {
+        "drug": "CHEMBL42 CLZ",
+        "metabolite": "Iminium ion-2"
+      },
+      {
+        "drug": "CHEMBL42 CLZ",
+        "metabolite": "C-3"
+      },
+      {
+        "drug": "CHEMBL455136 Almorexant, ACT-078573",
+        "metabolite": "M6, ACT-078332"
+      },
+      {
+        "drug": "CHEMBL455136 Almorexant, ACT-078573",
+        "metabolite": "M5, ACT-172515"
+      },
+      {
+        "drug": "CHEMBL455136 Almorexant, ACT-078573",
+        "metabolite": "M37"
+      },
+      {
+        "drug": "CHEMBL483254 LBH589",
+        "metabolite": "epoxide intermediate"
+      },
+      {
+        "drug": "CHEMBL483254 LBH589",
+        "metabolite": "M4"
+      },
+      {
+        "drug": "CHEMBL483254 LBH589",
+        "metabolite": "M1"
+      },
+      {
+        "drug": "CHEMBL493982 SCH 530348, Vorapaxar",
+        "metabolite": "M19"
+      },
+      {
+        "drug": "CHEMBL493982 SCH 530348, Vorapaxar",
+        "metabolite": "M20"
+      },
+      {
+        "drug": "CHEMBL532 Erythromycin",
+        "metabolite": "Anhydroerythromycin A"
+      },
+      {
+        "drug": "CHEMBL54 Haloperidol",
+        "metabolite": "Haloperidol-N-glucuronide"
+      },
+      {
+        "drug": "CHEMBL54 Haloperidol",
+        "metabolite": "Reduced haloperidol"
+      },
+      {
+        "drug": "CHEMBL54 Haloperidol",
+        "metabolite": "HPP+"
+      },
+      {
+        "drug": "CHEMBL554 lapatinib",
+        "metabolite": "M1"
+      },
+      {
+        "drug": "CHEMBL554 lapatinib",
+        "metabolite": "M10"
+      },
+      {
+        "drug": "CHEMBL554 lapatinib",
+        "metabolite": "M4"
+      },
+      {
+        "drug": "CHEMBL554 lapatinib",
+        "metabolite": "M8"
+      },
+      {
+        "drug": "CHEMBL58 Mitoxantrone",
+        "metabolite": "Monocarboxylic acid derivative of mitoxantrone"
+      },
+      {
+        "drug": "CHEMBL58 Mitoxantrone",
+        "metabolite": "Dicarboxylic acid derivative of mitoxantrone"
+      },
+      {
+        "drug": "CHEMBL633 Amiodarone",
+        "metabolite": "M3"
+      },
+      {
+        "drug": "CHEMBL633 Amiodarone",
+        "metabolite": "M5"
+      },
+      {
+        "drug": "CHEMBL633 Amiodarone",
+        "metabolite": "M11-1"
+      },
+      {
+        "drug": "CHEMBL633 Amiodarone",
+        "metabolite": "M7, MDEA"
+      },
+      {
+        "drug": "CHEMBL685 Mebendazole",
+        "metabolite": "Metabolite A"
+      },
+      {
+        "drug": "CHEMBL685 Mebendazole",
+        "metabolite": "Metabolite B"
+      },
+      {
+        "drug": "CHEMBL741 Lamotrigine",
+        "metabolite": "Lamotrigine N2-glucuronide"
+      },
+      {
+        "drug": "CHEMBL762 Oxymetazoline",
+        "metabolite": "M1"
+      },
+      {
+        "drug": "CHEMBL762 Oxymetazoline",
+        "metabolite": "M6"
+      },
+      {
+        "drug": "CHEMBL787 Montelukast",
+        "metabolite": "M6, montelukast 1,2-diol"
+      },
+      {
+        "drug": "CHEMBL83 Tamoxifen",
+        "metabolite": "Metabolite E"
+      },
+      {
+        "drug": "CHEMBL88 Cyclophosphamide",
+        "metabolite": "3-Dechloroethylifosfamide"
+      },
+      {
+        "drug": "CHEMBL88 Cyclophosphamide",
+        "metabolite": "Chloroacetaldehyde"
+      },
+      {
+        "drug": "CHEMBL92 Docetaxel",
+        "metabolite": "M2"
+      }
+    ],
+    "one_step_edges": 272,
+    "per_drug": [
+      {
+        "drug": "CHEMBL1068 OXC, Oxcarbazepine, Trileptal",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 3,
+        "seconds": 0.33
+      },
+      {
+        "drug": "CHEMBL1076347 TCC, Triclocarban",
+        "hits_all": 5,
+        "hits_top_k": 5,
+        "n_predicted": 40,
+        "n_reference": 5,
+        "seconds": 0.13
+      },
+      {
+        "drug": "CHEMBL1076930 2, Rp,Sp-2",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.54
+      },
+      {
+        "drug": "CHEMBL109 Valproic acid",
+        "hits_all": 3,
+        "hits_top_k": 3,
+        "n_predicted": 37,
+        "n_reference": 8,
+        "seconds": 0.02
+      },
+      {
+        "drug": "CHEMBL1111 Ambrisentan",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.25
+      },
+      {
+        "drug": "CHEMBL1117 Idarubicin",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.73
+      },
+      {
+        "drug": "CHEMBL114 Saquinavir",
+        "hits_all": 1,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.82
+      },
+      {
+        "drug": "CHEMBL1140 NAM",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.04
+      },
+      {
+        "drug": "CHEMBL1200374 Aromasin, Exemestane",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.07
+      },
+      {
+        "drug": "CHEMBL1201179 Lapatinib, Tykerb, Tyverb, GW572016",
+        "hits_all": 2,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 3,
+        "seconds": 0.71
+      },
+      {
+        "drug": "CHEMBL1201772 Prasugrel",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.26
+      },
+      {
+        "drug": "CHEMBL1229211 DTG, S/GSK1349572, Dolutegravir",
+        "hits_all": 2,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.4
+      },
+      {
+        "drug": "CHEMBL1233 Carisoprodol",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.07
+      },
+      {
+        "drug": "CHEMBL1269025 Edoxaban",
+        "hits_all": 5,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 7,
+        "seconds": 0.61
+      },
+      {
+        "drug": "CHEMBL1272 Repaglinide",
+        "hits_all": 3,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 6,
+        "seconds": 0.62
+      },
+      {
+        "drug": "CHEMBL1272307 SB-649868",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 3,
+        "seconds": 0.5
+      },
+      {
+        "drug": "CHEMBL1399 Anastrozole",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 30,
+        "n_reference": 1,
+        "seconds": 0.03
+      },
+      {
+        "drug": "CHEMBL1503 Omeprazole",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.07
+      },
+      {
+        "drug": "CHEMBL151649 PEITC",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.04
+      },
+      {
+        "drug": "CHEMBL1630842 BILR 355",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.69
+      },
+      {
+        "drug": "CHEMBL1639 Aliskiren, SPP100",
+        "hits_all": 3,
+        "hits_top_k": 3,
+        "n_predicted": 40,
+        "n_reference": 5,
+        "seconds": 0.47
+      },
+      {
+        "drug": "CHEMBL1642 Imatinib, Glivec, Gleevec",
+        "hits_all": 1,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.83
+      },
+      {
+        "drug": "CHEMBL1770248 Ertugliflozin, PF-04971729",
+        "hits_all": 3,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.58
+      },
+      {
+        "drug": "CHEMBL1771 Clopidogrel",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.19
+      },
+      {
+        "drug": "CHEMBL178 Daunorubicin",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.62
+      },
+      {
+        "drug": "CHEMBL1789842 QAB149, Indacaterol",
+        "hits_all": 3,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 5,
+        "seconds": 0.33
+      },
+      {
+        "drug": "CHEMBL186179 Muraglitazar",
+        "hits_all": 1,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.85
+      },
+      {
+        "drug": "CHEMBL191 Losartan",
+        "hits_all": 3,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.36
+      },
+      {
+        "drug": "CHEMBL2095212 YM178, Mirabegron",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 7,
+        "seconds": 0.54
+      },
+      {
+        "drug": "CHEMBL2103817 CP-945,598",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.55
+      },
+      {
+        "drug": "CHEMBL2104978 Peliglitazar",
+        "hits_all": 3,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 6,
+        "seconds": 0.91
+      },
+      {
+        "drug": "CHEMBL2104993 Lu AA21004",
+        "hits_all": 2,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.24
+      },
+      {
+        "drug": "CHEMBL223228 EFV",
+        "hits_all": 2,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.13
+      },
+      {
+        "drug": "CHEMBL259209 Rac-Milnacipran",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.11
+      },
+      {
+        "drug": "CHEMBL270995 brivanib alaninate",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.12
+      },
+      {
+        "drug": "CHEMBL29 Benzylpenicillin",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.27
+      },
+      {
+        "drug": "CHEMBL3526391 N-Desalkylquetiapine",
+        "hits_all": 2,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.32
+      },
+      {
+        "drug": "CHEMBL3526439 Sipoglitazar",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.44
+      },
+      {
+        "drug": "CHEMBL3527215 1",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.55
+      },
+      {
+        "drug": "CHEMBL3542265 LY2452473",
+        "hits_all": 1,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.41
+      },
+      {
+        "drug": "CHEMBL355862 1, Zoniporide",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.24
+      },
+      {
+        "drug": "CHEMBL375563 1, PPD",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.35
+      },
+      {
+        "drug": "CHEMBL383824 17-DMAG",
+        "hits_all": 3,
+        "hits_top_k": 3,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.85
+      },
+      {
+        "drug": "CHEMBL385517 Saxagliptin, Onglyza",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 3,
+        "seconds": 0.15
+      },
+      {
+        "drug": "CHEMBL40 Phenobarbital",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 5,
+        "seconds": 0.12
+      },
+      {
+        "drug": "CHEMBL417 Epirubicin",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.84
+      },
+      {
+        "drug": "CHEMBL42 CLZ",
+        "hits_all": 4,
+        "hits_top_k": 3,
+        "n_predicted": 40,
+        "n_reference": 8,
+        "seconds": 0.27
+      },
+      {
+        "drug": "CHEMBL428647 Paclitaxel",
+        "hits_all": 3,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 3,
+        "seconds": 1.37
+      },
+      {
+        "drug": "CHEMBL455136 Almorexant, ACT-078573",
+        "hits_all": 2,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 5,
+        "seconds": 0.71
+      },
+      {
+        "drug": "CHEMBL483254 LBH589",
+        "hits_all": 2,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 5,
+        "seconds": 0.46
+      },
+      {
+        "drug": "CHEMBL493982 SCH 530348, Vorapaxar",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.63
+      },
+      {
+        "drug": "CHEMBL52440 Dextromethorphan",
+        "hits_all": 2,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.16
+      },
+      {
+        "drug": "CHEMBL532 Erythromycin",
+        "hits_all": 1,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.85
+      },
+      {
+        "drug": "CHEMBL54 Haloperidol",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.24
+      },
+      {
+        "drug": "CHEMBL554 lapatinib",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.71
+      },
+      {
+        "drug": "CHEMBL58 Mitoxantrone",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.46
+      },
+      {
+        "drug": "CHEMBL633 Amiodarone",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.22
+      },
+      {
+        "drug": "CHEMBL643 Promethazine",
+        "hits_all": 2,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.16
+      },
+      {
+        "drug": "CHEMBL64391 Itraconazole",
+        "hits_all": 1,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 1.04
+      },
+      {
+        "drug": "CHEMBL685 Mebendazole",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.24
+      },
+      {
+        "drug": "CHEMBL741 Lamotrigine",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 0.04
+      },
+      {
+        "drug": "CHEMBL762 Oxymetazoline",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 2,
+        "seconds": 0.08
+      },
+      {
+        "drug": "CHEMBL787 Montelukast",
+        "hits_all": 3,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 4,
+        "seconds": 0.83
+      },
+      {
+        "drug": "CHEMBL83 Tamoxifen",
+        "hits_all": 2,
+        "hits_top_k": 2,
+        "n_predicted": 40,
+        "n_reference": 3,
+        "seconds": 0.57
+      },
+      {
+        "drug": "CHEMBL88 Cyclophosphamide",
+        "hits_all": 1,
+        "hits_top_k": 1,
+        "n_predicted": 40,
+        "n_reference": 3,
+        "seconds": 0.04
+      },
+      {
+        "drug": "CHEMBL92 Docetaxel",
+        "hits_all": 0,
+        "hits_top_k": 0,
+        "n_predicted": 40,
+        "n_reference": 1,
+        "seconds": 1.31
+      }
+    ],
+    "recall": {
+      "hits_all": 80,
+      "hits_top_k": 53,
+      "macro_all": 0.37775974025974024,
+      "micro_all": 0.41025641025641024,
+      "micro_top_k": 0.2717948717948718,
+      "reference_metabolites": 195,
+      "top_k": 10
+    },
+    "reference_snapshot": {
+      "file": "reference_snapshot.json",
+      "sha256": "f28593c74a360f24164c9744a241eb95fd143fa365188e4115376097e6d2b851"
+    }
+  },
+  "n_items": 69,
+  "protocol_version": "0.5",
+  "workflow": "Flux"
+}
