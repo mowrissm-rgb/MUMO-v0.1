@@ -144,5 +144,16 @@ class FluxHelperTests(unittest.TestCase):
         self.assertEqual(flux.bootstrap_auc(data, 50, 1), flux.bootstrap_auc(data, 50, 1))
 
 
+
+
+class FluxEmptyInputTests(unittest.TestCase):
+    def test_empty_and_blank_smiles_return_an_error_record(self):
+        from agents.metabolism import predict_metabolites
+        for bad in ('', '   ', None):
+            out = predict_metabolites(bad)
+            self.assertIn('_error', out, repr(bad))
+            self.assertEqual(out['_verification']['status'], 'failed')
+
+
 if __name__ == "__main__":
     unittest.main()

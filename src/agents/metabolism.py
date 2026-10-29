@@ -217,7 +217,7 @@ def predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40):
         return {"_error": msg, "_verification": _verification("unavailable", smiles, error=msg)}
 
     parent = Chem.MolFromSmiles(str(smiles or "").strip())
-    if parent is None:
+    if parent is None or parent.GetNumAtoms() == 0:   # "" parses to an empty molecule
         msg = "Couldn't read that structure — check the SMILES."
         return {"_error": msg, "_verification": _verification("failed", smiles, error=msg)}
 
