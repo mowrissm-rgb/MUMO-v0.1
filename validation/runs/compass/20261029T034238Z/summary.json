@@ -1,0 +1,55 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 2,
+    "INCONCLUSIVE": 0,
+    "PASS": 11
+  },
+  "criteria": [
+    {
+      "description": "resolved ID is an OLS exact-label match (at least 9 of 10)",
+      "id": "C1",
+      "passed": true,
+      "value": "9/10 diseases"
+    },
+    {
+      "description": "top-10 ranking, scores and names equal independent queries (100%)",
+      "id": "C2",
+      "passed": true,
+      "value": "10/10 diseases"
+    },
+    {
+      "description": "hit@10 against ChEMBL phase-4 mechanism targets (rate >= 0.7)",
+      "id": "C3",
+      "passed": true,
+      "value": "9/10 diseases with a key (rate 0.90); empty key: []"
+    },
+    {
+      "description": "bad input raises ValueError (3 of 3)",
+      "id": "C4",
+      "passed": true,
+      "value": "3/3 faults"
+    }
+  ],
+  "extras": {
+    "circularity_note": "C3 key is partly circular: Open Targets uses ChEMBL clinical evidence",
+    "empty_key_diseases": [],
+    "http_requests_independent": 75,
+    "open_targets_version": {
+      "api": {
+        "x": "26",
+        "y": "9",
+        "z": "0"
+      },
+      "data": {
+        "iteration": null,
+        "month": "09",
+        "year": "26"
+      }
+    }
+  },
+  "n_items": 13,
+  "protocol_version": "0.4",
+  "workflow": "Compass"
+}
