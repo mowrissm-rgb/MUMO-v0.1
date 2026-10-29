@@ -121,7 +121,7 @@ def run(manifest, ctx):
     limit, min_p, cap = manifest['limit'], manifest['min_pchembl'], manifest['independent_pool_cap']
     items, s1_passed, s1_rows = [], 0, []
     try:
-        status = client.get(f'{HOST}/chembl/api/status.json')
+        status = client.get(f'{API}/status.json')
         release = status.get('chembl_db_version')
     except Exception as exc:
         release = f'unavailable: {exc}'
