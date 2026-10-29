@@ -67,5 +67,28 @@ class ReportMissingValueTests(unittest.TestCase):
         self.assertEqual(cells, ['Not calculated', 'Not calculated', '1.5', 'Pass'])
 
 
+
+
+class FateHelperTests(unittest.TestCase):
+    def test_verdict_counts(self):
+        from validation.checks import fate
+        self.assertEqual(fate.verdict_count('Drug-like (passes Ro5)'), 0)
+        self.assertEqual(fate.verdict_count('1 Ro5 violation'), 1)
+        self.assertEqual(fate.verdict_count('3 Ro5 violations'), 3)
+
+    def test_rules_catch_a_wrong_label(self):
+        from validation.checks import fate
+        from agents.admet import druglikeness
+        dl = {k: v for k, v in druglikeness('CC(=O)Oc1ccccc1C(=O)O').items() if not k.startswith('_')}
+        self.assertTrue(all(fate.check_rules(dl).values()))
+        dl['Veber'] = 'Fail'
+        self.assertFalse(fate.check_rules(dl)['veber'])
+
+    def test_wrapper_cases_all_pass_offline(self):
+        from validation.checks import fate
+        failed = [name for name, ok, _ in fate.wrapper_cases() if not ok]
+        self.assertEqual(failed, [])
+
+
 if __name__ == "__main__":
     unittest.main()
