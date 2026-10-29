@@ -29,6 +29,8 @@ Fixture note: ADMET-AI is not installed in the validation environment, so the AD
 
 **Pass criterion.** 100% of fields match on 100% of drugs. Rendering is deterministic, so any mismatch is a defect.
 
+**Addendum 0.1a (written before the first run).** The field "a missing or non-finite value renders as unavailable text" cannot be tested on real drugs, because none of them yields a missing value. One fault-injection item is added: a drug-likeness record with one `None` value and one `NaN` value (see `injection` in `manifests/quill.json`), run through the ADMET report. It is reported as a 21st item, labelled `injection`, and counts toward the 100% criterion.
+
 ## Scout: ChEMBL retrieval fidelity
 
 **Question.** Given a gene symbol, does Scout resolve the correct ChEMBL target and return the true most-potent measured ligands?
