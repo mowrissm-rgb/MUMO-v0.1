@@ -219,5 +219,15 @@ class PoseHelperTests(unittest.TestCase):
         self.assertFalse(pose.check_replica_report(self._report(vinardo=None))['vinardo_finite'])
 
 
+
+
+class GhoseAtomCountTests(unittest.TestCase):
+    def test_ghose_counts_hydrogens_not_heavy_atoms(self):
+        from agents.admet import druglikeness
+        dl = druglikeness('CC(=O)Oc1ccccc1C(=O)O')   # aspirin: 13 heavy atoms, 21 atoms with H
+        self.assertEqual(dl['Heavy atoms'], 13)
+        self.assertEqual(dl['Ghose'], 'Pass')
+
+
 if __name__ == "__main__":
     unittest.main()
