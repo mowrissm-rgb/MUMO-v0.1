@@ -89,3 +89,5 @@ Fixture note: ADMET-AI is not installed in the validation environment, so the AD
 - Consistency of each combined score with its channel scores under STRING's published prior-corrected combination rule (prior 0.041). The rule is applied from memory of the STRING documentation, so a mismatch is ambiguous between a wrong formula and a data issue. It is therefore reported as a diagnostic, not a criterion. A later protocol version may promote it once the rule is confirmed against the documentation.
 
 **Known limits.** This shows fidelity to STRING, not that STRING's scores are biologically correct. UniProt dossiers and ChEMBL druggability blocks that `string_deep` adds are not covered by this check.
+
+**Addendum 0.2a (written before the first Nexus run).** Check N3(a) says "no partner equals a query protein". For the three-protein set, STRING can legitimately return one query protein as a partner of another (for example ERBB2 as a partner of EGFR). The intended test is self-interaction, so N3(a) is read as: every combined score is in [0, 1] and no record pairs a protein with itself (STRING ID A not equal to STRING ID B).
