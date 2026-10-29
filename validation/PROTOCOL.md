@@ -91,3 +91,46 @@ Fixture note: ADMET-AI is not installed in the validation environment, so the AD
 **Known limits.** This shows fidelity to STRING, not that STRING's scores are biologically correct. UniProt dossiers and ChEMBL druggability blocks that `string_deep` adds are not covered by this check.
 
 **Addendum 0.2a (written before the first Nexus run).** Check N3(a) says "no partner equals a query protein". For the three-protein set, STRING can legitimately return one query protein as a partner of another (for example ERBB2 as a partner of EGFR). The intended test is self-interaction, so N3(a) is read as: every combined score is in [0, 1] and no record pairs a protein with itself (STRING ID A not equal to STRING ID B).
+
+---
+
+# Version 0.3 (draft), 2026-10-29. Adds Fate. Earlier criteria are unchanged.
+
+## Fate: drug-likeness panel fidelity
+
+**Question.** Does the RDKit drug-likeness panel (`agents.admet.druglikeness`) report correct descriptors, apply the published rules correctly, and behave deterministically? Does the ADMET-AI wrapper (`agents.admet.admet_ml`) map, range-check and fail safely?
+
+**Scope limit, stated up front.** ADMET-AI is not installed in the validation environment. This version therefore does **not** test ADMET-AI prediction accuracy. F3 tests only MUMO's wrapper logic, using a stub model that returns chosen values. Model accuracy needs a separate protocol item, a local install, and a held-out benchmark. Until then the paper should cite ADMET-AI's published performance and claim only that MUMO runs and presents it faithfully.
+
+**Items.** The same 20 drugs as Quill (`manifests/fate.json`), plus 6 wrapper cases for F3.
+
+**Check F1, descriptors against an independent source.** For each drug, MUMO's descriptors are compared with PubChem's computed properties, fetched by SMILES with POST requests (`MolecularWeight`, `HeavyAtomCount`, plus the descriptive properties below). PubChem uses a different toolkit, so agreement is not circular.
+- Hard criteria: MUMO molecular weight within 0.1 Da of PubChem's (this covers MUMO's one-decimal rounding and atomic-weight table differences), and heavy-atom count exactly equal.
+- Pass: 100% of drugs on both. A failed PubChem lookup counts as an error, not a pass.
+
+**Check F2, rule consistency with published definitions.** Using only MUMO's own reported descriptor values, rule outcomes are recomputed from the original definitions:
+- Lipinski rule of five (Lipinski 1997): violations counted for MW > 500, LogP > 5, H-bond donors > 5, H-bond acceptors > 10. MUMO's label must be `Pass` exactly when the count is 0, otherwise `<n> violation(s)` with the right n.
+- Veber (Veber 2002): rotatable bonds ≤ 10 and TPSA ≤ 140.
+- Egan (Egan 2000): TPSA ≤ 131.6 and LogP ≤ 5.88.
+- Verdict string: consistent with the violation count (0, 1, or more).
+- Pass: 100% of drugs on all four.
+
+**Check F3, wrapper behaviour with a stub model.** Six cases for `admet_ml`:
+1. All endpoints valid: status `verified`, every endpoint present, probabilities rounded to 3 decimals, regression values to 2.
+2. A probability of 1.7: that endpoint is marked failed and absent from the output, overall status `partial`.
+3. A NaN value: that endpoint failed, never printed as a number.
+4. A missing model column: that endpoint marked `missing`, status `partial`.
+5. Invalid SMILES: returns an error record, raises nothing.
+6. Model raises an exception: returns an `unavailable` error record, raises nothing.
+- Pass: 6 of 6.
+
+**Check F4, determinism.** `druglikeness` is run 3 times per drug; every output must be identical.
+- Pass: 20 of 20 drugs.
+
+**Recorded, no pass/fail.**
+- PubChem agreement for TPSA, H-bond donors, H-bond acceptors, rotatable bonds and LogP (MUMO's Crippen LogP against PubChem's XLogP), as mean and maximum absolute difference and exact-agreement rate. The toolkits define these differently, so differences are expected and are not defects by themselves.
+- Ghose filter. MUMO tests the atom count 20–70 on **heavy atoms**. As I understand Ghose et al. 1999, the criterion counts **all atoms including hydrogens**. This is an unverified recollection, so the discrepancy is reported (drugs where the two readings give different outcomes) and not made a criterion. Check the paper before the manuscript states anything about the Ghose rule.
+- Lead-like rule (MUMO: MW ≤ 350 and LogP ≤ 3.5, no lower bound). Lead-like definitions vary between papers; recorded only.
+- GI-absorption and BBB labels follow BOILED-Egg-style thresholds but use Crippen LogP rather than WLOGP, so they are heuristics. Recorded only.
+
+**Known limits.** Agreement with PubChem shows the descriptors are computed correctly. It does not show the rule-based absorption labels predict real absorption.
