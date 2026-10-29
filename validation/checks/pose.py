@@ -16,6 +16,7 @@ from pathlib import Path
 import requests
 
 RCSB = 'https://files.rcsb.org/download'
+CONSENSUS_LABELS = ('Both functions agree', 'Functions disagree — interpret with care')
 
 
 def fetch_pdb(pdb, dest):
@@ -58,14 +59,12 @@ def check_replica_report(res):
         'confidence_rule': res['confidence'] == expected_conf,
         'modes_sorted': all(a <= b for a, b in zip(scores, scores[1:])) and bool(scores)
                         and abs(scores[0] - res['best_score']) < 1e-9,
-        'vinardo_finite': finite(res.get('vinardo')) and finite(res.get('consensus')),
+        'vinardo_and_label': finite(res.get('vinardo')) and res.get('consensus') in CONSENSUS_LABELS,
     }
 
 
 def vina_score_only(vina, receptor, pose, center, size):
-    cmd = [vina, '--receptor', receptor, '--ligand', pose, '--score_only',
-           '--center_x', str(center[0]), '--center_y', str(center[1]), '--center_z', str(center[2]),
-           '--size_x', str(size[0]), '--size_y', str(size[1]), '--size_z', str(size[2])]
+    cmd = [vina, '--receptor', receptor, '--ligand', pose, '--score_only', '--autobox']
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     match = re.search(r'Estimated Free Energy of Binding\s*:\s*(-?\d+\.\d+)', out.stdout)
     return float(match.group(1)) if match else None

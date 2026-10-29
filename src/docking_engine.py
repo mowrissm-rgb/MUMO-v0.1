@@ -822,9 +822,7 @@ def validate_native_redock(raw_pdb_path, receptor_pdbqt, vina, center, size, dat
         from rdkit.Chem import AllChem, rdMolAlign
         from meeko import PDBQTMolecule, RDKitMolCreate
 
-        NOT_LIG = {"HOH", "WAT", "SOL", "DOD", "TIP", "CL", "NA", "K", "MG", "CA", "ZN",
-                   "MN", "SO4", "PO4", "ACT", "GOL", "EDO", "PEG", "DMS", "IOD", "BR",
-                   "FMT", "NO3"}
+        from crystal_additives import NOT_LIGAND as NOT_LIG
         groups = {}
         with open(raw_pdb_path) as f:
             for ln in f:

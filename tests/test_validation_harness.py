@@ -202,7 +202,7 @@ class PoseHelperTests(unittest.TestCase):
     def _report(self, **override):
         res = {'best_score': -7.1, 'all_best': [-7.1, -6.9, -6.8], 'mean': -6.933, 'sd': 0.125,
                'confidence': 'High', 'modes': [(1, -7.1), (2, -6.5), (3, -6.0)],
-               'vinardo': -8.0, 'consensus': -7.5}
+               'vinardo': -8.0, 'consensus': 'Both functions agree'}
         res.update(override)
         return res
 
@@ -216,7 +216,8 @@ class PoseHelperTests(unittest.TestCase):
         self.assertFalse(pose.check_replica_report(self._report(sd=0.9))['mean_sd'])
         self.assertFalse(pose.check_replica_report(self._report(confidence='Lower'))['confidence_rule'])
         self.assertFalse(pose.check_replica_report(self._report(modes=[(1, -6.0), (2, -7.1)]))['modes_sorted'])
-        self.assertFalse(pose.check_replica_report(self._report(vinardo=None))['vinardo_finite'])
+        self.assertFalse(pose.check_replica_report(self._report(vinardo=None))['vinardo_and_label'])
+        self.assertFalse(pose.check_replica_report(self._report(consensus='unavailable (x)'))['vinardo_and_label'])
 
 
 
@@ -227,6 +228,33 @@ class GhoseAtomCountTests(unittest.TestCase):
         dl = druglikeness('CC(=O)Oc1ccccc1C(=O)O')   # aspirin: 13 heavy atoms, 21 atoms with H
         self.assertEqual(dl['Heavy atoms'], 13)
         self.assertEqual(dl['Ghose'], 'Pass')
+
+
+class LigandSelectionTests(unittest.TestCase):
+    def _pdb(self, path):
+        def het(serial, resn, resseq, n, x0):
+            return ''.join(f"HETATM{serial + i:5d}  C{i + 1:<2d} {resn} A{resseq:4d}    {x0 + i:8.3f}{0.0:8.3f}{0.0:8.3f}  1.00  0.00           C\n"
+                           for i in range(n))
+        protein = ''.join(f"ATOM  {i + 1:5d}  CA  ALA A{i + 1:4d}    {float(i):8.3f}{0.0:8.3f}{0.0:8.3f}  1.00  0.00           C\n"
+                          for i in range(5))
+        Path(path).write_text(protein + het(100, 'CLR', 301, 28, 50.0) + het(200, 'LIG', 302, 10, 80.0))
+
+    def test_cholesterol_is_not_picked_as_the_ligand(self):
+        import tempfile
+        from agents.target_analyst import auto_grid_from_pdb
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'x.pdb'
+            self._pdb(path)
+            self.assertIn("'LIG'", auto_grid_from_pdb(str(path))[2])
+
+    def test_both_code_paths_share_one_exclusion_list(self):
+        from agents import target_analyst
+        import crystal_additives
+        self.assertIs(target_analyst._NOT_LIGAND, crystal_additives.NOT_LIGAND)
+        source = (ROOT / 'src' / 'docking_engine.py').read_text(encoding='utf-8')
+        self.assertIn('from crystal_additives import NOT_LIGAND', source)
+        for code in ('HEM', 'CLR', 'HOH', 'NAG'):
+            self.assertIn(code, crystal_additives.NOT_LIGAND)
 
 
 if __name__ == "__main__":

@@ -355,13 +355,7 @@ def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
 
 
 # Things in a PDB that are NOT the drug: water, ions, common crystallisation junk.
-_NOT_LIGAND = {
-    "HOH", "WAT", "SOL", "DOD", "TIP", "CL", "NA", "K", "MG", "CA", "ZN", "MN",
-    "SO4", "PO4", "ACT", "GOL", "EDO", "PEG", "DMS", "IOD", "BR", "FMT", "NO3",
-    # Prosthetic heme groups are not co-crystal inhibitors. Selecting the
-    # largest HETATM group in 1CX2 otherwise centers docking on heme.
-    "HEM", "HEA", "HEC", "NAG", "BMA", "MAN", "FUC", "GAL",
-}
+from crystal_additives import NOT_LIGAND as _NOT_LIGAND
 
 
 def auto_grid_from_pdb(pdb_path, padding=5.0, min_size=16.0, max_size=22.0):
