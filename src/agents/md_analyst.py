@@ -114,7 +114,8 @@ def _add_missing_oxt(receptor_pdb, out_path, max_peptide_bond=2.0):
     opposite the other two substituents. Returns the number of atoms added.
     """
     import math
-    lines = open(receptor_pdb, encoding="utf-8").read().splitlines()
+    with open(receptor_pdb, encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
     residues = []
     for i, line in enumerate(lines):
         if not line.startswith("ATOM"):
@@ -154,7 +155,12 @@ def _add_missing_oxt(receptor_pdb, out_path, max_peptide_bond=2.0):
                                 + f"{x:8.3f}{y:8.3f}{z:8.3f}" + template[54:76] + " O" + template[78:])
     out, serial = [], 0
     for i, line in enumerate(lines):
-        for text in (line, inserts.get(i)):
+        pieces = [line, inserts.get(i)]
+        # OpenMM bonds each residue to the next one in its chain even across a real gap, so a
+        # capped residue also needs a TER record to start a new chain after it.
+        if i in inserts and not (i + 1 < len(lines) and lines[i + 1].startswith("TER")):
+            pieces.append("TER")
+        for text in pieces:
             if text is None:
                 continue
             if text.startswith(("ATOM", "HETATM")):

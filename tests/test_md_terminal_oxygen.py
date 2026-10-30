@@ -62,6 +62,26 @@ class TerminalOxygenTests(unittest.TestCase):
                 # equal to within PDB coordinate rounding (three decimals)
                 self.assertAlmostEqual(angle(oxt, c, ca), angle(oxt, c, o), delta=0.05)
 
+    def test_capped_residue_is_not_bonded_across_the_gap_by_openmm(self):
+        # Found by the Anchor validation: OpenMM joins consecutive residues of a chain even
+        # across a gap, so the capped residue still had an extra external bond.
+        try:
+            from openmm import app
+        except ImportError:
+            self.skipTest('openmm not installed')
+        with tempfile.TemporaryDirectory() as directory:
+            src, out = Path(directory) / 'in.pdb', Path(directory) / 'out.pdb'
+            src.write_text('\n'.join(self._structure()) + '\nEND\n')
+            md._add_missing_oxt(str(src), str(out))
+            residues = list(app.PDBFile(str(out)).topology.residues())
+            self.assertEqual(len(residues), 3)
+            across_gap = [(a, b) for a, b in app.PDBFile(str(out)).topology.bonds()
+                          if {a.residue.index, b.residue.index} == {1, 2}]
+            self.assertEqual(across_gap, [])
+            joined = [(a, b) for a, b in app.PDBFile(str(out)).topology.bonds()
+                      if {a.residue.index, b.residue.index} == {0, 1}]
+            self.assertEqual(len(joined), 1)         # the real peptide bond is kept
+
     def test_running_it_again_adds_nothing_and_serials_are_unique(self):
         with tempfile.TemporaryDirectory() as directory:
             src, once, twice = (Path(directory) / n for n in ('in.pdb', 'once.pdb', 'twice.pdb'))
