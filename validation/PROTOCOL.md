@@ -489,3 +489,60 @@ Contacts are compared at residue level, per interaction type: H-bond, hydrophobi
 **Recorded, no pass/fail.** Hit counts, the self-hit identity and E-value, how many independent hits were missed or reordered, error messages for the fault inputs, runtimes, and the BLAST+ and database hashes.
 
 **Known limits.** Ten proteins, and only human queries. The wrapper tests cannot reveal an error in the Swiss-Prot data itself.
+
+---
+
+# Version 1.2 (draft), 2026-10-30. Adds routing and specialist-outage tests. Earlier criteria are unchanged.
+
+## Routing and outage: the dispatch layer and the specialist split
+
+**Questions.** Does MUMO's deterministic request router pick the right workflow, stay quiet on questions, and flag out-of-scope requests? When a specialist service is down, does MUMO say so, keep serving the rest, and recover?
+
+**Scope, stated up front.** This tests the deterministic code: `dispatch.py`, `services/registry.py`, `services/client.py`, `services/resilience.py` and `agent_catalog.py`. It does **not** test the LLM intent parser (`brain.parse_intent` with a model), the Streamlit chat interface, or message wording beyond the points below. Scout, Compass, Anchor and Quill are not routed by `dispatch.py` (they run inside the docking workflow or through report controls), so routing accuracy covers the seven routed actions: dock (Pose), analyze (Fate), qm (Orbit), metabolism (Flux), ramachandran (Atlas), string (Nexus) and blast (Helix).
+
+**Labelled data.** `manifests/routing.json` holds 73 chat requests written by hand before any run, with the expected ordered list of actions. They are 35 plain requests (5 per action), 7 explicit invocations by workflow name, 6 multi-step requests, 14 questions, and 11 "trap" messages that use cue words without asking for anything (for example "the alpha helix near the active site is flexible", "do not dock anything yet"). The labels are my judgement of what a user means. The set is small and mine, not an independent benchmark.
+
+### Part R: routing
+
+**Check R1, request accuracy.** For the 48 request cases (plain, explicit, multi-step), `requested_actions(text)` must equal the expected ordered list exactly.
+- Pass: at least 85% exact matches (41 of 48).
+
+**Check R2, no false triggers.** For the 25 non-request cases (questions and traps), `requested_actions(text)` must return an empty list.
+- Pass: false-trigger rate of at most 10% (at most 2 of 25).
+
+**Check R3, multi-step order.** For the 6 multi-step requests the order of actions must match.
+- Pass: at least 5 of 6.
+
+**Check R4, readiness.** For 6 cases, `is_ready(action, convo)` must match the expected value (an action is ready only when its required slots are present).
+- Pass: 6 of 6.
+
+**Check R5, out-of-scope detection.** For 12 requests, `unsupported_request(text)` must be non-empty exactly for the 6 labelled out-of-scope ones (molecular dynamics, MM-GBSA, DFT, synthesis planning, clinical trials) and empty for the 6 in-scope ones. Two in-scope cases are deliberate traps: "dock aspirin into the chamber of the enzyme" (contains the substring "amber") and "blast the protein synthesis elongation factor EEF2" (contains "synthesi").
+- Pass: at least 11 of 12.
+
+All thresholds are methodological choices fixed before the run, floors for "mostly right", not published standards.
+
+### Part O: specialist outage
+
+All of these run in-process. Specialist services are made "remote" by setting their endpoint variables, to a dead local address (`http://127.0.0.1:9`) or to a small fake specialist server started by the check.
+
+**Check O1, registry integrity.** Every routed action has an owning specialist, and `agent_for(action)` returns the documented workflow name for all 7 (Pose, Fate, Orbit, Flux, Atlas, Nexus, Helix).
+- Pass: 7 of 7.
+
+**Check O2, all up.** With no remote endpoints set and the xTB and MD paths provided, `client.call(capability, {})` returns `None` (meaning "run it here") for every capability in the registry (13).
+- Pass: 13 of 13.
+
+**Check O3, one specialist down.** With specialist A (Pose, which owns dock, ramachandran, md, structure) pointed at a dead address: each of its capabilities that has a resilience requirement raises `SpecialistUnavailable`; every capability owned by B, C and D still returns `None` (served locally); and `registry.unavailable('dock')` names the Pose service and the capability and states that no result is available.
+- Pass: all three parts hold.
+
+**Check O4, referral.** For every (capability, current specialist) pair, `referral(...)` is empty when the current specialist owns the capability and otherwise names the workflow from `agent_for` and offers to run it anyway ("I can still run this").
+- Pass: 100% of pairs.
+
+**Check O5, circuit breaker.** On the local capability `string`, with the breaker cooldown shortened to 0.3 s for the test: one failure does not open the breaker; two in a row do (`available` becomes false and `message` says the service is temporarily unavailable); a different capability (`blast`) stays available; after the cooldown the capability is available again; and a success clears recorded failures.
+- Pass: all five parts hold.
+
+**Check O6, remote specialist behaviour.** Against a fake specialist for `string`: a healthy server returns decoded JSON; an HTTP 500 raises `SpecialistUnavailable` mentioning `HTTP 500`; a 200 response with a non-JSON body raises `SpecialistUnavailable`; with the server stopped, the call raises `SpecialistUnavailable` and `health` reports down; and when a server is running again, `health` (forced) reports up and the call succeeds.
+- Pass: 5 of 5.
+
+**Recorded, no pass/fail.** Which routing cases failed and what they returned (a confusion table by category), the false triggers by message, runtimes, and the wording of the unavailable and referral messages.
+
+**Known limits.** The labelled set is small and written by one person. The outage tests simulate failure with unreachable addresses and a fake server, not a real crashed Pose container (the original failure, a segmentation fault, is not reproduced). The message wording is checked only for the named points. The registry docstring says the unavailable message "always says what is still available"; the code does not say so, and this check does not require it. The README promise that MUMO "keeps serving everything else" is tested by O3.
