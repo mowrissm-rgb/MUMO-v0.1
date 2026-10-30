@@ -1,0 +1,120 @@
+{
+  "workflow": "Helix",
+  "protocol_version": "1.1",
+  "source": "NCBI BLAST+ 2.17.0 (win64); UniProt Swiss-Prot FASTA (current release at download, 2026-10-30)",
+  "licence": "public domain (BLAST+); CC BY 4.0 (UniProt)",
+  "blast_bin": "bin/blast/ncbi-blast-2.17.0+/bin",
+  "blast_expected_version": "2.17.0+",
+  "blast_archive_md5": "dcd973097407a2910061ff4fb51b09fb",
+  "blast_db": "E:/mumo-validation-env/blastdb/swissprot",
+  "swissprot_fasta_gz_sha256": "a9c3496aa727e61d25d9e1291c9ba28d2c2ad19c0e26569dc083d53ec4169536",
+  "swissprot_sequences": 575748,
+  "max_hits": 25,
+  "bitscore_tolerance": 0.1,
+  "identity_tolerance": 0.1,
+  "evalue_relative_tolerance": 0.01,
+  "paralog_min_items": 8,
+  "raw_sequence_subset": [
+    "CDK2",
+    "ESR1",
+    "ACHE"
+  ],
+  "targets": [
+    {
+      "gene": "EGFR",
+      "uniprot": "P00533",
+      "paralogs": [
+        "P04626",
+        "P21860",
+        "Q15303"
+      ]
+    },
+    {
+      "gene": "MAPK1",
+      "uniprot": "P28482",
+      "paralogs": [
+        "P27361"
+      ]
+    },
+    {
+      "gene": "CFTR",
+      "uniprot": "P13569",
+      "paralogs": []
+    },
+    {
+      "gene": "ACHE",
+      "uniprot": "P22303",
+      "paralogs": [
+        "P06276"
+      ]
+    },
+    {
+      "gene": "BACE1",
+      "uniprot": "P56817",
+      "paralogs": [
+        "Q9Y5Z0"
+      ]
+    },
+    {
+      "gene": "DRD2",
+      "uniprot": "P14416",
+      "paralogs": [
+        "P35462",
+        "P21917"
+      ]
+    },
+    {
+      "gene": "PTGS2",
+      "uniprot": "P35354",
+      "paralogs": [
+        "P23219"
+      ]
+    },
+    {
+      "gene": "HDAC1",
+      "uniprot": "Q13547",
+      "paralogs": [
+        "Q92769"
+      ]
+    },
+    {
+      "gene": "ESR1",
+      "uniprot": "P03372",
+      "paralogs": [
+        "Q92731"
+      ]
+    },
+    {
+      "gene": "CDK2",
+      "uniprot": "P24941",
+      "paralogs": [
+        "P06493",
+        "Q00526",
+        "Q00535"
+      ]
+    }
+  ],
+  "faults": [
+    {
+      "name": "fault:unknown_gene",
+      "query": "ZZQXNOTAGENE",
+      "expect": "ValueError"
+    },
+    {
+      "name": "fault:empty_string",
+      "query": "",
+      "expect": "ValueError"
+    },
+    {
+      "name": "fault:short_peptide",
+      "query": "MKVLAAGIVALLLAAGCSSE",
+      "expect": "ValueError"
+    },
+    {
+      "name": "fault:blastp_missing",
+      "query": "CDK2",
+      "expect": "any exception",
+      "empty_path": true
+    }
+  ]
+}

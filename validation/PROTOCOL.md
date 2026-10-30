@@ -451,3 +451,41 @@ Contacts are compared at residue level, per interaction type: H-bond, hydrophobi
 **Recorded, no pass/fail.** Per-complex energies, RMSDs, verdicts and runtimes for native and decoy; the spread of `lig_rmsd_relax` across repeats; package versions; any run that errored (errors count as failures in every denominator).
 
 **Known limits.** Gas-phase minimisation with unoptimised hydrogens produces large energy drops for any pose, so the energy comparison rewards relative, not absolute, differences. Eight complexes and one fixed decoy per complex give a coarse picture. The 2 ps relaxation is far too short to say anything about binding stability, and MUMO's report says so.
+
+---
+
+# Version 1.1 (draft), 2026-10-30. Adds Helix. Earlier criteria are unchanged.
+
+## Helix: BLAST sequence search
+
+**Question.** Does `agents.blast_analyst.analyze_blast` fetch the right sequence, return the true best BLAST hits with the right numbers, handle a raw sequence the same way as a gene name, find known paralogues, and fail honestly?
+
+**Software and data.** NCBI BLAST+ 2.17.0 (official Windows build, archive MD5 matching NCBI's published value) and a BLAST protein database built with `makeblastdb -parse_seqids` from UniProt Swiss-Prot downloaded on 2026-10-30 (575,748 sequences; file hash in `manifests/helix.json`). This follows MUMO's own container build. MUMO is pointed at the database with its `MUMO_BLAST_DB` setting and at BLAST+ through `PATH`.
+
+**Scope, stated up front.** The independent comparison uses the **same BLAST+ and the same database**, so it tests MUMO's wrapper (sequence fetching, command options, parsing, ranking), **not** BLAST's accuracy. Not tested: other databases or programs, phylogeny and alignment views, NCBI web BLAST, runtime scaling.
+
+**Items.** 10 human proteins by gene symbol (`manifests/helix.json`, accessions confirmed against UniProt before this freeze), plus 4 fault inputs.
+
+**Independent reference.** For each protein, the check fetches the canonical sequence from UniProt by accession and runs `blastp` itself with a large hit limit (`-max_target_seqs 5000`, `-evalue 10`), then keeps the best-scoring alignment per subject and sorts by bit score. This avoids relying on `-max_target_seqs 25`, which in BLAST can return a truncated, not-best-first set.
+
+**Check H1, query identity.** The accession Helix reports for the gene symbol equals the manifest UniProt accession, and its sequence length equals the length of the canonical UniProt sequence.
+- Pass: 10 of 10.
+
+**Check H2, hit fidelity.** For each protein, with Helix's default of 25 hits:
+- (a) completeness: every subject whose bit score is strictly above the 25th independent bit score appears in Helix's list (ties at the cutoff may differ);
+- (b) values: for subjects present in both, bit score within 0.1, percent identity within 0.1, and E-value within 1% (relative);
+- (c) order: Helix's bit scores are non-increasing.
+- Pass: 10 of 10 proteins satisfy (a)–(c).
+
+**Check H3, paralogue retrieval.** Known human paralogues (listed per protein in the manifest, accessions verified against UniProt) must all appear in Helix's 25 hits. CFTR has no listed paralogue and is excluded from this check's denominator.
+- Pass: at least 8 of the 9 proteins with paralogues. The floor is a methodological choice made before the run. This is a sanity check on BLAST's biology as delivered through Helix.
+
+**Check H4, honest failure.** Four inputs must not return hits: an unknown gene symbol, an empty string and a 20-residue peptide must each raise `ValueError`; and with `blastp` unreachable (empty `PATH`) the call must raise an exception of any type.
+- Pass: 4 of 4.
+
+**Check H5, raw-sequence path.** For CDK2, ESR1 and ACHE, passing the canonical sequence as the query must give the same 25 accessions in the same order as passing the gene symbol.
+- Pass: 3 of 3.
+
+**Recorded, no pass/fail.** Hit counts, the self-hit identity and E-value, how many independent hits were missed or reordered, error messages for the fault inputs, runtimes, and the BLAST+ and database hashes.
+
+**Known limits.** Ten proteins, and only human queries. The wrapper tests cannot reveal an error in the Swiss-Prot data itself.

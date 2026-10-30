@@ -32,3 +32,6 @@ validation/data/
 # MD environment (micromamba + conda-forge packages), created manually for the Anchor validation
 bin/mamba/
 bin/mdenv/
+
+# BLAST+ build (on E:), fetched manually for the Helix validation
+bin/blast/
