@@ -574,3 +574,28 @@ All of these run in-process. Specialist services are made "remote" by setting th
 **Recorded, no pass/fail.** Old and new recall, top-10 recall and AUC on the held-out set and on the development set (development numbers must not be quoted as evidence); mean predictions per drug and drugs that reach the 400-metabolite ceiling, old versus new; held-out recall split by unspecified-species versus named-species records; the hits recovered by each new rule; drugs whose structures could not be resolved.
 
 **Known limits.** Ten more rules could be added without end. This test says whether these five generalise, not whether the rule set is good. A positive result here does not extend to the human-specific claims of protocol v0.5.
+
+---
+
+# Version 1.4 (draft), 2026-10-30. Atlas pocket detector: development comparison and held-out test. Earlier criteria are unchanged.
+
+## Pocket detector: does anything beat the original, and how does the original do on unseen complexes?
+
+**Why.** In protocol v0.6 the geometric pocket detector found the ligand site (centre within 4 angstrom) in 5 of 13 complexes, below the 0.5 floor. Any change tuned on those 13 would be scored on the data it was tuned on. So: develop on those 13 only, then test once on complexes chosen by a fixed rule.
+
+**Development set (seen).** The 13 complexes of protocol v0.6. Candidate changes were compared there only. Adoption rule, fixed before the comparison: a change replaces the default only if it adds **at least 2** successes over the original (5 of 13, so 7 or more).
+
+**Development outcome (recorded in `manifests/pocketheldout.json`).** Four cavity rankings (largest cluster, summed burial, size times squared burial, capped size times burial) all scored 5 of 13, and top-3 equalled top-1. Eight detection settings: original 5/13; burial threshold 0.60 5/13; 0.55 4/13; 0.50 2/13; link distance 2.6 5/13; threshold 0.55 with link 2.6 3/13; burial radius 14 6/13; threshold 0.55 with summed-burial ranking 4/13. **No change reached the adoption threshold, so no default was changed.** The only code change is a refactor: `detect_pockets` returns a ranked list and `detect_pocket` still returns the best one with unchanged defaults.
+
+**Held-out set (never examined by the detector).** 40 entries chosen by this rule: RCSB search for X-ray structures with resolution at most 2.0 angstrom, exactly one polymer entity of 150 to 450 residues, exactly one non-polymer entity, released before 2020 (7,674 hits); shuffled with seed 20261030; take entries in that order, skipping the 13 development entries and any whose single hetero code is a listed additive (`src/crystal_additives.py`) or whose first ligand residue has fewer than 15 or more than 45 heavy atoms; stop at 40. The list is frozen in the manifest. One bound used while querying (a molecular-weight filter) returned no hits and was dropped before any selection; ligand size is checked from the structure file instead.
+
+**Method.** As in protocol v0.6, part P: the protein ATOM records of the first model are passed to the detector with default parameters; the reference point is the heavy-atom centroid of the first residue with the ligand code; success is a centre-to-centre distance of at most 4.0 angstrom for the top-ranked pocket. The baseline is the protein-atom centroid scored the same way.
+
+**Check PH1, success rate.** Success rate of the unchanged detector of at least 0.5.
+**Check PH2, beats guessing.** Strictly more successes than the protein-centroid baseline.
+**Check PH3, coverage.** The detector returns a pocket (not an empty result) for at least 90% of complexes.
+- The 0.5 floor repeats the one fixed in v0.6, so a second miss would be a genuine second finding, not a re-tuned bar.
+
+**Recorded, no pass/fail.** Wilson 95% interval of the success rate; top-3 success; the success rate of the best development variant (burial radius 14) on the same complexes (it missed the adoption threshold, so this is descriptive and not a recommendation); every distance, box size and whether the ligand centroid lies inside the predicted box; ligand size and protein size against success.
+
+**Known limits.** Complexes are single-chain, single-ligand, high-resolution structures, an easier population than typical docking targets, so the rate probably overstates real use. Only the top-ranked pocket is scored, because MUMO docks into one box. P2Rank was not run (Java missing).
