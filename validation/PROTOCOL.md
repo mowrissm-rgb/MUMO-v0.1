@@ -369,3 +369,42 @@ Three parts. Entry lists are fixed in `manifests/atlas.json`. Every PDB ID and l
 **Known limits.** Agreement with xTB's own output shows MUMO transcribes it correctly; it says nothing about whether GFN2 is accurate. Agreement with B3LYP on small QM9 molecules does not carry over to large drug-like or charged systems, and Kohn-Sham orbital energies are themselves only approximate. A systematic offset between GFN2 and DFT gaps is expected, so the paper should quote bias along with error.
 
 **Addendum 0.8a (written after the first successful Orbit run, disclosed as such).** The post-fix run failed O2 on all 20 drugs. The cause was an error in the protocol and check, not in MUMO: O2 assumed the HOMO index equals the all-electron count divided by two (aspirin: 47). GFN2-xTB is a valence-electron method, so xTB's HOMO index is the valence-electron count divided by two (aspirin: 34), and MUMO reports 34. In all 20 runs MUMO's `homo_index` equalled the occupied-orbital count in both xTB's own Molden file and MUMO's captured copy. O2 is amended to compare `homo_index` with the **valence** electron count divided by two (computed with RDKit from group valence electrons, minus formal charge), with the Molden occupied count, and with the occupied count in MUMO's captured Molden export. O1, O3, Q1 and G1 are unchanged and passed. The first run is kept as recorded.
+
+---
+
+# Version 0.9 (draft), 2026-10-30. Adds Pose interactions. Earlier criteria are unchanged.
+
+## Interactions: ProLIF contacts against PLIP on crystal complexes
+
+**Question.** For a known ligand pose, does MUMO's ProLIF-based interaction analysis find the same contacting residues as PLIP, and is its record keeping internally correct?
+
+**Scope, stated up front.** This tests **agreement with PLIP on crystal poses**. PLIP is a widely used reference tool but it is not ground truth, and ProLIF and PLIP use different geometric definitions (notably for hydrophobic contacts). It does **not** test docked poses, whether contacts are experimentally real, water bridges (MUMO does not report them), or the 2D and 3D rendering. This version also does not repeat the comparison with Discovery Studio noted in `SCIENTIFIC_VERIFICATION.md`.
+
+**Comparator.** PLIP 3.0.0, run on the original PDB file (all chains, hydrogens added by PLIP's OpenBabel). PLIP 3.0 asks OpenBabel for an InChIKey that this OpenBabel build cannot produce, so the check replaces only that metadata call with an empty string. No interaction code is touched. PLIP is GPL-2.0 and is used here only to validate, not shipped with MUMO.
+
+**Items.** The 11 holo complexes used for Pose docking (`manifests/interactions.json`).
+
+**Method.** For each complex:
+1. `clean_protein_pdb` as the app does.
+2. The crystal ligand (first residue with the expected code) is given bond orders from the RCSB SMILES protonated at pH 7.4 (the state MUMO's own ligand preparation uses), hydrogens added with RDKit, and written to PDBQT with Meeko, keeping the crystal coordinates.
+3. `analyze_interactions(cleaned, pdbqt, out_complex, ligand_smiles)` gives MUMO's contacts.
+4. PLIP gives its contacts for the same ligand residue.
+Contacts are compared at residue level, per interaction type: H-bond, hydrophobic, pi-stacking, salt bridge, halogen, pi-cation. A residue is identified by residue number and chain.
+
+**Check I1, agreement with PLIP (pooled over complexes).**
+- H-bond residues, with PLIP as reference: precision of at least 0.6 **and** recall of at least 0.6.
+- Residues with any contact type, Jaccard similarity of at least 0.4. The floor is lower than for H-bonds because the two tools define hydrophobic contacts very differently.
+- All thresholds are methodological choices fixed before the run. They are floors for "broadly agrees", not published standards. A complex whose preparation or analysis fails counts as an error and its PLIP contacts still enter the denominators.
+
+**Check I2, distance bookkeeping.** For every MUMO hydrophobic record (one ligand atom and one protein atom), the recorded distance equals the Euclidean distance between its two recorded points to within 0.01 angstrom and does not exceed 4.5 angstrom plus that tolerance.
+- Pass: 100% of such records, with at least one record present.
+
+**Check I3, count consistency.** For every complex, `total_interactions` equals the number of records, each per-type count equals the number of records of that type, and the residue lists equal the unique residue tags of their records.
+- Pass: 100% of complexes.
+
+**Check I4, honest failure.** Two cases: a ligand file that does not exist, and a ligand SMILES that does not match the pose (ethanol against benzamidine). Each must return status `failed` with null counts (`total_interactions` is `None`, never 0) and must not raise.
+- Pass: 2 of 2.
+
+**Recorded, no pass/fail.** Per-type precision and recall, per-complex contact counts for both tools, contacts PLIP finds that MUMO misses and the reverse, PLIP water bridges (which MUMO does not report), rejected-record counts, and runtimes.
+
+**Known limits.** Eleven complexes, mostly kinases, proteases and nucleotide-binding sites, show broad agreement only. Crystal ligands are easier than docked poses (exact geometry). Protonation and hydrogen placement differ between tools, so some H-bond disagreement is expected from preparation, not from detection rules.
