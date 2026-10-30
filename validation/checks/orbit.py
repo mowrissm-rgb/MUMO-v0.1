@@ -69,6 +69,14 @@ def error_stats(pred, truth):
             'bias': statistics.fmean(errs), 'pearson': pearson(pred, truth), 'spearman': spearman(pred, truth)}
 
 
+def valence_electrons(smiles):
+    """Valence electron count of the whole molecule (GFN2-xTB treats only valence electrons)."""
+    from rdkit import Chem
+    mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
+    table = Chem.GetPeriodicTable()
+    return sum(table.GetNOuterElecs(a.GetAtomicNum()) for a in mol.GetAtoms()) - Chem.GetFormalCharge(mol)
+
+
 def run_xtb(xtb, xyz, charge, uhf):
     with tempfile.TemporaryDirectory(prefix='orbit_ref_') as tmp:
         Path(tmp, 'mol.xyz').write_text(xyz, encoding='ascii')
@@ -108,7 +116,8 @@ def run(manifest, ctx):
                   and abs(first['gap_ev'] - (lumo - homo) * ha) <= 1e-3)
             kept = parse_molden(first.get('molden', '')) if first.get('molden') else []
             kept_occ = sum(1 for _, o in kept if o > 0.5)
-            c2 = (first['homo_index'] == first['electron_count'] // 2 == n_occ
+            valence_occ = valence_electrons(smiles) // 2
+            c2 = (first['homo_index'] == valence_occ == n_occ
                   and first['lumo_index'] == first['homo_index'] + 1 and kept_occ == first['homo_index'])
             second = qm_analyst.orbitals(smiles, timeout=timeout)
             c3 = all(first[k] == second.get(k) for k in ('homo_ev', 'lumo_ev', 'gap_ev'))

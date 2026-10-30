@@ -282,6 +282,14 @@ class OrbitHelperTests(unittest.TestCase):
         self.assertAlmostEqual(st["bias"], 0.0)
 
 
+class OrbitValenceTests(unittest.TestCase):
+    def test_valence_electrons_not_all_electrons(self):
+        from validation.checks import orbit
+        self.assertEqual(orbit.valence_electrons('CC(=O)Oc1ccccc1C(=O)O'), 68)   # aspirin: 94 in all
+        self.assertEqual(orbit.valence_electrons('CC(=O)[O-]'), 24)              # acetate anion
+        self.assertEqual(orbit.valence_electrons('O'), 8)
+
+
 class XtbEncodingTests(unittest.TestCase):
     def test_xtb_output_is_decoded_as_utf8_not_the_windows_codepage(self):
         import os
