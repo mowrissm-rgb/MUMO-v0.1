@@ -1,0 +1,25 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 21
+  },
+  "criteria": [
+    {
+      "description": "100% of fields match on 100% of items (20 drugs + 1 injection)",
+      "id": "Q1",
+      "passed": true,
+      "value": "21/21 items pass; 1179/1179 fields match"
+    }
+  ],
+  "extras": {
+    "admet_ai_fixture_only": true,
+    "fields_matched": 1179,
+    "fields_total": 1179
+  },
+  "n_items": 21,
+  "protocol_version": "0.1",
+  "workflow": "Quill"
+}

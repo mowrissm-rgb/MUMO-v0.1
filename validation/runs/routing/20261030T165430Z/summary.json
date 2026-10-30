@@ -1,0 +1,103 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 128
+  },
+  "criteria": [
+    {
+      "description": "exact-match accuracy on request cases >= 0.85",
+      "id": "R1",
+      "passed": true,
+      "value": "48/48 = 1.000"
+    },
+    {
+      "description": "false-trigger rate on non-requests <= 0.1",
+      "id": "R2",
+      "passed": true,
+      "value": "0/25 = 0.000"
+    },
+    {
+      "description": "multi-step order correct in >= 5 of 6",
+      "id": "R3",
+      "passed": true,
+      "value": "6/6"
+    },
+    {
+      "description": "readiness rules (6 of 6)",
+      "id": "R4",
+      "passed": true,
+      "value": "6/6"
+    },
+    {
+      "description": "out-of-scope detection >= 11 of 12",
+      "id": "R5",
+      "passed": true,
+      "value": "12/12"
+    },
+    {
+      "description": "every routed action has an owner and the documented workflow name (7 of 7)",
+      "id": "O1",
+      "passed": true,
+      "value": "7/7"
+    },
+    {
+      "description": "all capabilities served locally when nothing is remote (13 of 13)",
+      "id": "O2",
+      "passed": true,
+      "value": "13/13"
+    },
+    {
+      "description": "one specialist down: its capabilities raise, the rest keep serving, message names it",
+      "id": "O3",
+      "passed": true,
+      "value": "down 3/3, up 9/9, message True"
+    },
+    {
+      "description": "referral rules hold for every capability and specialist pair (100%)",
+      "id": "O4",
+      "passed": true,
+      "value": "52/52 pairs"
+    },
+    {
+      "description": "circuit breaker behaves as specified (5 of 5)",
+      "id": "O5",
+      "passed": true,
+      "value": "5/5"
+    },
+    {
+      "description": "remote specialist behaviour on a fake server (5 of 5)",
+      "id": "O6",
+      "passed": true,
+      "value": "5/5"
+    }
+  ],
+  "extras": {
+    "by_category": {
+      "explicit": "7/7",
+      "multi": "6/6",
+      "plain": "35/35",
+      "question": "14/14",
+      "trap": "11/11"
+    },
+    "not_tested": [
+      "LLM intent parser",
+      "Streamlit chat UI",
+      "a real crashed container"
+    ],
+    "routing_failures": [],
+    "wiring_audit_references_outside_services": {
+      "MUMO_SPACE": [],
+      "client.call": [],
+      "registry.referral": [],
+      "resilience": [
+        "mumo_chat.py"
+      ]
+    }
+  },
+  "n_items": 128,
+  "protocol_version": "1.2",
+  "workflow": "Routing"
+}

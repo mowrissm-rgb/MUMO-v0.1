@@ -1,0 +1,589 @@
+{
+  "workflow": "Routing",
+  "protocol_version": "1.2",
+  "source": "Hand-written labelled chat requests; MUMO's dispatch, registry, client and resilience modules",
+  "licence": "n/a",
+  "request_min_accuracy": 0.85,
+  "false_trigger_max_rate": 0.1,
+  "multi_min_correct": 5,
+  "unsupported_min_correct": 11,
+  "routing_cases": [
+    {
+      "text": "dock aspirin into COX-2",
+      "expect": [
+        "dock"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "Please dock imatinib against 1IEP",
+      "expect": [
+        "dock"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "I want to check the binding affinity of ibuprofen to PTGS2",
+      "expect": [
+        "dock"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "Run docking for lupeol on CFTR",
+      "expect": [
+        "dock"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "start a docking run of caffeine on ADORA2A",
+      "expect": [
+        "dock"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "run ADMET for aspirin",
+      "expect": [
+        "analyze"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "predict toxicity of paracetamol",
+      "expect": [
+        "analyze"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "check Lipinski for ibuprofen",
+      "expect": [
+        "analyze"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "calculate drug-likeness for caffeine",
+      "expect": [
+        "analyze"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "analyze the pharmacokinetics of warfarin",
+      "expect": [
+        "analyze"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "calculate HOMO LUMO for benzene",
+      "expect": [
+        "qm"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "compute the band gap of caffeine",
+      "expect": [
+        "qm"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "run orbital energies on aspirin",
+      "expect": [
+        "qm"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "give me the frontier orbitals of paracetamol",
+      "expect": [
+        "qm"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "show electronic properties of nicotine",
+      "expect": [
+        "qm"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "predict the metabolism of ibuprofen",
+      "expect": [
+        "metabolism"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "show the metabolites of diazepam",
+      "expect": [
+        "metabolism"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "run phase I and phase II biotransformation for codeine",
+      "expect": [
+        "metabolism"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "find glucuronidation sites of paracetamol",
+      "expect": [
+        "metabolism"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "generate metabolites for lidocaine",
+      "expect": [
+        "metabolism"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "run a Ramachandran plot for 1NFK",
+      "expect": [
+        "ramachandran"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "validate the structure 6LU7",
+      "expect": [
+        "ramachandran"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "check the backbone geometry of 4AWN",
+      "expect": [
+        "ramachandran"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "show phi psi angles for 1HSG",
+      "expect": [
+        "ramachandran"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "assess the structure quality of 2OJG",
+      "expect": [
+        "ramachandran"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "build the STRING network for CFTR",
+      "expect": [
+        "string"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "show the interaction network of TP53",
+      "expect": [
+        "string"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "find functional partners of EGFR",
+      "expect": [
+        "string"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "map protein-protein interactions for AKT1",
+      "expect": [
+        "string"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "get the pathway network for MAPK1",
+      "expect": [
+        "string"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "blast CFTR",
+      "expect": [
+        "blast"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "run BLAST on EGFR",
+      "expect": [
+        "blast"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "find homologs of ACHE",
+      "expect": [
+        "blast"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "find similar protein to CDK2",
+      "expect": [
+        "blast"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "compute sequence similarity for DRD2",
+      "expect": [
+        "blast"
+      ],
+      "category": "plain"
+    },
+    {
+      "text": "run Pose on aspirin and COX-2",
+      "expect": [
+        "dock"
+      ],
+      "category": "explicit"
+    },
+    {
+      "text": "run Fate on this compound",
+      "expect": [
+        "analyze"
+      ],
+      "category": "explicit"
+    },
+    {
+      "text": "run Orbit on aspirin",
+      "expect": [
+        "qm"
+      ],
+      "category": "explicit"
+    },
+    {
+      "text": "run Flux on ibuprofen",
+      "expect": [
+        "metabolism"
+      ],
+      "category": "explicit"
+    },
+    {
+      "text": "run Atlas on 1HSG",
+      "expect": [
+        "ramachandran"
+      ],
+      "category": "explicit"
+    },
+    {
+      "text": "run Nexus for TP53",
+      "expect": [
+        "string"
+      ],
+      "category": "explicit"
+    },
+    {
+      "text": "run Helix on CFTR",
+      "expect": [
+        "blast"
+      ],
+      "category": "explicit"
+    },
+    {
+      "text": "dock aspirin to COX-2 and then run ADME",
+      "expect": [
+        "dock",
+        "analyze"
+      ],
+      "category": "multi"
+    },
+    {
+      "text": "run ADMET then predict metabolism for ibuprofen",
+      "expect": [
+        "analyze",
+        "metabolism"
+      ],
+      "category": "multi"
+    },
+    {
+      "text": "first blast EGFR then build the interaction network",
+      "expect": [
+        "blast",
+        "string"
+      ],
+      "category": "multi"
+    },
+    {
+      "text": "validate 1HSG and then dock indinavir",
+      "expect": [
+        "ramachandran",
+        "dock"
+      ],
+      "category": "multi"
+    },
+    {
+      "text": "calculate HOMO LUMO and predict toxicity for aspirin",
+      "expect": [
+        "qm",
+        "analyze"
+      ],
+      "category": "multi"
+    },
+    {
+      "text": "run Flux and Orbit on paracetamol",
+      "expect": [
+        "metabolism",
+        "qm"
+      ],
+      "category": "multi"
+    },
+    {
+      "text": "what is docking?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "how does BLAST work?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "explain Ramachandran plots",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "what does HOMO-LUMO gap mean?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "why is hERG toxicity important?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "what is the STRING database?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "tell me about glucuronidation",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "can you explain Lipinski's rule of five",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "what does a Ramachandran outlier mean?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "how accurate is molecular docking?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "define ADMET",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "is aspirin metabolised by the liver?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "when should I use BLAST?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "which is better, docking or MD?",
+      "expect": [],
+      "category": "question"
+    },
+    {
+      "text": "the alpha helix near the active site is flexible",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "the ligand adopts a favourable pose",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "this is a string of characters",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "I read a paper about toxicity and absorption",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "thanks, that docking result looks great",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "the metabolite list is long",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "I need a coffee",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "good morning",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "show me a picture of a cat",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "do not dock anything yet",
+      "expect": [],
+      "category": "trap"
+    },
+    {
+      "text": "does it bind to the target?",
+      "expect": [],
+      "category": "trap"
+    }
+  ],
+  "unsupported_cases": [
+    {
+      "text": "run a 100 ns MD simulation of the complex",
+      "flag": true
+    },
+    {
+      "text": "do molecular dynamics for 1HSG",
+      "flag": true
+    },
+    {
+      "text": "compute MM-GBSA binding free energy",
+      "flag": true
+    },
+    {
+      "text": "perform DFT on aspirin",
+      "flag": true
+    },
+    {
+      "text": "how to make aspirin step by step",
+      "flag": true
+    },
+    {
+      "text": "design a clinical trial for aspirin",
+      "flag": true
+    },
+    {
+      "text": "dock aspirin into COX-2",
+      "flag": false
+    },
+    {
+      "text": "run ADMET for ibuprofen",
+      "flag": false
+    },
+    {
+      "text": "predict the metabolism of amoxicillin",
+      "flag": false
+    },
+    {
+      "text": "dock aspirin into the chamber of the enzyme",
+      "flag": false
+    },
+    {
+      "text": "blast the protein synthesis elongation factor EEF2",
+      "flag": false
+    },
+    {
+      "text": "build the STRING network for CFTR",
+      "flag": false
+    }
+  ],
+  "readiness_cases": [
+    {
+      "name": "dock with a target is ready",
+      "action": "dock",
+      "convo": {
+        "target": "CFTR"
+      },
+      "ready": true
+    },
+    {
+      "name": "dock with a disease is ready",
+      "action": "dock",
+      "convo": {
+        "disease": "asthma"
+      },
+      "ready": true
+    },
+    {
+      "name": "dock with nothing is not ready",
+      "action": "dock",
+      "convo": {},
+      "ready": false
+    },
+    {
+      "name": "analyze needs a ligand",
+      "action": "analyze",
+      "convo": {
+        "target": "CFTR"
+      },
+      "ready": false
+    },
+    {
+      "name": "orbit with a ligand is ready",
+      "action": "qm",
+      "convo": {
+        "ligand": "aspirin"
+      },
+      "ready": true
+    },
+    {
+      "name": "blast needs a target",
+      "action": "blast",
+      "convo": {
+        "ligand": "aspirin"
+      },
+      "ready": false
+    }
+  ],
+  "agent_names": {
+    "dock": "Pose",
+    "analyze": "Fate",
+    "qm": "Orbit",
+    "metabolism": "Flux",
+    "ramachandran": "Atlas",
+    "string": "Nexus",
+    "blast": "Helix"
+  },
+  "dead_endpoint": "http://127.0.0.1:9",
+  "fake_specialist_cap": "string",
+  "breaker_cooldown_seconds": 0.3
+}

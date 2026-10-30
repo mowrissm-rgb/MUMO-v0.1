@@ -1,0 +1,94 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 29
+  },
+  "criteria": [
+    {
+      "description": "MUMO HOMO/LUMO/gap equal xTB Molden values (20 of 20)",
+      "id": "O1",
+      "passed": true,
+      "value": "20/20"
+    },
+    {
+      "description": "orbital indices and captured Molden consistent (20 of 20)",
+      "id": "O2",
+      "passed": true,
+      "value": "20/20"
+    },
+    {
+      "description": "repeat runs identical (20 of 20)",
+      "id": "O3",
+      "passed": true,
+      "value": "20/20"
+    },
+    {
+      "description": "state and failure handling as specified (8 of 8)",
+      "id": "Q1",
+      "passed": true,
+      "value": "8/8"
+    },
+    {
+      "description": "QM9 coverage >= 0.9 and gap Pearson r >= 0.6",
+      "id": "G1",
+      "passed": true,
+      "value": "coverage 0.990 (198/200); gap r 0.851"
+    }
+  ],
+  "extras": {
+    "gap_mean_predictor_mae_ev": 1.0758814530542393,
+    "not_tested": [
+      "orbital surface rendering",
+      "excitation energies",
+      "large or charged drug-like systems vs DFT"
+    ],
+    "qm9_failed": [
+      {
+        "mol_id": "gdb_66898",
+        "reason": "Could not generate a 3D conformer for this molecule.",
+        "smiles": "CC12C3N1C=NC2C3=O"
+      },
+      {
+        "mol_id": "gdb_129158",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines:  * ratio c/w:     1.302 speedup\n\n\nnormal terminati",
+        "smiles": "N=C1N=NON=NC1=O"
+      }
+    ],
+    "qm9_seconds": 16.4,
+    "qm9_sha256": "3e668f8c34e4bc392a90d417a50a5eed3b64b842a817a633024bdc054c68ccb4",
+    "qm9_vs_mumo_ev": {
+      "gap": {
+        "bias": -2.0676616206484852,
+        "mae": 2.194832988989899,
+        "n": 198,
+        "pearson": 0.8512631267608998,
+        "rmse": 2.378961276927529,
+        "spearman": 0.8833447219405616
+      },
+      "homo": {
+        "bias": -4.0117885649373735,
+        "mae": 4.0117885649373735,
+        "n": 198,
+        "pearson": 0.7741201061162751,
+        "rmse": 4.0345491788288745,
+        "spearman": 0.7408686847623596
+      },
+      "lumo": {
+        "bias": -6.079585091575757,
+        "mae": 6.079585091575757,
+        "n": 198,
+        "pearson": 0.9199245256066931,
+        "rmse": 6.177266582513802,
+        "spearman": 0.9582531202632149
+      }
+    },
+    "xtb_sha256": "90bff4e570ffa10a1558364ee393711900bff239f02d313685353e055324f4c3",
+    "xtb_version": "6.7.1pre"
+  },
+  "n_items": 29,
+  "protocol_version": "0.8",
+  "workflow": "Orbit"
+}

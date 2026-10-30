@@ -166,8 +166,10 @@ def druglikeness(smiles):
     ro5_viol = sum([mw > 500, logp > 5, hbd > 5, hba > 10])
     lipinski = "Pass" if ro5_viol == 0 else f"{ro5_viol} violation(s)"
     veber = "Pass" if (rotb <= 10 and tpsa <= 140) else "Fail"
+    # Ghose et al. 1999 count ALL atoms (hydrogens included), not heavy atoms.
+    total_atoms = Chem.AddHs(m).GetNumAtoms()
     ghose = "Pass" if (160 <= mw <= 480 and -0.4 <= logp <= 5.6
-                       and 40 <= mr <= 130 and 20 <= heavy <= 70) else "Fail"
+                       and 40 <= mr <= 130 and 20 <= total_atoms <= 70) else "Fail"
     egan = "Pass" if (tpsa <= 131.6 and logp <= 5.88) else "Fail"
     lead_like = "Yes" if (mw <= 350 and logp <= 3.5) else "No"
 

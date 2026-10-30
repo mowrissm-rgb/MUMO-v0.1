@@ -1,0 +1,251 @@
+{
+  "all_criteria_passed": false,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 11,
+    "INCONCLUSIVE": 0,
+    "PASS": 39
+  },
+  "criteria": [
+    {
+      "description": "phi/psi within 0.2 deg of wwPDB for >= 0.995 of matched residues",
+      "id": "R1",
+      "passed": true,
+      "value": "8811/8838 = 0.9969 over 23 entries (0 errors)"
+    },
+    {
+      "description": "three-class agreement with wwPDB >= 0.95",
+      "id": "R2",
+      "passed": true,
+      "value": "8838/8838 = 1.0000"
+    },
+    {
+      "description": "DCC <= 4.0 A for >= 0.5 of complexes and more than the centroid baseline",
+      "id": "P1",
+      "passed": false,
+      "value": "5/13 detector vs 0/13 centroid baseline"
+    },
+    {
+      "description": "gene_to_uniprot equals manifest accession (10 of 10)",
+      "id": "I1",
+      "passed": true,
+      "value": "10/10"
+    },
+    {
+      "description": "AlphaFold model sequence equals UniProt canonical, coordinates valid (10 of 10)",
+      "id": "I2",
+      "passed": true,
+      "value": "10/10"
+    },
+    {
+      "description": "bad input fails safely (4 of 4)",
+      "id": "I3",
+      "passed": true,
+      "value": "4/4"
+    }
+  ],
+  "extras": {
+    "confusion_wwpdb_to_mumo": {
+      "allowed->allowed": 800,
+      "favoured->favoured": 7771,
+      "outlier->outlier": 267
+    },
+    "http_requests": 69,
+    "java_available": false,
+    "outlier_precision_vs_wwpdb": 1.0,
+    "outlier_recall_vs_wwpdb": 1.0,
+    "p2rank_run": false,
+    "per_entry": {
+      "1AKE": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 424
+      },
+      "1ATP": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 346
+      },
+      "1BRS": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 572
+      },
+      "1CRN": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 44
+      },
+      "1CX2": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 2200
+      },
+      "1GFL": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 456
+      },
+      "1HCK": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 290
+      },
+      "1HSG": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 194
+      },
+      "1LYZ": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 127
+      },
+      "1M17": {
+        "angle_fraction": 0.9805,
+        "class_agreement": 1.0,
+        "matched": 308
+      },
+      "1STP": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 119
+      },
+      "1TIM": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 490
+      },
+      "1UBQ": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 74
+      },
+      "2LZM": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 162
+      },
+      "2OJG": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 333
+      },
+      "2RH1": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 440
+      },
+      "3ERT": {
+        "angle_fraction": 0.9633,
+        "class_agreement": 1.0,
+        "matched": 245
+      },
+      "3HFM": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 552
+      },
+      "3PTB": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 221
+      },
+      "4DFR": {
+        "angle_fraction": 0.9618,
+        "class_agreement": 1.0,
+        "matched": 314
+      },
+      "4HHB": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 566
+      },
+      "5PTI": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 56
+      },
+      "6LU7": {
+        "angle_fraction": 1.0,
+        "class_agreement": 1.0,
+        "matched": 305
+      }
+    },
+    "pocket": [
+      {
+        "baseline_dcc": 5.312782767355644,
+        "dcc": 0.555254925325988,
+        "item": "P:1HSG/MK1"
+      },
+      {
+        "baseline_dcc": 11.752270654960162,
+        "dcc": 8.818288147444909,
+        "item": "P:1M17/AQ4"
+      },
+      {
+        "baseline_dcc": 12.073698869018301,
+        "dcc": 5.060564425241651,
+        "item": "P:3ERT/OHT"
+      },
+      {
+        "baseline_dcc": 9.067903527707857,
+        "dcc": 0.5542703184706003,
+        "item": "P:1STP/BTN"
+      },
+      {
+        "baseline_dcc": 10.43791485149114,
+        "dcc": 21.11922845199875,
+        "item": "P:4DFR/MTX"
+      },
+      {
+        "baseline_dcc": 13.27702142677971,
+        "dcc": 4.205037069678414,
+        "item": "P:2OJG/19A"
+      },
+      {
+        "baseline_dcc": 11.183011973771348,
+        "dcc": 1.2001371366315488,
+        "item": "P:1HCK/ATP"
+      },
+      {
+        "baseline_dcc": 28.946826058014963,
+        "dcc": 68.00865248586967,
+        "item": "P:1CX2/S58"
+      },
+      {
+        "baseline_dcc": 10.657479349368629,
+        "dcc": 16.324119974767928,
+        "item": "P:3PTB/BEN"
+      },
+      {
+        "baseline_dcc": 19.415862154802003,
+        "dcc": 2.8251996977692366,
+        "item": "P:1AKE/AP5"
+      },
+      {
+        "baseline_dcc": 26.45227084545427,
+        "dcc": 7.268715734696069,
+        "item": "P:2RH1/CAU"
+      },
+      {
+        "baseline_dcc": 8.727491361987951,
+        "dcc": 0.9522882578918143,
+        "item": "P:1ATP/ATP"
+      },
+      {
+        "baseline_dcc": 22.723183712705595,
+        "dcc": 14.862537943601694,
+        "item": "P:6LU7/02J"
+      }
+    ],
+    "rama_pooled": {
+      "angle_fraction": 0.9969450101832994,
+      "class_agreement": 1.0,
+      "matched": 8838
+    }
+  },
+  "n_items": 50,
+  "protocol_version": "0.6",
+  "workflow": "Atlas"
+}

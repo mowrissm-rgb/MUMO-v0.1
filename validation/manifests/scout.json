@@ -1,0 +1,21 @@
+{
+  "workflow": "Scout",
+  "protocol_version": "0.1",
+  "source": "ChEMBL REST API https://www.ebi.ac.uk/chembl/api/data",
+  "licence": "CC BY-SA 3.0 (ChEMBL)",
+  "limit": 10,
+  "min_pchembl": 6.0,
+  "independent_pool_cap": 5000,
+  "targets": [
+    {"gene": "EGFR",  "uniprot": "P00533"},
+    {"gene": "MAPK1", "uniprot": "P28482"},
+    {"gene": "CFTR",  "uniprot": "P13569"},
+    {"gene": "ACHE",  "uniprot": "P22303"},
+    {"gene": "BACE1", "uniprot": "P56817"},
+    {"gene": "DRD2",  "uniprot": "P14416"},
+    {"gene": "PTGS2", "uniprot": "P35354"},
+    {"gene": "HDAC1", "uniprot": "Q13547"},
+    {"gene": "ESR1",  "uniprot": "P03372"},
+    {"gene": "CDK2",  "uniprot": "P24941"}
+  ]
+}

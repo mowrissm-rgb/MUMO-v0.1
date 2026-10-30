@@ -1,0 +1,3 @@
+# Reference Helix run (after the ranking, truncation and empty-input fixes)
+
+H1, H2, H4 and H5 pass. H3 (known paralogues in the top 25) fails its floor at 6 of 9: DRD2 misses DRD4, ESR1 misses ESR2, and CDK2 misses CDK1 and CDK5. These misses persist after the truncation fix, so they are not a BLAST-truncation artefact: Swiss-Prot holds many orthologues of the same protein from other species, and they fill a fixed 25-hit list before the more distant human paralogues. It is a design limit (fixed 25 hits, no species filter), reported as measured. The self-hit is 100% identity for every query, though for DRD2 and HDAC1 the top-listed accession is an identical sequence from another species rather than the human entry.

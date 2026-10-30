@@ -1,0 +1,106 @@
+{
+  "all_criteria_passed": false,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 5,
+    "INCONCLUSIVE": 0,
+    "PASS": 12
+  },
+  "criteria": [
+    {
+      "description": "accession and sequence length match UniProt (10 of 10)",
+      "id": "H1",
+      "passed": true,
+      "value": "10/10"
+    },
+    {
+      "description": "top-25 hits, values and order equal the independent blastp (10 of 10)",
+      "id": "H2",
+      "passed": false,
+      "value": "6/10"
+    },
+    {
+      "description": "known paralogues in the top 25 (at least 8 of 9)",
+      "id": "H3",
+      "passed": false,
+      "value": "6/9"
+    },
+    {
+      "description": "bad input raises as specified (4 of 4)",
+      "id": "H4",
+      "passed": false,
+      "value": "3/4"
+    },
+    {
+      "description": "raw-sequence path equals gene-name path (3 of 3)",
+      "id": "H5",
+      "passed": true,
+      "value": "3/3"
+    }
+  ],
+  "extras": {
+    "blast_version": "blastp: 2.17.0+",
+    "not_tested": [
+      "other databases",
+      "NCBI web BLAST",
+      "alignment and phylogeny views"
+    ],
+    "self_hits": {
+      "ACHE": {
+        "accession": "P22303",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "BACE1": {
+        "accession": "P56817",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "CDK2": {
+        "accession": "P24941",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "CFTR": {
+        "accession": "P13569",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "DRD2": {
+        "accession": "P60026",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "EGFR": {
+        "accession": "P00533",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "ESR1": {
+        "accession": "P03372",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "HDAC1": {
+        "accession": "Q5RAG0",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "MAPK1": {
+        "accession": "P28482",
+        "evalue": 0.0,
+        "identity": 100.0
+      },
+      "PTGS2": {
+        "accession": "P35354",
+        "evalue": 0.0,
+        "identity": 100.0
+      }
+    },
+    "swissprot_fasta_gz_sha256": "a9c3496aa727e61d25d9e1291c9ba28d2c2ad19c0e26569dc083d53ec4169536",
+    "swissprot_sequences": 575748
+  },
+  "n_items": 17,
+  "protocol_version": "1.1",
+  "workflow": "Helix"
+}

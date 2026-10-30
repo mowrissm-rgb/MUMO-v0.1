@@ -21,3 +21,17 @@ Thumbs.db
 mumo_config.json
 .streamlit/secrets.toml
 src/refdata/rama8000.npz
+
+# Windows Vina binary placed manually (see validation/runs/*/environment.json for its SHA-256)
+bin/vina.exe
+
+# xTB Windows build and QM9 reference data, fetched manually (hashes recorded in validation manifests)
+bin/xtb-6.7.1pre/
+validation/data/
+
+# MD environment (micromamba + conda-forge packages), created manually for the Anchor validation
+bin/mamba/
+bin/mdenv/
+
+# BLAST+ build (on E:), fetched manually for the Helix validation
+bin/blast/

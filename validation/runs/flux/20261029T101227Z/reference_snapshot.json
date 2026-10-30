@@ -1,0 +1,718 @@
+{
+  "chembl_release": "ChEMBL_37",
+  "dropped": [
+    {
+      "drug": "CHEMBL1639",
+      "metabolite": "CHEMBL3508696",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL1639",
+      "metabolite": "CHEMBL3508697",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL493982",
+      "metabolite": "CHEMBL3527206",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL3542265",
+      "metabolite": "CHEMBL3526601",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL3526391",
+      "metabolite": "CHEMBL3526418",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL186179",
+      "metabolite": "CHEMBL4525113",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL186179",
+      "metabolite": "CHEMBL4525110",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL2104978",
+      "metabolite": "CHEMBL4525118",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL2104978",
+      "metabolite": "CHEMBL3526800",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL2104978",
+      "metabolite": "CHEMBL4525117",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL2104978",
+      "metabolite": "CHEMBL4525116",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL375563",
+      "metabolite": "CHEMBL3526700",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL762",
+      "metabolite": "CHEMBL4525123",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL191",
+      "metabolite": "CHEMBL4525128",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL633",
+      "metabolite": "CHEMBL4525131",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL633",
+      "metabolite": "CHEMBL3527251",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL54",
+      "metabolite": "CHEMBL4525086",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL385517",
+      "metabolite": "CHEMBL3527402",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL385517",
+      "metabolite": "CHEMBL3527401",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL1630842",
+      "metabolite": "CHEMBL4525089",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL554",
+      "metabolite": "CHEMBL3526614",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL1770248",
+      "metabolite": "CHEMBL3526186",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL3542265",
+      "metabolite": "CHEMBL3526598",
+      "reason": "metabolite structure missing"
+    },
+    {
+      "drug": "CHEMBL1770248",
+      "metabolite": "CHEMBL3526187",
+      "reason": "metabolite structure missing"
+    }
+  ],
+  "drugs": {
+    "CHEMBL1068": {
+      "name": "OXC, Oxcarbazepine, Trileptal",
+      "refs": {
+        "BMPDWHIDQYTSHX": "(S)-MHD",
+        "XZWZPMSCRUKWML": "O-SUL",
+        "YPDZOCJZGXGBAP": "O-GLU"
+      },
+      "smiles": "NC(=O)N1c2ccccc2CC(=O)c2ccccc21"
+    },
+    "CHEMBL1076347": {
+      "name": "TCC, Triclocarban",
+      "refs": {
+        "IWDQKYQKASVMAH": "N-gluc-TCC",
+        "JBDVVPPOIJMSRH": "6-OH-TCC",
+        "LYTMAQKRWKXIFV": "N'-gluc-TCC",
+        "OKSXGOLSKDABPC": "2'-OH-TCC",
+        "ZITBIMLBMFACEN": "3'-OH-TCC"
+      },
+      "smiles": "O=C(Nc1ccc(Cl)cc1)Nc1ccc(Cl)c(Cl)c1"
+    },
+    "CHEMBL1076930": {
+      "name": "2, Rp,Sp-2",
+      "refs": {
+        "LYMICVBGNUEHGE": "1, Rp,Sp-1, dA-ps-U2'-OMe",
+        "MWKYEOGPKCULOQ": "10"
+      },
+      "smiles": "CO[C@@H]1[C@H](OP(=O)(OC[C@H]2O[C@@H](n3cnc4c(N)ncnc43)C[C@@H]2O)SCOC(=O)OC(C)C)[C@@H](CO)O[C@H]1n1ccc(=O)[nH]c1=O"
+    },
+    "CHEMBL109": {
+      "name": "Valproic acid",
+      "refs": {
+        "LLPFTSMZBSRZDV": "3-OH valproic acid",
+        "OASKNPCLIHUTTL": "4-OH valproic acid",
+        "UMYDNZXEHYSVFY": "4-en valproic acid",
+        "WTMAHJABDOHPDJ": "3-en(E) valproic acid",
+        "XXKSYIHWRBBHIC": "valproate-glucuronide",
+        "YLMYKHAEFZCRCH": "3-keto-4'-en valproic acid",
+        "ZIWBCJXKYKOLJK": "5-OH valproic acid",
+        "ZKNJEOBYOLUGKJ": "2-en(E) valproic acid"
+      },
+      "smiles": "CCCC(CCC)C(=O)O"
+    },
+    "CHEMBL1111": {
+      "name": "Ambrisentan",
+      "refs": {
+        "PDUAYPFMBRYSNN": "4-hydroxymethyl ambrisentan (M3)",
+        "QBHJFBFSJYTXDX": "Ambrisentan glucuronide (M2)"
+      },
+      "smiles": "COC(c1ccccc1)(c1ccccc1)[C@H](Oc1nc(C)cc(C)n1)C(=O)O"
+    },
+    "CHEMBL1117": {
+      "name": "Idarubicin",
+      "refs": {
+        "KMIBSUUWQWSRQV": "Idarubicinol",
+        "ZUFQFGSMHXKORU": "4-demethoxydaunomycinone"
+      },
+      "smiles": "CC(=O)[C@]1(O)Cc2c(O)c3c(c(O)c2[C@@H](O[C@H]2C[C@H](N)[C@H](O)[C@H](C)O2)C1)C(=O)c1ccccc1C3=O"
+    },
+    "CHEMBL114": {
+      "name": "Saquinavir",
+      "refs": {
+        "LKXMNSKLVUAOEW": "M22",
+        "SQCJGICLIMLWFB": "M10",
+        "UPZBXVBPICTBDP": "M22",
+        "VEVTYHWFAKZKCL": "M4"
+      },
+      "smiles": "CC(C)(C)NC(=O)[C@@H]1C[C@@H]2CCCC[C@@H]2CN1C[C@@H](O)[C@H](Cc1ccccc1)NC(=O)[C@H](CC(N)=O)NC(=O)c1ccc2ccccc2n1"
+    },
+    "CHEMBL1140": {
+      "name": "NAM",
+      "refs": {
+        "LDHMAVIPBRSVRG": "MNAM",
+        "USSFUVKEHXDAPM": "NAM N-oxide"
+      },
+      "smiles": "NC(=O)c1cccnc1"
+    },
+    "CHEMBL1200374": {
+      "name": "Aromasin, Exemestane",
+      "refs": {
+        "MNBSDZVEXCMDRX": "MII",
+        "NFDPYPMRHKQTDM": "MI"
+      },
+      "smiles": "C=C1C[C@@H]2[C@H](CC[C@]3(C)C(=O)CC[C@@H]23)[C@@]2(C)C=CC(=O)C=C12"
+    },
+    "CHEMBL1201179": {
+      "name": "Lapatinib, Tykerb, Tyverb, GW572016",
+      "refs": {
+        "MYBMZHZNZQWIJY": "intermediate 1",
+        "OZGNZUBEUHRYQK": "intermediate 2",
+        "WPGSOXVHSRJVIL": "M8"
+      },
+      "smiles": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1"
+    },
+    "CHEMBL1201772": {
+      "name": "Prasugrel",
+      "refs": {
+        "MJAMUSZUMAHFLH": "R-95913"
+      },
+      "smiles": "CC(=O)Oc1cc2c(s1)CCN(C(C(=O)C1CC1)c1ccccc1F)C2"
+    },
+    "CHEMBL1229211": {
+      "name": "DTG, S/GSK1349572, Dolutegravir",
+      "refs": {
+        "GRMHRNOGJRCGHF": "M3",
+        "RSWVIGYRNQZNSD": "M2"
+      },
+      "smiles": "C[C@@H]1CCO[C@H]2Cn3cc(C(=O)NCc4ccc(F)cc4F)c(=O)c(O)c3C(=O)N12"
+    },
+    "CHEMBL1233": {
+      "name": "Carisoprodol",
+      "refs": {
+        "NPPQSCRMBWNHMW": "Meprobamate"
+      },
+      "smiles": "CCCC(C)(COC(N)=O)COC(=O)NC(C)C"
+    },
+    "CHEMBL1269025": {
+      "name": "Edoxaban",
+      "refs": {
+        "CIKVHUDEOYKYGJ": "M1",
+        "GMRJAYKIRXDGFT": "M6",
+        "PLNLONVCUKZPEM": "M7",
+        "QPYMJNYAASVNAP": "M4",
+        "SGEBYLVLDVGYQI": "M3",
+        "VXYMWDLQMMPOMS": "M5",
+        "XEESEADVQCJXSF": "M2"
+      },
+      "smiles": "CN1CCc2nc(C(=O)N[C@@H]3C[C@@H](C(=O)N(C)C)CC[C@@H]3NC(=O)C(=O)Nc3ccc(Cl)cn3)sc2C1"
+    },
+    "CHEMBL1272": {
+      "name": "Repaglinide",
+      "refs": {
+        "FTKOIWGNBGHHGC": "M5",
+        "HVHBBHOYIACRHO": "Repaglinide Acyl-beta-D-glucuronide",
+        "OBMAZJVHPAVADF": "M4",
+        "OSCVKZCOJUTUFD": "M1",
+        "UEOAQSOFPSCIAE": "M0-OH",
+        "XKLRWWITGUGRPX": "unknown 1"
+      },
+      "smiles": "CCOc1cc(CC(=O)N[C@@H](CC(C)C)c2ccccc2N2CCCCC2)ccc1C(=O)O"
+    },
+    "CHEMBL1272307": {
+      "name": "SB-649868",
+      "refs": {
+        "DPVAHVQLBOHLGD": "inferred metabolite 1",
+        "ROGJKNXMZYYHHM": "M8",
+        "VLUYKCJYPNEQDD": "M32"
+      },
+      "smiles": "Cc1nc(C(=O)N2CCCC[C@H]2CNC(=O)c2cccc3occc23)c(-c2ccc(F)cc2)s1"
+    },
+    "CHEMBL1399": {
+      "name": "Anastrozole",
+      "refs": {
+        "ZVXRGZPUPOVAKU": "Anastrozole N-glucuronide"
+      },
+      "smiles": "CC(C)(C#N)c1cc(Cn2cncn2)cc(C(C)(C)C#N)c1"
+    },
+    "CHEMBL1503": {
+      "name": "Omeprazole",
+      "refs": {
+        "CMZHQFXXAAIBKE": "5-OH-Omeprazole",
+        "IXEQEYRTSRFZEO": "Omeprazole sulfone"
+      },
+      "smiles": "COc1ccc2[nH]c([S+]([O-])Cc3ncc(C)c(OC)c3C)nc2c1"
+    },
+    "CHEMBL151649": {
+      "name": "PEITC",
+      "refs": {
+        "HACRKYQRZABURO": "PIC",
+        "WSGBVCNCZSZCGE": "PEITC-GSH"
+      },
+      "smiles": "S=C=NCCc1ccccc1"
+    },
+    "CHEMBL1630842": {
+      "name": "BILR 355",
+      "refs": {
+        "CXLYMYOLZVDOON": "BILR 402"
+      },
+      "smiles": "CCN1c2ncc(CCOc3cc[n+]([O-])c4ccccc34)cc2C(=O)N(C)c2cccnc21"
+    },
+    "CHEMBL1639": {
+      "name": "Aliskiren, SPP100",
+      "refs": {
+        "BCUNQZNYUMYGGS": "Metabolite M4",
+        "KCUIZDBXYKOADQ": "Metabolite M9",
+        "NOJYSLNNIPUEPC": "Metabolite M3",
+        "VCFHYFVMIMKBHH": "Metabolite M12 (ATG045)",
+        "XLDBISPSZMTXRB": "Metabolite M1"
+      },
+      "smiles": "COCCCOc1cc(C[C@@H](C[C@H](N)[C@@H](O)C[C@H](C(=O)NCC(C)(C)C(N)=O)C(C)C)C(C)C)ccc1OC"
+    },
+    "CHEMBL1642": {
+      "name": "Imatinib, Glivec, Gleevec",
+      "refs": {
+        "BQQYXPHRXIZMDM": "N-DMI, CGP74588, N-desmethylimatinib"
+      },
+      "smiles": "Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1Nc1nccc(-c2cccnc2)n1"
+    },
+    "CHEMBL1770248": {
+      "name": "Ertugliflozin, PF-04971729",
+      "refs": {
+        "KFRDLOWUHLQEAX": "M4a",
+        "NCWJAFYOAQFTQX": "M4c",
+        "UHORDSFKUFJGMW": "M2, des-ethyl ertugliflozin",
+        "XLJINMDXOSTAIJ": "M1a"
+      },
+      "smiles": "CCOc1ccc(Cc2cc([C@]34OC[C@](CO)(O3)[C@@H](O)[C@H](O)[C@H]4O)ccc2Cl)cc1"
+    },
+    "CHEMBL1771": {
+      "name": "Clopidogrel",
+      "refs": {
+        "JBSAZVIMJUOBNB": "R -115991"
+      },
+      "smiles": "COC(=O)[C@H](c1ccccc1Cl)N1CCc2sccc2C1"
+    },
+    "CHEMBL178": {
+      "name": "Daunorubicin",
+      "refs": {
+        "HJEZFVLKJYFNQW": "Daunorubicinol"
+      },
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(C)=O)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1"
+    },
+    "CHEMBL1789842": {
+      "name": "QAB149, Indacaterol",
+      "refs": {
+        "AYUINKXDLMIPNM": "P37.7",
+        "DHOVNAABCPYSTQ": "P30.3, diastereomer",
+        "KGQOVDZGKWREBH": "P38.2",
+        "KGVIJLMNQNSQHB": "P39",
+        "QTEUXTDFPHJNHA": "P37"
+      },
+      "smiles": "CCc1cc2c(cc1CC)CC(NC[C@H](O)c1ccc(O)c3[nH]c(=O)ccc13)C2"
+    },
+    "CHEMBL186179": {
+      "name": "Muraglitazar",
+      "refs": {
+        "IDSGPTAKWHAXDL": "M8"
+      },
+      "smiles": "COc1ccc(OC(=O)N(CC(=O)O)Cc2ccc(OCCc3nc(-c4ccccc4)oc3C)cc2)cc1"
+    },
+    "CHEMBL191": {
+      "name": "Losartan",
+      "refs": {
+        "FQZSMTSTFMNWQF": "E3179",
+        "MGRMJQDIUBITKP": "M5",
+        "PGVPJNRKRIWWIV": "Losartan glucuronide",
+        "RPKQQYYBEFCTLZ": "M2"
+      },
+      "smiles": "CCCCc1nc(Cl)c(CO)n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1"
+    },
+    "CHEMBL2095212": {
+      "name": "YM178, Mirabegron",
+      "refs": {
+        "IJLOKJZIHTWZDZ": "M13, YM-538859",
+        "KGQGNAYBJXXZGU": "M12, YM-538858",
+        "PPZPAYKGJINYBZ": "M15, YM-9636324",
+        "SKLQDOWMJNKLOR": "M11, YM-382984",
+        "TUAHDMSPHZSMQN": "M16, YM-208876",
+        "YBQVFLMYXJIJCA": "M14, YM-554028",
+        "ZFNAUJGSRYDGNB": "M8, YM-538853"
+      },
+      "smiles": "Nc1nc(CC(=O)Nc2ccc(CCNC[C@H](O)c3ccccc3)cc2)cs1"
+    },
+    "CHEMBL2103817": {
+      "name": "CP-945,598",
+      "refs": {
+        "YBQGLTGAHBCMME": "M1, CE-156,706"
+      },
+      "smiles": "CCNC1(C(N)=O)CCN(c2ncnc3c2nc(-c2ccccc2Cl)n3-c2ccc(Cl)cc2)CC1"
+    },
+    "CHEMBL2104978": {
+      "name": "Peliglitazar",
+      "refs": {
+        "AEWJTNXBDXRZGX": "M10",
+        "GGZBHHZGRBLGOB": "M1",
+        "HXRMDUSWAOXYFQ": "M17",
+        "NNJSFKKJLSXBPJ": "M5",
+        "VGAHUVFSRICZPZ": "M6",
+        "XJGZYXFVUXQPSR": "M4"
+      },
+      "smiles": "COc1ccc(OC(=O)N(CC(=O)O)[C@@H](C)c2ccc(OCCc3nc(-c4ccccc4)oc3C)cc2)cc1"
+    },
+    "CHEMBL2104993": {
+      "name": "Lu AA21004",
+      "refs": {
+        "GZGSAICCNTYGOF": "33, M8",
+        "INVFGIUFVDSKAT": "Benzylic alcohol of Lu AA21004",
+        "QMCUMUZLZIXOII": "34, M4(a)",
+        "SFZVSIQLKIWKAK": "N-hydroxylated Lu AA21004"
+      },
+      "smiles": "Cc1ccc(Sc2ccccc2N2CCNCC2)c(C)c1"
+    },
+    "CHEMBL223228": {
+      "name": "EFV",
+      "refs": {
+        "GZMDZAYFVCXHFM": "7-OH EFV",
+        "OOVOMPCQLMFEDT": "8-OH EFV, 8-hydroxy EFV"
+      },
+      "smiles": "O=C1Nc2ccc(Cl)cc2[C@@](C#CC2CC2)(C(F)(F)F)O1"
+    },
+    "CHEMBL259209": {
+      "name": "Rac-Milnacipran",
+      "refs": {
+        "UVKUMJGXPDEXSQ": "N-Desethyl Milnacipran",
+        "WPUQFLWORYOJDZ": "Milnacipran carbamicacid"
+      },
+      "smiles": "CCN(CC)C(=O)C1(c2ccccc2)CC1CN"
+    },
+    "CHEMBL270995": {
+      "name": "brivanib alaninate",
+      "refs": {
+        "WCWUXEGQKLTGDX": "Brivanib"
+      },
+      "smiles": "Cc1cc2c(F)c(Oc3ncnn4cc(OC[C@@H](C)OC(=O)[C@H](C)N)c(C)c34)ccc2[nH]1"
+    },
+    "CHEMBL29": {
+      "name": "Benzylpenicillin",
+      "refs": {
+        "HCYWNSXLUZRKJX": "Benzylpenicilloic acid"
+      },
+      "smiles": "CC1(C)S[C@@H]2[C@H](NC(=O)Cc3ccccc3)C(=O)N2[C@H]1C(=O)O"
+    },
+    "CHEMBL3526391": {
+      "name": "N-Desalkylquetiapine",
+      "refs": {
+        "CAWOJGJDGLXKTF": "M2",
+        "DBPINWUPOPUKFW": "M1"
+      },
+      "smiles": "c1ccc2c(c1)N=C(N1CCNCC1)c1ccccc1S2"
+    },
+    "CHEMBL3526439": {
+      "name": "Sipoglitazar",
+      "refs": {
+        "CGBMFATZQUJBFD": "sipoglitazar-G1",
+        "WPLGCUSQVAOKNJ": "M-II"
+      },
+      "smiles": "CCOc1nn(Cc2ccc(OCc3csc(-c4ccccc4)n3)cc2)cc1CCC(=O)O"
+    },
+    "CHEMBL3527215": {
+      "name": "1",
+      "refs": {
+        "DEVNCPMINSXFID": "unknown 4",
+        "IDHFQEDBZLLBPK": "unknown 1",
+        "JLICQEDOBFVDHH": "unknown 2",
+        "PGKOUFPOSVBYHB": "unknown 3"
+      },
+      "smiles": "CC(C)(O)c1ccc(N2CCN(c3nnc(Cc4ccc(F)cc4F)c4ccccc34)CC2)nc1"
+    },
+    "CHEMBL3542265": {
+      "name": "LY2452473",
+      "refs": {
+        "AAFKKZAJPJKSNG": "S4, LSN2519879",
+        "FBKLHMXRQOSWPP": "S60, LSN3040393",
+        "JYLZLLBMSMEHAN": "S12, LSN3049319",
+        "PGOWXQHSMFTDQD": "S10"
+      },
+      "smiles": "CC(C)OC(=O)N[C@H]1Cc2c(n(Cc3ccccn3)c3ccc(C#N)cc23)C1"
+    },
+    "CHEMBL355862": {
+      "name": "1, Zoniporide",
+      "refs": {
+        "RAXYIGUUSAQMES": "M1"
+      },
+      "smiles": "N=C(N)NC(=O)c1cnn(-c2cccc3ncccc23)c1C1CC1"
+    },
+    "CHEMBL375563": {
+      "name": "1, PPD",
+      "refs": {
+        "NZMLWOMSTXSMTL": "unnamed metabolite"
+      },
+      "smiles": "CC(C)=CCC[C@](C)(O)[C@H]1CC[C@]2(C)[C@@H]1[C@H](O)C[C@@H]1[C@@]3(C)CC[C@H](O)C(C)(C)[C@@H]3CC[C@]12C"
+    },
+    "CHEMBL383824": {
+      "name": "17-DMAG",
+      "refs": {
+        "GKYPECVVIPYPRW": "M1",
+        "HFPIRAYJPQBHGB": "M2",
+        "KOSOPKYEEDRVSD": "M4",
+        "XHDVGFMTDZHEFC": "M3"
+      },
+      "smiles": "CO[C@H]1/C=C\\C=C(/C)C(=O)NC2=CC(=O)C(NCCN(C)C)=C(C[C@@H](C)C[C@H](OC)[C@H](O)[C@@H](C)/C=C(\\C)[C@@H]1OC(N)=O)C2=O"
+    },
+    "CHEMBL385517": {
+      "name": "Saxagliptin, Onglyza",
+      "refs": {
+        "BNWBSJYZDBLPKL": "M45",
+        "BSTUQELPQUGWCG": "D1",
+        "GAWUJFVQGSLSSZ": "M2"
+      },
+      "smiles": "N#C[C@@H]1C[C@@H]2C[C@@H]2N1C(=O)[C@@H](N)C12CC3CC(CC(O)(C3)C1)C2"
+    },
+    "CHEMBL40": {
+      "name": "Phenobarbital",
+      "refs": {
+        "IEPXMKJNWPXDBP": "p-hydroxyphenobarbital",
+        "KKRIJCSEOJCKLM": "phenobarbital-N-glucoside",
+        "MBKHGECZFQWLRD": "hydroxyethyl metabolite",
+        "QGHNDAKWOGAJHS": "alpha-phenyl-gamma-butyrolactone",
+        "UGFLLWMLFCOVBY": "dihydrodiol metabolite of phenobarbital"
+      },
+      "smiles": "CCC1(c2ccccc2)C(=O)NC(=O)NC1=O"
+    },
+    "CHEMBL417": {
+      "name": "Epirubicin",
+      "refs": {
+        "IBZGBXXTIGCACK": "Doxorubicin aglycone",
+        "NKZRZOVSJNSBFR": "Epidoxorubicinol, 4'-epiadriamycinol",
+        "PXOMSWXCVZBBIV": "Epirubicin glucuronide",
+        "QHGFPRZWWKUHKF": "7d-Aon"
+      },
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@@H](O)[C@H](C)O1"
+    },
+    "CHEMBL42": {
+      "name": "CLZ",
+      "refs": {
+        "JNNOSTQEZICQQP": "DMCLZ, C-2",
+        "NLIKVGVFKKIVKF": "Iminium ion-2",
+        "OGUCZBIQSYYWEF": "CLZ-NO, C-1",
+        "OGZLSMWTACJBSH": "C-6",
+        "QJXJBCZTVXQIPI": "Iminium ion-1",
+        "SSFSRNHHRNZBOY": "Nitrenium ion",
+        "YJJYKPCAQDDSGZ": "C-3",
+        "YUFIEOIPFQOEAY": "C-7"
+      },
+      "smiles": "CN1CCN(C2=Nc3cc(Cl)ccc3Nc3ccccc32)CC1"
+    },
+    "CHEMBL428647": {
+      "name": "Paclitaxel",
+      "refs": {
+        "NDCWHEDPSFRTDA": "6-alpha -hydroxypaclitaxel",
+        "VLTJGIYNKLKYDP": "2C-hydroxypaclitaxel",
+        "XKSMHFPSILYEIA": "3C-hydroxy-paclitaxel"
+      },
+      "smiles": "CC(=O)O[C@H]1C(=O)[C@@]2(C)[C@H]([C@H](OC(=O)c3ccccc3)[C@]3(O)C[C@H](OC(=O)[C@H](O)[C@@H](NC(=O)c4ccccc4)c4ccccc4)C(C)=C1C3(C)C)[C@]1(OC(C)=O)CO[C@@H]1C[C@@H]2O"
+    },
+    "CHEMBL455136": {
+      "name": "Almorexant, ACT-078573",
+      "refs": {
+        "GXLLHVAGVUSWTO": "M5, ACT-172515",
+        "IBGXKVPJPLLVKU": "M3, ACT-127980",
+        "QCBNLFTZZMJSJE": "M37",
+        "RXQVHTULATYGAZ": "M8, ACT-127979",
+        "YDSAXZXFUOAJSV": "M6, ACT-078332"
+      },
+      "smiles": "CNC(=O)[C@@H](c1ccccc1)N1CCc2cc(OC)c(OC)cc2[C@@H]1CCc1ccc(C(F)(F)F)cc1"
+    },
+    "CHEMBL483254": {
+      "name": "LBH589",
+      "refs": {
+        "CXPJOGYQWSAATI": "epoxide intermediate",
+        "VOZMMIFGJRFSNT": "M4",
+        "XSPCNQCXKLBQPJ": "M1",
+        "XVXVAVCOKYEXMZ": "M5",
+        "YGFAIWRXVGWGFM": "M6"
+      },
+      "smiles": "Cc1[nH]c2ccccc2c1CCNCc1ccc(/C=C/C(=O)NO)cc1"
+    },
+    "CHEMBL493982": {
+      "name": "SCH 530348, Vorapaxar",
+      "refs": {
+        "GTYWVNGLHQVHBJ": "M19",
+        "ZHYYTGYLGLSISZ": "M20"
+      },
+      "smiles": "CCOC(=O)N[C@@H]1CC[C@@H]2[C@@H](C1)C[C@H]1C(=O)O[C@H](C)[C@H]1[C@H]2/C=C/c1ccc(-c2cccc(F)c2)cn1"
+    },
+    "CHEMBL52440": {
+      "name": "Dextromethorphan",
+      "refs": {
+        "ILNSWVUXAPSPEH": "3-methoxymorphinan",
+        "JAQUASYNZVUNQP": "Dextrorphan"
+      },
+      "smiles": "COc1ccc2c(c1)[C@]13CCCC[C@@H]1[C@H](C2)N(C)CC3"
+    },
+    "CHEMBL532": {
+      "name": "Erythromycin",
+      "refs": {
+        "TXOOBKBDBNRQCF": "N-desmethyl erythromycin",
+        "YKAVHPRGGAUFDN": "Anhydroerythromycin A"
+      },
+      "smiles": "CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@](C)(O)C[C@@H](C)C(=O)[C@H](C)[C@@H](O)[C@]1(C)O"
+    },
+    "CHEMBL54": {
+      "name": "Haloperidol",
+      "refs": {
+        "KAPIKUHBALFONG": "HPP+",
+        "MBLMQXUEJPCNQG": "Haloperidol-N-glucuronide",
+        "WNZBBTJFOIOEMP": "Reduced haloperidol",
+        "ZFNLYKVTHNLKNZ": "Haloperidol-o-glucuronide"
+      },
+      "smiles": "O=C(CCCN1CCC(O)(c2ccc(Cl)cc2)CC1)c1ccc(F)cc1"
+    },
+    "CHEMBL554": {
+      "name": "lapatinib",
+      "refs": {
+        "NQHFMDSFFGTFSK": "M4",
+        "SVTCWAMLLWYBEI": "M1",
+        "WPGSOXVHSRJVIL": "M8",
+        "XQPZOUAAXRXPAM": "M10"
+      },
+      "smiles": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1"
+    },
+    "CHEMBL58": {
+      "name": "Mitoxantrone",
+      "refs": {
+        "ATIAHAUGEJHHNT": "Monocarboxylic acid derivative of mitoxantrone",
+        "DDEBCPLFRUBTMM": "Dicarboxylic acid derivative of mitoxantrone"
+      },
+      "smiles": "O=C1c2c(O)ccc(O)c2C(=O)c2c(NCCNCCO)ccc(NCCNCCO)c21"
+    },
+    "CHEMBL633": {
+      "name": "Amiodarone",
+      "refs": {
+        "FHWJUIZOKDUAQQ": "M5",
+        "PNFMEGSMKIHDFZ": "M3",
+        "RLQKRIKDIQASSH": "M11-1",
+        "VXOKDLACQICQFA": "M7, MDEA"
+      },
+      "smiles": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1"
+    },
+    "CHEMBL643": {
+      "name": "Promethazine",
+      "refs": {
+        "IJOZCCILCJIHOA": "N-dealkylated metabolite of promethazine",
+        "OWTCLFIFAFHQIX": "Sulfoxidated metabolite of promethazine"
+      },
+      "smiles": "CC(CN1c2ccccc2Sc2ccccc21)N(C)C"
+    },
+    "CHEMBL64391": {
+      "name": "Itraconazole",
+      "refs": {
+        "UXBJDDAWIJZITC": "unknown 1"
+      },
+      "smiles": "CCC(C)n1ncn(-c2ccc(N3CCN(c4ccc(OCC5COC(Cn6cncn6)(c6ccc(Cl)cc6Cl)O5)cc4)CC3)cc2)c1=O"
+    },
+    "CHEMBL685": {
+      "name": "Mebendazole",
+      "refs": {
+        "GPMHHSJZGVOEFS": "Metabolite B",
+        "IIQKUGXEGMZCLE": "Metabolite A"
+      },
+      "smiles": "COC(=O)Nc1nc2cc(C(=O)c3ccccc3)ccc2[nH]1"
+    },
+    "CHEMBL741": {
+      "name": "Lamotrigine",
+      "refs": {
+        "IEVMENHZPOWVGO": "Lamotrigine N2-glucuronide"
+      },
+      "smiles": "Nc1nnc(-c2cccc(Cl)c2Cl)c(N)n1"
+    },
+    "CHEMBL762": {
+      "name": "Oxymetazoline",
+      "refs": {
+        "CVRZLTUKNRORBG": "M1",
+        "WVSZQBAWWDGCDM": "M6"
+      },
+      "smiles": "Cc1cc(C(C)(C)C)c(O)c(C)c1CC1=NCCN1"
+    },
+    "CHEMBL787": {
+      "name": "Montelukast",
+      "refs": {
+        "CHRNGXJVKOMERP": "M5a/b",
+        "OUCJSWWLSUSPOP": "M3",
+        "QFTNWCBEAVHLQA": "M2, montelukast sulfoxide",
+        "UFQIEVSCRCMNLW": "M6, montelukast 1,2-diol"
+      },
+      "smiles": "CC(C)(O)c1ccccc1CC[C@@H](SCC1(CC(=O)O)CC1)c1cccc(/C=C/c2ccc3ccc(Cl)cc3n2)c1"
+    },
+    "CHEMBL83": {
+      "name": "Tamoxifen",
+      "refs": {
+        "NYDCDZSEEAUOHN": "N-desmethyltamoxifen",
+        "TXUZVZSFRXZGTL": "4OHtam",
+        "YJVFSITVRZYTHO": "Metabolite E"
+      },
+      "smiles": "CC/C(=C(\\c1ccccc1)c1ccc(OCCN(C)C)cc1)c1ccccc1"
+    },
+    "CHEMBL88": {
+      "name": "Cyclophosphamide",
+      "refs": {
+        "DZKGMGPLDJOVCX": "3-Dechloroethylifosfamide",
+        "QSKPIOLLBIHNAC": "Chloroacetaldehyde",
+        "RANONBLIHMVXAJ": "4-hydroxy cyclophosphamide"
+      },
+      "smiles": "O=P1(N(CCCl)CCCl)NCCCO1"
+    },
+    "CHEMBL92": {
+      "name": "Docetaxel",
+      "refs": {
+        "HABZZLXXUPZIJD": "M2"
+      },
+      "smiles": "CC(=O)O[C@@]12CO[C@@H]1C[C@H](O)[C@@]1(C)C(=O)[C@H](O)C3=C(C)[C@@H](OC(=O)[C@H](O)[C@@H](NC(=O)OC(C)(C)C)c4ccccc4)C[C@@](O)([C@@H](OC(=O)c4ccccc4)[C@H]21)C3(C)C"
+    }
+  }
+}

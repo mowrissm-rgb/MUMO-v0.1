@@ -1,0 +1,59 @@
+{
+  "workflow": "Interactions",
+  "protocol_version": "0.9",
+  "source": "RCSB PDB holo complexes; PLIP 3.0.0 as comparator; RCSB chemical component dictionary",
+  "licence": "CC0 (PDB); PLIP is GPL-2.0 (comparator only, not shipped with MUMO)",
+  "ph": 7.4,
+  "complexes": [
+    {
+      "pdb": "1HSG",
+      "ligand": "MK1"
+    },
+    {
+      "pdb": "1M17",
+      "ligand": "AQ4"
+    },
+    {
+      "pdb": "3ERT",
+      "ligand": "OHT"
+    },
+    {
+      "pdb": "1STP",
+      "ligand": "BTN"
+    },
+    {
+      "pdb": "4DFR",
+      "ligand": "MTX"
+    },
+    {
+      "pdb": "2OJG",
+      "ligand": "19A"
+    },
+    {
+      "pdb": "1HCK",
+      "ligand": "ATP"
+    },
+    {
+      "pdb": "1CX2",
+      "ligand": "S58"
+    },
+    {
+      "pdb": "3PTB",
+      "ligand": "BEN"
+    },
+    {
+      "pdb": "2RH1",
+      "ligand": "CAU"
+    },
+    {
+      "pdb": "1ATP",
+      "ligand": "ATP"
+    }
+  ],
+  "hbond_min_precision": 0.6,
+  "hbond_min_recall": 0.6,
+  "any_contact_min_jaccard": 0.4,
+  "hydrophobic_max_distance": 4.5,
+  "distance_tolerance": 0.01,
+  "fault_smiles_mismatch": "CCO"
+}

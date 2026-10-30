@@ -1,0 +1,1059 @@
+{
+  "all_criteria_passed": false,
+  "counts": {
+    "ERROR": 20,
+    "FAIL": 3,
+    "INCONCLUSIVE": 0,
+    "PASS": 6
+  },
+  "criteria": [
+    {
+      "description": "MUMO HOMO/LUMO/gap equal xTB Molden values (20 of 20)",
+      "id": "O1",
+      "passed": false,
+      "value": "0/20"
+    },
+    {
+      "description": "orbital indices and captured Molden consistent (20 of 20)",
+      "id": "O2",
+      "passed": false,
+      "value": "0/20"
+    },
+    {
+      "description": "repeat runs identical (20 of 20)",
+      "id": "O3",
+      "passed": false,
+      "value": "0/20"
+    },
+    {
+      "description": "state and failure handling as specified (8 of 8)",
+      "id": "Q1",
+      "passed": false,
+      "value": "6/8"
+    },
+    {
+      "description": "QM9 coverage >= 0.9 and gap Pearson r >= 0.6",
+      "id": "G1",
+      "passed": false,
+      "value": "coverage 0.000 (0/200); gap r None"
+    }
+  ],
+  "extras": {
+    "gap_mean_predictor_mae_ev": null,
+    "not_tested": [
+      "orbital surface rendering",
+      "excitation energies",
+      "large or charged drug-like systems vs DFT"
+    ],
+    "qm9_failed": [
+      {
+        "mol_id": "gdb_116082",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1COCC(=O)C1"
+      },
+      {
+        "mol_id": "gdb_59137",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(O)C1C2C3CN2C13"
+      },
+      {
+        "mol_id": "gdb_91488",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1CN2CC1(C2)C=O"
+      },
+      {
+        "mol_id": "gdb_120636",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCCC1OC1(C)CC"
+      },
+      {
+        "mol_id": "gdb_74317",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1=CC(C=O)C2OC12"
+      },
+      {
+        "mol_id": "gdb_47476",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C#CCN1CCOC1=O"
+      },
+      {
+        "mol_id": "gdb_120190",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCCC1C2CC1C2O"
+      },
+      {
+        "mol_id": "gdb_111176",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1C2CN1C2C#N"
+      },
+      {
+        "mol_id": "gdb_22809",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1C(=NO)C(=O)OCO1"
+      },
+      {
+        "mol_id": "gdb_71124",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CC3C(CC1)N3C2"
+      },
+      {
+        "mol_id": "gdb_68607",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC12CC(CC1)C21CC1"
+      },
+      {
+        "mol_id": "gdb_38601",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1C2C3CC4OC4C2C13"
+      },
+      {
+        "mol_id": "gdb_111048",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1C2CC1(O2)C=O"
+      },
+      {
+        "mol_id": "gdb_60595",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC(C1CC1)C1COC1"
+      },
+      {
+        "mol_id": "gdb_131275",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1c2c([nH]n1)nc([nH]2)O"
+      },
+      {
+        "mol_id": "gdb_35148",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C#CC1(CC1C#N)C#C"
+      },
+      {
+        "mol_id": "gdb_66898",
+        "reason": "Could not generate a 3D conformer for this molecule.",
+        "smiles": "CC12C3N1C=NC2C3=O"
+      },
+      {
+        "mol_id": "gdb_95057",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1CCC2NC(=O)C12"
+      },
+      {
+        "mol_id": "gdb_27404",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1(=O)nc(oc(n1)O)O"
+      },
+      {
+        "mol_id": "gdb_64067",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1(C(=O)C(=O)CN1)C"
+      },
+      {
+        "mol_id": "gdb_22186",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC#CC(=NO)C#CC"
+      },
+      {
+        "mol_id": "gdb_81949",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C2OC2C(O)C1=O"
+      },
+      {
+        "mol_id": "gdb_73413",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CCC3C4C1N4C23"
+      },
+      {
+        "mol_id": "gdb_51218",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "N=COC12CC3OC1C23"
+      },
+      {
+        "mol_id": "gdb_115271",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1(C)COC(CO)O1"
+      },
+      {
+        "mol_id": "gdb_103866",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1(O)CC1C1CN1"
+      },
+      {
+        "mol_id": "gdb_52968",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC#CC12CC1C1CC21"
+      },
+      {
+        "mol_id": "gdb_52108",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CCCC12CC1OC2"
+      },
+      {
+        "mol_id": "gdb_132639",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1c(c(nc(n1)O)F)N"
+      },
+      {
+        "mol_id": "gdb_31972",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CNc1ccc(o1)OC"
+      },
+      {
+        "mol_id": "gdb_26419",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CN(C)Cc1cocn1"
+      },
+      {
+        "mol_id": "gdb_48875",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CC12CN3C(C=C1)C23"
+      },
+      {
+        "mol_id": "gdb_80655",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C2CC(C2)OC1=N"
+      },
+      {
+        "mol_id": "gdb_26693",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "Cc1c(c(c([nH]1)O)O)O"
+      },
+      {
+        "mol_id": "gdb_56075",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)CCC#CC#C"
+      },
+      {
+        "mol_id": "gdb_127638",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "Cn1c(=O)c(ccn1)N"
+      },
+      {
+        "mol_id": "gdb_76509",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1C(O)C11CC2CC12"
+      },
+      {
+        "mol_id": "gdb_109542",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C(CO)C(C)C1=O"
+      },
+      {
+        "mol_id": "gdb_33842",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "N#CC12CC3(CN3)C1O2"
+      },
+      {
+        "mol_id": "gdb_35532",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C#CC1CC2CNC2=N1"
+      },
+      {
+        "mol_id": "gdb_111190",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1C2CN1C2C#C"
+      },
+      {
+        "mol_id": "gdb_117629",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)C(C)(O)CCO"
+      },
+      {
+        "mol_id": "gdb_124300",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)Cc1c[nH]nc1"
+      },
+      {
+        "mol_id": "gdb_105527",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1(CCC1)C1CO1"
+      },
+      {
+        "mol_id": "gdb_110650",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COC1C2N3CC3C12O"
+      },
+      {
+        "mol_id": "gdb_3859",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1(c([nH]nn1)O)N"
+      },
+      {
+        "mol_id": "gdb_128010",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CN=C1ON=NC=C1C"
+      },
+      {
+        "mol_id": "gdb_10589",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1OC1(C=O)C#C"
+      },
+      {
+        "mol_id": "gdb_75140",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1=CCC(OC1)(C)C"
+      },
+      {
+        "mol_id": "gdb_110682",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1C2C3COC2C13"
+      },
+      {
+        "mol_id": "gdb_122471",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COCCC1NC1C#C"
+      },
+      {
+        "mol_id": "gdb_86145",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1CN(C)C(=O)C1O"
+      },
+      {
+        "mol_id": "gdb_33194",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCCOc1ccco1"
+      },
+      {
+        "mol_id": "gdb_114803",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12COC1CC2CO"
+      },
+      {
+        "mol_id": "gdb_115642",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1COC11CCC1"
+      },
+      {
+        "mol_id": "gdb_80596",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "NC1C2[NH2+]C(C12)C([O-])=O"
+      },
+      {
+        "mol_id": "gdb_44267",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1OC2C1CCC2=O"
+      },
+      {
+        "mol_id": "gdb_96875",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CN=C1OC(C)CC=C1"
+      },
+      {
+        "mol_id": "gdb_24296",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1C2CN3C=CN=C3N12"
+      },
+      {
+        "mol_id": "gdb_98204",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC#CC(O)C(=O)CO"
+      },
+      {
+        "mol_id": "gdb_83677",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1C2CCC2C1C#N"
+      },
+      {
+        "mol_id": "gdb_68011",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CC(C)(O1)C(=O)C2"
+      },
+      {
+        "mol_id": "gdb_116836",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCCC#CC(=O)C#C"
+      },
+      {
+        "mol_id": "gdb_123738",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1c(n[nH]n1)C2CCC2"
+      },
+      {
+        "mol_id": "gdb_113993",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1CN1CCC#N"
+      },
+      {
+        "mol_id": "gdb_113996",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1OC1CCC#C"
+      },
+      {
+        "mol_id": "gdb_69560",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12OC1C1(O)COC21"
+      },
+      {
+        "mol_id": "gdb_116600",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCN=C1CC(O)CO1"
+      },
+      {
+        "mol_id": "gdb_133134",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1=C(F)C(=N)C=NN1"
+      },
+      {
+        "mol_id": "gdb_77430",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1C2(O)C3OC3C12O"
+      },
+      {
+        "mol_id": "gdb_44461",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1CC23CC(O2)C3N1"
+      },
+      {
+        "mol_id": "gdb_2708",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCCCOC=O"
+      },
+      {
+        "mol_id": "gdb_113047",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COC1CN(C1)CC#C"
+      },
+      {
+        "mol_id": "gdb_58296",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(C)C(C)CN1CC1"
+      },
+      {
+        "mol_id": "gdb_127679",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CN1N=CNC(=N)C1=O"
+      },
+      {
+        "mol_id": "gdb_69462",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC12CC1C(OC2)C=O"
+      },
+      {
+        "mol_id": "gdb_89219",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CC(O)C3CN1C23"
+      },
+      {
+        "mol_id": "gdb_88310",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1CC1C(=O)CC#C"
+      },
+      {
+        "mol_id": "gdb_39479",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1C2CCOCC=CC12"
+      },
+      {
+        "mol_id": "gdb_70682",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC12CC1OCC=CC2"
+      },
+      {
+        "mol_id": "gdb_132930",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1c(c(c[nH]c1=O)F)F"
+      },
+      {
+        "mol_id": "gdb_126073",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1OC1C1=NNC=C1"
+      },
+      {
+        "mol_id": "gdb_61621",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1NC1CC(N)C#N"
+      },
+      {
+        "mol_id": "gdb_106588",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC12CC(C=C1)C=C2"
+      },
+      {
+        "mol_id": "gdb_34723",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C#CC1C2C3OC1OC23"
+      },
+      {
+        "mol_id": "gdb_63313",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1(C)OC(=N)C2CC12"
+      },
+      {
+        "mol_id": "gdb_129158",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "N=C1N=NON=NC1=O"
+      },
+      {
+        "mol_id": "gdb_85734",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1CC(C#C)C1C=O"
+      },
+      {
+        "mol_id": "gdb_9733",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C#CC1(CCCC1)O"
+      },
+      {
+        "mol_id": "gdb_98893",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CNC(=O)C1CCOC1"
+      },
+      {
+        "mol_id": "gdb_91798",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C(O)CC2CC12C"
+      },
+      {
+        "mol_id": "gdb_17468",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CN3CC3C1N2"
+      },
+      {
+        "mol_id": "gdb_47945",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1COCCOC(=O)N1"
+      },
+      {
+        "mol_id": "gdb_27013",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "Cc1c([nH]c(=O)o1)C#C"
+      },
+      {
+        "mol_id": "gdb_3105",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COC1C(C)C1O"
+      },
+      {
+        "mol_id": "gdb_51319",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1COCC(=N1)NC=O"
+      },
+      {
+        "mol_id": "gdb_51331",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CCC1C2C3OC1C23"
+      },
+      {
+        "mol_id": "gdb_17608",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1CN1C(=O)C(=O)N"
+      },
+      {
+        "mol_id": "gdb_22867",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C(=O)CCC1=NO"
+      },
+      {
+        "mol_id": "gdb_86249",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CN1CC(O)CC1C=O"
+      },
+      {
+        "mol_id": "gdb_113691",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1CC1C(=O)CO"
+      },
+      {
+        "mol_id": "gdb_118879",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCOC1(C)CC2CC12"
+      },
+      {
+        "mol_id": "gdb_17348",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1CC1C1OC1C"
+      },
+      {
+        "mol_id": "gdb_76584",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C(C#CC#N)N1C"
+      },
+      {
+        "mol_id": "gdb_49568",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CC1C2OC2C11CC1"
+      },
+      {
+        "mol_id": "gdb_37061",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1C23COCC12N=CO3"
+      },
+      {
+        "mol_id": "gdb_105114",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1(CN1)C1CCO1"
+      },
+      {
+        "mol_id": "gdb_74475",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1=CC2(CN2)C2NC12"
+      },
+      {
+        "mol_id": "gdb_75352",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1=NCC2OC2CO1"
+      },
+      {
+        "mol_id": "gdb_31540",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "Cc1c(cc([nH]1)NC)O"
+      },
+      {
+        "mol_id": "gdb_90716",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1OC2C1CC2(C)O"
+      },
+      {
+        "mol_id": "gdb_628",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)C1CO1"
+      },
+      {
+        "mol_id": "gdb_1675",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC([NH3+])C([O-])=O"
+      },
+      {
+        "mol_id": "gdb_130475",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O1C=C2N=CC=C2C=N1"
+      },
+      {
+        "mol_id": "gdb_57988",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(O)C(=O)NCC#C"
+      },
+      {
+        "mol_id": "gdb_64216",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1(O)CCC1C1CC1"
+      },
+      {
+        "mol_id": "gdb_10045",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COC(CC#N)C#C"
+      },
+      {
+        "mol_id": "gdb_19397",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C2NC2C11CC1"
+      },
+      {
+        "mol_id": "gdb_83436",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1C2COC12C1CN1"
+      },
+      {
+        "mol_id": "gdb_81678",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1C2CC1OC(=O)C2"
+      },
+      {
+        "mol_id": "gdb_65391",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1(CC1C=O)N1CC1"
+      },
+      {
+        "mol_id": "gdb_22357",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1CC(CC1C)=NO"
+      },
+      {
+        "mol_id": "gdb_70737",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CC1CCOCO2"
+      },
+      {
+        "mol_id": "gdb_121204",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCCC1NCC1C#N"
+      },
+      {
+        "mol_id": "gdb_19679",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "N#CC1C2CC3C2N13"
+      },
+      {
+        "mol_id": "gdb_54139",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)C1(C)CC1(C)O"
+      },
+      {
+        "mol_id": "gdb_1860",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OC1CC(O)C=C1"
+      },
+      {
+        "mol_id": "gdb_115872",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1CCC2CC12C"
+      },
+      {
+        "mol_id": "gdb_62022",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(NCC(C)=O)C=O"
+      },
+      {
+        "mol_id": "gdb_41796",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1OC2CC1CN=CO2"
+      },
+      {
+        "mol_id": "gdb_118580",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCCC(COC)OC"
+      },
+      {
+        "mol_id": "gdb_30255",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1CN2C=NC(N)=C12"
+      },
+      {
+        "mol_id": "gdb_95438",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1[NH2+]CC=C1C([O-])=O"
+      },
+      {
+        "mol_id": "gdb_54853",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "NC(=O)C1C2CCOC12"
+      },
+      {
+        "mol_id": "gdb_27256",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1c2c(c([nH]1)N)CCC2"
+      },
+      {
+        "mol_id": "gdb_20602",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "Cc1c(c(no1)O)N"
+      },
+      {
+        "mol_id": "gdb_13511",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1CCC1C(C)=O"
+      },
+      {
+        "mol_id": "gdb_111000",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CCC(O1)C2CO"
+      },
+      {
+        "mol_id": "gdb_120246",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COCC1N2CC2C1=O"
+      },
+      {
+        "mol_id": "gdb_40828",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1COCCC1N2CC2"
+      },
+      {
+        "mol_id": "gdb_77910",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CN1C2C(O)C(O)C12C"
+      },
+      {
+        "mol_id": "gdb_129146",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "N=C1N=NOC(=N1)C#N"
+      },
+      {
+        "mol_id": "gdb_12027",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1(CC2CC12)C#C"
+      },
+      {
+        "mol_id": "gdb_35730",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C#CC1CC2(CC2)CO1"
+      },
+      {
+        "mol_id": "gdb_49702",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CN1C2CCC12C=O"
+      },
+      {
+        "mol_id": "gdb_74538",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1=CC23CN4C2C1C34"
+      },
+      {
+        "mol_id": "gdb_71770",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CN3C4CN1C2C34"
+      },
+      {
+        "mol_id": "gdb_46997",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1COC2COC1C2"
+      },
+      {
+        "mol_id": "gdb_108627",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1=C(C)C2NC2C1"
+      },
+      {
+        "mol_id": "gdb_49517",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CC1C2OC1C1CC21"
+      },
+      {
+        "mol_id": "gdb_44982",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1CC2(CC2N1)C#N"
+      },
+      {
+        "mol_id": "gdb_43796",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1CC2(CN2)C11CC1"
+      },
+      {
+        "mol_id": "gdb_32363",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1cc(=O)[nH]cc1CO"
+      },
+      {
+        "mol_id": "gdb_75651",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CC(C1)C(=O)C2O"
+      },
+      {
+        "mol_id": "gdb_123496",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1cc2cnnn2nc1"
+      },
+      {
+        "mol_id": "gdb_14141",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1NC11CCC=C1"
+      },
+      {
+        "mol_id": "gdb_83775",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C2OCC3OC2C13"
+      },
+      {
+        "mol_id": "gdb_70969",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12OC3(CC1C23)C#C"
+      },
+      {
+        "mol_id": "gdb_14756",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COCCCCC#C"
+      },
+      {
+        "mol_id": "gdb_174",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1nnno1"
+      },
+      {
+        "mol_id": "gdb_46827",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1NCC2NC12C#C"
+      },
+      {
+        "mol_id": "gdb_15043",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC(C#C)C1CC1"
+      },
+      {
+        "mol_id": "gdb_20540",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(C)c1cnoc1"
+      },
+      {
+        "mol_id": "gdb_15480",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1OCCC1C#N"
+      },
+      {
+        "mol_id": "gdb_2112",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1COCCC1O"
+      },
+      {
+        "mol_id": "gdb_70825",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12NC3(C)C1OC23C"
+      },
+      {
+        "mol_id": "gdb_49012",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CC12COC1C(=O)N2"
+      },
+      {
+        "mol_id": "gdb_100771",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(C(O)CO)N1CC1"
+      },
+      {
+        "mol_id": "gdb_79428",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CN1C2C3NC2(C=O)C13"
+      },
+      {
+        "mol_id": "gdb_10681",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(C)C1(CC1)C#C"
+      },
+      {
+        "mol_id": "gdb_90582",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1NC2C1=CNC2=O"
+      },
+      {
+        "mol_id": "gdb_56130",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C(CC(=O)N)C(=O)C=O"
+      },
+      {
+        "mol_id": "gdb_20464",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1c2c(non2)CN1"
+      },
+      {
+        "mol_id": "gdb_29459",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1c[nH]c2c1c(c[nH]2)N"
+      },
+      {
+        "mol_id": "gdb_53667",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC#CCCC1OC1C"
+      },
+      {
+        "mol_id": "gdb_1987",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)OC1CC1"
+      },
+      {
+        "mol_id": "gdb_109998",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1C(O)CC1C=O"
+      },
+      {
+        "mol_id": "gdb_15317",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=CCC1CN1C=O"
+      },
+      {
+        "mol_id": "gdb_54325",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)C1(CC1)OC=O"
+      },
+      {
+        "mol_id": "gdb_107086",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC12CC(C#C)C1N2"
+      },
+      {
+        "mol_id": "gdb_25844",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "c1cnccc1C(=O)N"
+      },
+      {
+        "mol_id": "gdb_65735",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1(CC=CC1)NC=O"
+      },
+      {
+        "mol_id": "gdb_6798",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(O)COCCO"
+      },
+      {
+        "mol_id": "gdb_16399",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "N=C1OCC2CC1N2"
+      },
+      {
+        "mol_id": "gdb_36478",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "N#CCC1NCC1C#N"
+      },
+      {
+        "mol_id": "gdb_13784",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(=O)C1CC1CO"
+      },
+      {
+        "mol_id": "gdb_115049",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC1CC=CC1CC"
+      },
+      {
+        "mol_id": "gdb_86610",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C(O)CC1C1CO1"
+      },
+      {
+        "mol_id": "gdb_102807",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CCC(NC=O)C(C)C"
+      },
+      {
+        "mol_id": "gdb_102683",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "COC(CO)CCC#N"
+      },
+      {
+        "mol_id": "gdb_38266",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "C1C2NC11COCOC21"
+      },
+      {
+        "mol_id": "gdb_26350",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(O)C1=CNC=C1C"
+      },
+      {
+        "mol_id": "gdb_26785",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "Cc1c(cc(o1)C#C)O"
+      },
+      {
+        "mol_id": "gdb_69474",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC12CC1C(C2)OC=O"
+      },
+      {
+        "mol_id": "gdb_79499",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC1C2C3CN2C13C=O"
+      },
+      {
+        "mol_id": "gdb_27622",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "Cc1c(cc(o1)N)C#C"
+      },
+      {
+        "mol_id": "gdb_44541",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "O=C1CC2C3CC3C2C1"
+      },
+      {
+        "mol_id": "gdb_99923",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC(O)(C#C)C1CC1"
+      },
+      {
+        "mol_id": "gdb_58818",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "CC(C)C12CC1N1CC21"
+      },
+      {
+        "mol_id": "gdb_115442",
+        "reason": "xtb ran but its output could not be parsed for HOMO/LUMO. Last lines: normal termination of xtb",
+        "smiles": "OCC1COC(O1)C#N"
+      }
+    ],
+    "qm9_seconds": 16.9,
+    "qm9_sha256": "3e668f8c34e4bc392a90d417a50a5eed3b64b842a817a633024bdc054c68ccb4",
+    "qm9_vs_mumo_ev": {},
+    "xtb_sha256": "90bff4e570ffa10a1558364ee393711900bff239f02d313685353e055324f4c3",
+    "xtb_version": "6.7.1pre"
+  },
+  "n_items": 29,
+  "protocol_version": "0.8",
+  "workflow": "Orbit"
+}

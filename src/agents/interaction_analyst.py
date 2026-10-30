@@ -475,6 +475,12 @@ def _export_prepared(ligand, protein, complex_path):
     for name, original in (("ligand", ligand), ("protein", protein)):
         if original.GetNumConformers() != 1:
             raise ValueError("Prepared molecule must contain exactly one pose")
+        if name == "ligand":
+            # A pose built from a SMILES with an unlabelled stereocentre or double bond has no
+            # stereo flags. The SDF reload perceives them from the 3D coordinates, and the
+            # graph comparison below would then report a chemical change. Assign them from
+            # the pose geometry first so both sides describe the same molecule.
+            Chem.AssignStereochemistryFrom3D(original)
         path = str(complex_path) + '.' + name + '.sdf'
         identities[name] = []
         for atom in original.GetAtoms():

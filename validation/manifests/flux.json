@@ -1,0 +1,21 @@
+{
+  "workflow": "Flux",
+  "protocol_version": "0.5",
+  "source": "ChEMBL metabolism table https://www.ebi.ac.uk/chembl/api/data/metabolism (literature-curated)",
+  "licence": "CC BY-SA 3.0 (ChEMBL)",
+  "selection": {
+    "organism": "Homo sapiens",
+    "edge_rule": "records where substrate_chembl_id equals drug_chembl_id (one-step metabolites)",
+    "drugs": "every drug_chembl_id with at least one such edge whose drug and metabolite structures both resolve"
+  },
+  "flux_settings": {"depth": 2, "min_score": 0.01, "max_results": 40},
+  "top_k": 10,
+  "x1_min_micro_recall": 0.25,
+  "x2_bootstrap_resamples": 2000,
+  "seed": 20261029,
+  "faults": [
+    {"name": "fault:invalid_smiles", "smiles": "not a smiles", "kwargs": {}},
+    {"name": "fault:empty_smiles", "smiles": "", "kwargs": {}},
+    {"name": "fault:bad_depth", "smiles": "CCO", "kwargs": {"depth": 0}}
+  ]
+}

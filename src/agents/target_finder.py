@@ -54,7 +54,8 @@ def _gql(query, variables, retries=3):
 def find_disease_id(disease_name):
     """
     Step 1: Turn a disease name ('cystic fibrosis') into an Open Targets ID
-    (an EFO/MONDO ID like 'EFO_0000341'). We take the best disease match.
+    (an EFO/MONDO ID, for example 'MONDO_0009061' for cystic fibrosis). We take
+    the best disease match.
     """
     query = """
     query Search($q: String!) {

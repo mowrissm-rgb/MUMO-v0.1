@@ -1,0 +1,30 @@
+{
+  "workflow": "Atlas",
+  "protocol_version": "0.6",
+  "source": "RCSB PDB coordinates and wwPDB validation reports; UniProt; AlphaFold DB",
+  "licence": "CC0 (PDB/wwPDB), CC BY 4.0 (UniProt, AlphaFold DB)",
+  "rama_entries": ["1HSG", "1M17", "3ERT", "1STP", "4DFR", "2OJG", "1HCK", "1CX2", "3PTB", "1AKE",
+                   "2RH1", "1ATP", "6LU7", "1UBQ", "2LZM", "1CRN", "4HHB", "1TIM", "5PTI", "1LYZ",
+                   "1GFL", "1BRS", "3HFM"],
+  "angle_tolerance_deg": 0.2,
+  "angle_min_fraction": 0.995,
+  "class_min_agreement": 0.95,
+  "pocket_complexes": [
+    {"pdb": "1HSG", "ligand": "MK1"}, {"pdb": "1M17", "ligand": "AQ4"},
+    {"pdb": "3ERT", "ligand": "OHT"}, {"pdb": "1STP", "ligand": "BTN"},
+    {"pdb": "4DFR", "ligand": "MTX"}, {"pdb": "2OJG", "ligand": "19A"},
+    {"pdb": "1HCK", "ligand": "ATP"}, {"pdb": "1CX2", "ligand": "S58"},
+    {"pdb": "3PTB", "ligand": "BEN"}, {"pdb": "1AKE", "ligand": "AP5"},
+    {"pdb": "2RH1", "ligand": "CAU"}, {"pdb": "1ATP", "ligand": "ATP"},
+    {"pdb": "6LU7", "ligand": "02J"}
+  ],
+  "dcc_threshold_angstrom": 4.0,
+  "pocket_min_success_rate": 0.5,
+  "identity_genes": [
+    {"gene": "EGFR",  "uniprot": "P00533"}, {"gene": "MAPK1", "uniprot": "P28482"},
+    {"gene": "CFTR",  "uniprot": "P13569"}, {"gene": "ACHE",  "uniprot": "P22303"},
+    {"gene": "BACE1", "uniprot": "P56817"}, {"gene": "DRD2",  "uniprot": "P14416"},
+    {"gene": "PTGS2", "uniprot": "P35354"}, {"gene": "HDAC1", "uniprot": "Q13547"},
+    {"gene": "ESR1",  "uniprot": "P03372"}, {"gene": "CDK2",  "uniprot": "P24941"}
+  ]
+}

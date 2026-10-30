@@ -1,0 +1,155 @@
+{
+  "workflow": "Orbit",
+  "protocol_version": "0.8",
+  "source": "xTB 6.7.1pre (official Windows build); QM9 DFT reference (DeepChem copy)",
+  "licence": "LGPL-3.0 (xTB), CC0 (QM9)",
+  "xtb_binary": "bin/xtb-6.7.1pre/xtb-6.7.1/bin/xtb.exe",
+  "xtb_expected_sha256": "90bff4e570ffa10a1558364ee393711900bff239f02d313685353e055324f4c3",
+  "xtb_zip_sha256": "043e578da4a7e114a4d584972959a875e3ffb9f2767a86723b95aa6719d28d9c",
+  "qm9_file": "validation/data/qm9.csv",
+  "qm9_expected_sha256": "3e668f8c34e4bc392a90d417a50a5eed3b64b842a817a633024bdc054c68ccb4",
+  "hartree_to_ev": 27.211386,
+  "qm9_sample_size": 200,
+  "seed": 20261029,
+  "timeout_seconds": 90,
+  "min_coverage": 0.9,
+  "min_gap_pearson": 0.6,
+  "drugs": [
+    {
+      "name": "aspirin",
+      "smiles": "CC(=O)Oc1ccccc1C(=O)O"
+    },
+    {
+      "name": "paracetamol",
+      "smiles": "CC(=O)Nc1ccc(O)cc1"
+    },
+    {
+      "name": "ibuprofen",
+      "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O"
+    },
+    {
+      "name": "caffeine",
+      "smiles": "Cn1cnc2c1c(=O)n(C)c(=O)n2C"
+    },
+    {
+      "name": "diazepam",
+      "smiles": "CN1C(=O)CN=C(c2ccccc2)c2cc(Cl)ccc12"
+    },
+    {
+      "name": "propranolol",
+      "smiles": "CC(C)NCC(O)COc1cccc2ccccc12"
+    },
+    {
+      "name": "metformin",
+      "smiles": "CN(C)C(=N)N=C(N)N"
+    },
+    {
+      "name": "warfarin",
+      "smiles": "CC(=O)CC(c1ccccc1)c1c(O)c2ccccc2oc1=O"
+    },
+    {
+      "name": "naproxen",
+      "smiles": "COc1ccc2cc(ccc2c1)C(C)C(=O)O"
+    },
+    {
+      "name": "lidocaine",
+      "smiles": "CCN(CC)CC(=O)Nc1c(C)cccc1C"
+    },
+    {
+      "name": "atenolol",
+      "smiles": "CC(C)NCC(O)COc1ccc(CC(N)=O)cc1"
+    },
+    {
+      "name": "fluoxetine",
+      "smiles": "CNCCC(Oc1ccc(cc1)C(F)(F)F)c1ccccc1"
+    },
+    {
+      "name": "ciprofloxacin",
+      "smiles": "OC(=O)C1=CN(C2CC2)c2cc(N3CCNCC3)c(F)cc2C1=O"
+    },
+    {
+      "name": "omeprazole",
+      "smiles": "COc1ccc2[nH]c(nc2c1)S(=O)Cc1ncc(C)c(OC)c1C"
+    },
+    {
+      "name": "simvastatin",
+      "smiles": "CCC(C)(C)C(=O)OC1CC(C)C=C2C=CC(C)C(CCC3CC(O)CC(=O)O3)C12"
+    },
+    {
+      "name": "sildenafil",
+      "smiles": "CCCc1nn(C)c2c1nc([nH]c2=O)-c1cc(ccc1OCC)S(=O)(=O)N1CCN(C)CC1"
+    },
+    {
+      "name": "imatinib",
+      "smiles": "Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1Nc1nccc(n1)-c1cccnc1"
+    },
+    {
+      "name": "chlorpromazine",
+      "smiles": "CN(C)CCCN1c2ccccc2Sc2ccc(Cl)cc12"
+    },
+    {
+      "name": "nifedipine",
+      "smiles": "COC(=O)C1=C(C)NC(C)=C(C1c1ccccc1[N+]([O-])=O)C(=O)OC"
+    },
+    {
+      "name": "tamoxifen",
+      "smiles": "CCC(=C(c1ccccc1)c1ccc(OCCN(C)C)cc1)c1ccccc1"
+    }
+  ],
+  "state_cases": [
+    {
+      "name": "Q1:radical_without_spin",
+      "smiles": "[OH]",
+      "kwargs": {},
+      "expect": "error"
+    },
+    {
+      "name": "Q2:radical_with_spin",
+      "smiles": "[OH]",
+      "kwargs": {
+        "unpaired_electrons": 1
+      },
+      "expect": "verified"
+    },
+    {
+      "name": "Q3:anion",
+      "smiles": "CC(=O)[O-]",
+      "kwargs": {},
+      "expect": "verified",
+      "net_charge": -1
+    },
+    {
+      "name": "Q4:salt",
+      "smiles": "CC(=O)[O-].[Na+]",
+      "kwargs": {},
+      "expect": "error"
+    },
+    {
+      "name": "Q5:invalid_smiles",
+      "smiles": "not a smiles",
+      "kwargs": {},
+      "expect": "error"
+    },
+    {
+      "name": "Q6:empty_smiles",
+      "smiles": "",
+      "kwargs": {},
+      "expect": "error"
+    },
+    {
+      "name": "Q7:charge_mismatch",
+      "smiles": "CCO",
+      "kwargs": {
+        "charge": 1
+      },
+      "expect": "error"
+    },
+    {
+      "name": "Q8:engine_missing",
+      "smiles": "CCO",
+      "kwargs": {},
+      "expect": "error",
+      "xtb_override": "C:/nonexistent/xtb.exe"
+    }
+  ]
+}

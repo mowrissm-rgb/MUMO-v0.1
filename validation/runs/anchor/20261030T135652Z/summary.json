@@ -1,0 +1,65 @@
+{
+  "all_criteria_passed": false,
+  "counts": {
+    "ERROR": 5,
+    "FAIL": 2,
+    "INCONCLUSIVE": 0,
+    "PASS": 7
+  },
+  "criteria": [
+    {
+      "description": "independent input-to-final ligand RMSD consistent with reported movements (100%)",
+      "id": "A1",
+      "passed": false,
+      "value": "4/8"
+    },
+    {
+      "description": "energy, relax time and verdict consistent in native and decoy reports (100%)",
+      "id": "A2",
+      "passed": false,
+      "value": "4/8"
+    },
+    {
+      "description": "deterministic quantities repeat (3 of 3)",
+      "id": "A3",
+      "passed": false,
+      "value": "0/3"
+    },
+    {
+      "description": "bad input returns an error record, never raises (3 of 3)",
+      "id": "A4",
+      "passed": true,
+      "value": "3/3"
+    },
+    {
+      "description": "native energy drop below decoy in >= 6/8, and native verdict Stable in >= 4/8",
+      "id": "B1",
+      "passed": false,
+      "value": "energy drop smaller 4/8; Stable 4/8"
+    }
+  ],
+  "extras": {
+    "micromamba_sha256": "f8b4284bd4eb1134122eaf93b3ea6c7be567e596de5829e1a6f478e34e41974a",
+    "not_tested": [
+      "long solvated MD",
+      "binding free energies",
+      "GPU",
+      "convergence"
+    ],
+    "package_versions_openmm_openff_ff_rdkit": "8.6.1 0.19.0 0.15.1 2026.09.1",
+    "relax_ps": 2.0,
+    "relax_spread_native_repeats": {
+      "1STP": [
+        0.58,
+        0.38
+      ],
+      "3PTB": [
+        0.33,
+        0.47
+      ]
+    }
+  },
+  "n_items": 14,
+  "protocol_version": "1.0",
+  "workflow": "Anchor"
+}

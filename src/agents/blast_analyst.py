@@ -78,31 +78,32 @@ def _parse_blast_tab(text, max_hits=25):
     stitle) from a UniProt SwissProt DB into hit dicts, keeping ONE (best) HSP per
     subject. UniProt headers carry the organism as 'OS=...' and the accession in
     the 'sp|ACC|NAME' id, so no taxonomy DB is needed."""
-    out, seen = [], set()
+    best = {}
     for line in text.splitlines():
         parts = line.split("\t")
         if len(parts) < 6:
             continue
         sseqid, pident, length, evalue, bitscore, stitle = parts[:6]
         acc = sseqid.split("|")[1] if sseqid.count("|") >= 2 else sseqid
-        if acc in seen:                          # first line per subject = best HSP
-            continue
-        seen.add(acc)
         m = re.search(r"OS=(.+?)(?:\s+(?:OX|GN|PE|SV)=|$)", stitle)
         sciname = m.group(1).strip() if m else ""
         title = re.split(r"\s+OS=", stitle)[0].strip()
         try:
-            out.append({
+            hit = {
                 "accession": acc, "title": title, "sciname": sciname,
                 "identity": round(float(pident), 1),
                 "evalue": float(evalue), "bit_score": round(float(bitscore), 1),
                 "align_len": int(length),
-            })
+            }
         except ValueError:
             continue
-        if len(out) >= max_hits:
-            break
-    return out
+        # keep the highest-scoring alignment per subject
+        if acc not in best or hit["bit_score"] > best[acc]["bit_score"]:
+            best[acc] = hit
+    # BLAST lists hits by E-value, and E-values underflow to 0 for strong matches, so the
+    # order among them is not by score. Rank explicitly: best bit score first.
+    ranked = sorted(best.values(), key=lambda h: (-h["bit_score"], h["evalue"]))
+    return ranked[:max_hits]
 
 
 def run_blastp(seq, max_hits=25, timeout=300):
@@ -114,7 +115,9 @@ def run_blastp(seq, max_hits=25, timeout=300):
         proc = subprocess.run(
             ["blastp", "-query", qpath, "-db", _BLAST_DB,
              "-outfmt", "6 sseqid pident length evalue bitscore stitle",
-             "-max_target_seqs", str(max_hits), "-evalue", "10",
+             # -max_target_seqs N does not guarantee the N best hits (BLAST may truncate before
+             # ranking), so ask for many and keep the top max_hits ourselves.
+             "-max_target_seqs", str(max(1000, max_hits * 20)), "-evalue", "10",
              "-num_threads", str(os.cpu_count() or 2)],
             capture_output=True, text=True, timeout=timeout)
         if proc.returncode != 0:
@@ -134,6 +137,8 @@ def analyze_blast(query, species=HUMAN, program="blastp", database="swissprot", 
       query_name, accession, seq_len, hits, database, program, rid.
     Fast — the search runs on the self-hosted BLAST+ (seconds, not minutes).
     """
+    if not str(query or "").strip():
+        raise ValueError("Please give me a protein or gene name, or a protein sequence.")
     if looks_like_sequence(query):
         seq, acc, qname = clean_sequence(query), "", "your sequence"
     else:

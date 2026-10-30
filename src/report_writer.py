@@ -124,7 +124,7 @@ def _add_kv_table(doc, pairs):
     table.style = "Light Grid Accent 1"
     for k, v in pairs:
         cells = table.add_row().cells
-        cells[0].text, cells[1].text = str(k), str(v)
+        cells[0].text, cells[1].text = str(k), _report_value(v)
     return table
 
 

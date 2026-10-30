@@ -50,6 +50,24 @@ class ChemicalFixtures(unittest.TestCase):
             self.assertTrue(any(b.GetBondTypeAsDouble() == 2 for b in prot.GetBonds()))
             self.assertTrue(all(Path(a['path']).exists() for a in files.values()))
 
+    def test_export_accepts_ligands_with_unspecified_stereo(self):
+        # Found by the Pose-interactions validation. A SMILES with an unlabelled stereocentre or
+        # double bond gives a pose with no stereo flags; the SDF reload perceives stereo from the
+        # 3D coordinates, and the export check used to call that a chemical change.
+        import tempfile
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+        protein = Chem.AddHs(Chem.MolFromSmiles('CC(=O)[O-]'))
+        AllChem.EmbedMolecule(protein, randomSeed=8)
+        for smiles in ('CC(C)Cc1ccc(cc1)C(C)C(=O)O',                    # unlabelled stereocentre
+                       'CCC(=C(c1ccccc1)c1ccc(O)cc1)c1ccccc1'):         # unlabelled double bond
+            ligand = Chem.AddHs(Chem.MolFromSmiles(smiles))
+            AllChem.EmbedMolecule(ligand, randomSeed=7)
+            self.assertTrue(all(int(a.GetChiralTag()) == 0 for a in ligand.GetAtoms()), smiles)
+            with tempfile.TemporaryDirectory() as directory:
+                lig, _prot, files = agent._export_prepared(ligand, protein, str(Path(directory)/'complex.pdb'))
+                self.assertEqual(lig.GetNumAtoms(), ligand.GetNumAtoms(), smiles)
+
     def test_acceptor_acceptor_proximity_is_not_hbond(self):
         from rdkit import Chem
         from rdkit.Geometry import Point3D

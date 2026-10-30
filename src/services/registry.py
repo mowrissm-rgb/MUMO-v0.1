@@ -77,9 +77,15 @@ for _sid, _spec in SPECIALISTS.items():
         OWNER[_cap] = _sid
 
 
+# The router's action names that differ from the capability names above. The router calls the
+# ADMET screen "analyze"; without this alias the action had no owning specialist.
+ACTION_ALIASES = {"analyze": "admet"}
+
+
 def owner_of(capability):
     """Which specialist should handle this action, or None if unclaimed."""
-    return OWNER.get((capability or "").strip().lower())
+    name = (capability or "").strip().lower()
+    return OWNER.get(ACTION_ALIASES.get(name, name))
 
 
 def specialist(sid):

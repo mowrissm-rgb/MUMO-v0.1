@@ -82,6 +82,27 @@ ACTION_CUES = {
                 r"\bsimulat"),
 }
 
+# Workflow names are cues only after an explicit "run/use/ask/...", so "pose" and "helix" as
+# ordinary words never trigger. "run Flux and Orbit on X" names two workflows after one verb;
+# the second has no verb of its own, so a chain of names after one verb is recognised too and
+# is positioned at its own name (which keeps the order the user gave).
+_NAME_TO_ACTION = {"pose": "dock", "fate": "analyze", "orbit": "qm", "flux": "metabolism",
+                   "atlas": "ramachandran", "nexus": "string", "helix": "blast"}
+_NAMES = "|".join(_NAME_TO_ACTION)
+_NAME_SEP = r"\s*(?:,|&|and|then|plus)\s*(?:the\s+)?"
+for _name, _action in _NAME_TO_ACTION.items():
+    ACTION_CUES[_action] = ACTION_CUES[_action] + (
+        rf"\b(?:run|use|ask|start|launch)\s+(?:the\s+)?(?:(?:{_NAMES}){_NAME_SEP})+(?P<name>{_name})\b",)
+
+# "do not dock anything yet" contains a cue and a verb but asks for nothing. A negation shortly
+# before the cue cancels it.
+_NEGATION = re.compile(r"\b(?:do not|don't|dont|never|no need to|not going to|cancel|stop|skip|avoid|"
+                       r"hold off(?: on)?|without)\b[^.;,]{0,30}$")
+
+
+def _negated(low, pos):
+    return bool(_NEGATION.search(low[:pos]))
+
 # An imperative somewhere in the message is what separates "dock CFTR with
 # aspirin" from "what is docking?". Without one, an action keyword is a topic,
 # not a request.
@@ -175,10 +196,13 @@ def requested_actions(text):
         return []
     hits = []
     for action, patterns in ACTION_CUES.items():
-        pos = min((m.start() for p in patterns
-                   for m in [re.search(p, low)] if m), default=None)
-        if pos is not None:
-            hits.append((pos, action))
+        found = [m for p in patterns for m in [re.search(p, low)] if m]
+        if not found:
+            continue
+        pos = min(m.start("name") if "name" in m.groupdict() else m.start() for m in found)
+        if _negated(low, pos):
+            continue
+        hits.append((pos, action))
     return [a for _, a in sorted(hits)]
 
 
@@ -398,7 +422,9 @@ UNSUPPORTED = (
       "determine the structure", "cryo-em", "x-ray structure determination"),
      "MUMO can't determine experimental structures. It uses existing ones from the "
      "PDB, or AlphaFold models when no experimental structure exists."),
-    (("synthesi", "retrosynthesis", "how to make", "synthetic route"),
+    # "synthesis" alone is ordinary biology ("protein synthesis"); only chemistry asks count.
+    (("synthesize", "synthesise", "synthesis route", "synthesis plan", "retrosynthesis",
+      "how to make", "synthetic route"),
      "Synthesis planning and retrosynthesis aren't supported. MUMO can tell you a "
      "compound's synthetic accessibility score, but not how to make it."),
     (("clinical trial", "in vivo", "animal study", "patient"),
@@ -426,7 +452,8 @@ def unsupported_request(text):
     if any(re.search(p, s) for p in _MD_RE):
         return UNSUPPORTED[0][1]
     for cues, message in UNSUPPORTED:
-        if any(cue in s for cue in cues):
+        # a cue must start a word: "amber" must not match "chamber"
+        if any(re.search(r"\b" + re.escape(cue), s) for cue in cues):
             return message
     return ""
 

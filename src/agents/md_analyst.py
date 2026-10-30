@@ -104,6 +104,90 @@ def run_stability_md(receptor_pdb, lig_rdkit, out_dir, relax_ps=2.0,
         return {"_error": f"Simulation could not run: {type(e).__name__}: {e}"}
 
 
+RANDOM_SEED = 42
+
+
+def _seed_everything(seed=RANDOM_SEED):
+    """Fix the random sources a run uses. OpenMM's Modeller.addHydrogens places some hydrogens
+    at random (unseeded, two runs differed by up to 1.9 A), so identical inputs gave different
+    starting energies and different minimised energies."""
+    import random
+    random.seed(seed)
+    try:
+        import numpy
+        numpy.random.seed(seed)
+    except ImportError:
+        pass
+
+
+def _add_missing_oxt(receptor_pdb, out_path, max_peptide_bond=2.0):
+    """Write a copy of the receptor with a terminal oxygen (OXT) added wherever a residue's
+    carbonyl carbon has no peptide bond to a following residue and no OXT of its own.
+
+    Most crystal structures do not model OXT, and an Amber residue template cannot match a
+    chain end or a residue beside a chain break without it ("No template found ... externally
+    bonded atoms is missing 1 C atom"). OXT sits in the plane of CA, C and O, 1.25 A from C,
+    opposite the other two substituents. Returns the number of atoms added.
+    """
+    import math
+    with open(receptor_pdb, encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
+    residues = []
+    for i, line in enumerate(lines):
+        if not line.startswith("ATOM"):
+            continue
+        key = (line[21], line[22:26], line[26])
+        if not residues or residues[-1]["key"] != key:
+            residues.append({"key": key, "atoms": {}, "lines": {}, "last": i})
+        res = residues[-1]
+        res["last"] = i
+        name = line[12:16].strip()
+        res["atoms"][name] = (float(line[30:38]), float(line[38:46]), float(line[46:54]))
+        res["lines"][name] = line
+
+    def unit(v):
+        n = math.sqrt(sum(c * c for c in v))
+        return None if n < 1e-6 else tuple(c / n for c in v)
+
+    inserts = {}
+    for k, res in enumerate(residues):
+        a = res["atoms"]
+        if "OXT" in a or not all(n in a for n in ("C", "CA", "O")):
+            continue
+        nxt = residues[k + 1] if k + 1 < len(residues) else None
+        if (nxt is not None and nxt["key"][0] == res["key"][0] and "N" in nxt["atoms"]
+                and math.dist(a["C"], nxt["atoms"]["N"]) <= max_peptide_bond):
+            continue
+        to_ca = unit(tuple(a["CA"][i] - a["C"][i] for i in range(3)))
+        to_o = unit(tuple(a["O"][i] - a["C"][i] for i in range(3)))
+        if to_ca is None or to_o is None:
+            continue
+        away = unit(tuple(-(to_ca[i] + to_o[i]) for i in range(3)))
+        if away is None:
+            continue
+        x, y, z = (a["C"][i] + 1.25 * away[i] for i in range(3))
+        template = res["lines"]["O"]
+        inserts[res["last"]] = (template[:12] + " OXT" + template[16:30]
+                                + f"{x:8.3f}{y:8.3f}{z:8.3f}" + template[54:76] + " O" + template[78:])
+    out, serial = [], 0
+    for i, line in enumerate(lines):
+        pieces = [line, inserts.get(i)]
+        # OpenMM bonds each residue to the next one in its chain even across a real gap, so a
+        # capped residue also needs a TER record to start a new chain after it.
+        if i in inserts and not (i + 1 < len(lines) and lines[i + 1].startswith("TER")):
+            pieces.append("TER")
+        for text in pieces:
+            if text is None:
+                continue
+            if text.startswith(("ATOM", "HETATM")):
+                serial += 1
+                text = text[:6] + f"{serial:5d}" + text[11:]
+            out.append(text)
+    with open(out_path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(out) + "\n")
+    return len(inserts)
+
+
 def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
          temperature, status):
     import numpy as np
@@ -111,7 +195,9 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
     from openmmforcefields.generators import SystemGenerator
 
     status("Preparing the protein…")
-    protein = app.PDBFile(receptor_pdb)
+    capped = os.path.join(out_dir, "receptor_with_terminal_oxygens.pdb")
+    n_capped = _add_missing_oxt(receptor_pdb, capped)
+    protein = app.PDBFile(capped)
     modeller = app.Modeller(protein.topology, protein.positions)
     modeller.deleteWater()
 
@@ -134,6 +220,7 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
     )
 
     status("Building the protein–ligand system…")
+    _seed_everything()
     modeller.addHydrogens(system_generator.forcefield, pH=7.4)
     n_protein = modeller.topology.getNumAtoms()
     modeller.add(lig_top, lig_pos)                       # append the ligand
@@ -156,6 +243,7 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
 
     integrator = LangevinMiddleIntegrator(
         temperature * unit.kelvin, 1.0 / unit.picosecond, 0.002 * unit.picoseconds)
+    integrator.setRandomNumberSeed(RANDOM_SEED)
     try:
         platform = Platform.getPlatformByName("CPU")
         sim = app.Simulation(modeller.topology, system, integrator, platform)
@@ -184,7 +272,7 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
     rmsd_relax = None
     if relax_ps and relax_ps > 0:
         status(f"Relaxing for {relax_ps} ps (short dynamics)…")
-        sim.context.setVelocitiesToTemperature(temperature * unit.kelvin)
+        sim.context.setVelocitiesToTemperature(temperature * unit.kelvin, RANDOM_SEED)
         sim.step(int(relax_ps / 0.002))
         lig_relax = _lig_xyz()
         rmsd_relax = float(np.sqrt(((lig_relax - lig_min) ** 2).sum(axis=1).mean()))
@@ -209,6 +297,7 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
         "verdict": verdict,
         "relax_ps": relax_ps,
         "refined_pdb": refined,
+        "terminal_oxygens_added": n_capped,
         "note": ("Fast gas-phase pose refinement + short relaxation (protein restrained) "
                  "— a lightweight precursor to full solvated molecular dynamics."),
     }
