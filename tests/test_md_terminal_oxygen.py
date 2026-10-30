@@ -92,5 +92,21 @@ class TerminalOxygenTests(unittest.TestCase):
             self.assertEqual(serials, list(range(1, len(serials) + 1)))
 
 
+class SeedTests(unittest.TestCase):
+    def test_seeding_repeats_python_and_numpy_random_streams(self):
+        import random
+        import numpy
+        md._seed_everything()
+        first = (random.random(), float(numpy.random.rand()))
+        md._seed_everything()
+        self.assertEqual((random.random(), float(numpy.random.rand())), first)
+
+    def test_run_uses_the_seed_for_hydrogens_and_dynamics(self):
+        source = (Path(__file__).parents[1] / 'src/agents/md_analyst.py').read_text(encoding='utf-8')
+        self.assertIn('_seed_everything()\n    modeller.addHydrogens', source)
+        self.assertIn('integrator.setRandomNumberSeed(RANDOM_SEED)', source)
+        self.assertIn('setVelocitiesToTemperature(temperature * unit.kelvin, RANDOM_SEED)', source)
+
+
 if __name__ == '__main__':
     unittest.main()

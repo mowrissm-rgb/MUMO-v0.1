@@ -104,6 +104,22 @@ def run_stability_md(receptor_pdb, lig_rdkit, out_dir, relax_ps=2.0,
         return {"_error": f"Simulation could not run: {type(e).__name__}: {e}"}
 
 
+RANDOM_SEED = 42
+
+
+def _seed_everything(seed=RANDOM_SEED):
+    """Fix the random sources a run uses. OpenMM's Modeller.addHydrogens places some hydrogens
+    at random (unseeded, two runs differed by up to 1.9 A), so identical inputs gave different
+    starting energies and different minimised energies."""
+    import random
+    random.seed(seed)
+    try:
+        import numpy
+        numpy.random.seed(seed)
+    except ImportError:
+        pass
+
+
 def _add_missing_oxt(receptor_pdb, out_path, max_peptide_bond=2.0):
     """Write a copy of the receptor with a terminal oxygen (OXT) added wherever a residue's
     carbonyl carbon has no peptide bond to a following residue and no OXT of its own.
@@ -204,6 +220,7 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
     )
 
     status("Building the protein–ligand system…")
+    _seed_everything()
     modeller.addHydrogens(system_generator.forcefield, pH=7.4)
     n_protein = modeller.topology.getNumAtoms()
     modeller.add(lig_top, lig_pos)                       # append the ligand
@@ -226,6 +243,7 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
 
     integrator = LangevinMiddleIntegrator(
         temperature * unit.kelvin, 1.0 / unit.picosecond, 0.002 * unit.picoseconds)
+    integrator.setRandomNumberSeed(RANDOM_SEED)
     try:
         platform = Platform.getPlatformByName("CPU")
         sim = app.Simulation(modeller.topology, system, integrator, platform)
@@ -254,7 +272,7 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
     rmsd_relax = None
     if relax_ps and relax_ps > 0:
         status(f"Relaxing for {relax_ps} ps (short dynamics)…")
-        sim.context.setVelocitiesToTemperature(temperature * unit.kelvin)
+        sim.context.setVelocitiesToTemperature(temperature * unit.kelvin, RANDOM_SEED)
         sim.step(int(relax_ps / 0.002))
         lig_relax = _lig_xyz()
         rmsd_relax = float(np.sqrt(((lig_relax - lig_min) ** 2).sum(axis=1).mean()))
