@@ -19,6 +19,7 @@ Status as of 2026-10-30. Every number below comes from a saved run under `valida
 | Fate (RDKit panel, ADMET-AI wrapper) | PubChem properties, published rule definitions | F1 to F4 pass; ADMET-AI accuracy not tested | Pass (scope-limited) |
 | Compass (Open Targets) | OLS ontology, second Open Targets query, ChEMBL phase-4 drug targets | C1 9/10; C2 10/10; C3 9/10; C4 3/3 | Pass (C3 partly circular) |
 | Flux (metabolism) | ChEMBL curated human metabolism, 66 drugs | Recall 0.41; score AUC 0.815 (CI 0.777 to 0.852) | Pass |
+| Flux held-out (5 rules added from development misses) | 130 unseen drugs from non-human or unspecified-species ChEMBL records | Recall 0.342 to 0.442 (gain +0.100, CI +0.069 to +0.134); top-10 0.275 to 0.315; AUC 0.839 to 0.794 | Pass (not a human test) |
 | Atlas: Ramachandran | wwPDB validation reports, 23 entries, 8,838 residues | Classes 100% agree; angles 99.69% within 0.2 degrees | Pass |
 | Atlas: target identity | UniProt | 10/10 accessions; 10/10 AlphaFold sequences | Pass |
 | Atlas: pocket detection | Bound-ligand position, 13 complexes | 5/13 within 4 A (centroid baseline 0/13) | **Fail** (floor 0.5) |
@@ -77,7 +78,7 @@ These were errors in my protocol or check code, not in MUMO. Each is recorded as
 
 **Limitations of passing results**
 - **Orbit:** GFN2-xTB orbital energies sit on a different scale from DFT. Gaps are 2.07 eV lower on average, HOMO 4.0 eV lower, LUMO 6.1 eV lower than QM9 B3LYP values. The gap tracks DFT (r = 0.85) but its absolute error (2.2 eV) is worse than predicting the mean (1.08 eV), so raw gaps are useful only after calibration.
-- **Flux:** all recovered metabolites come from the first step, and multi-step pathways were not evaluated. Rules are missing (sulfone formation, methyl hydroxylation). Four large drugs hit the 400-metabolite ceiling. No comparator was run (SyGMa is GPL and did not build).
+- **Flux:** all recovered metabolites come from the first step, and multi-step pathways were not evaluated. Rules were missing (sulfone formation, methyl hydroxylation). Five rules were added from the development misses and tested once on 130 unseen drugs from non-human or unspecified-species records (protocol v1.3): held-out recall rose from 0.342 to 0.442 and top-10 recall from 0.275 to 0.315, but score AUC fell from 0.839 to 0.794 (new rule weights are unmeasured, set by analogy) and more drugs reach the 400-metabolite ceiling (9 to 15). The gain on the development set (0.410 to 0.559) was larger than on held-out data and must not be quoted. The held-out set is not human, and nine candidate rules with no development evidence (sulfone formation, acyl glucuronidation and others) were not added. Four large drugs hit the 400-metabolite ceiling in the original run. No comparator was run (SyGMa is GPL and did not build).
 - **Compass:** Parkinson disease's top 10 contains no approved-drug target, because the ranking is driven by genetic evidence. The recall test is partly circular because Open Targets uses ChEMBL clinical evidence.
 - **Fate:** the TPSA variant (with or without sulfur and phosphorus) was left unchanged; RDKit's default excludes them, PubChem includes them, and the difference reaches 25 square angstroms for chlorpromazine. ADMET-AI accuracy was not tested.
 - **Scout:** ties at the potency cutoff mean the completeness check cannot tell which tied molecules should be kept. Scout does not filter on ChEMBL validity flags.
@@ -90,7 +91,7 @@ Anchor's long solvated MD, binding free energies and GPU use, docking scoring po
 
 ## Recommended follow-ups before submission
 
-1. **Held-out sets** for any improvement made after seeing results: the Atlas pocket detector, Flux rules, and the two Pose entries (1CX2, 2RH1) whose fix followed their failure.
+1. **Held-out sets** for any improvement made after seeing results. Done for the Flux rules (protocol v1.3). Still to do: the Atlas pocket detector (no improvement made yet, so a development and held-out split is needed first), and the two Pose entries (1CX2, 2RH1) whose fix followed their failure.
 2. Investigate the 1CX2 H-bond gap in Pose interactions.
 3. Decide whether the remote-specialist path should be wired into the front door or removed from the README. Decide whether to add PDBFixer for Anchor (3ERT), find the source of Anchor's remaining run-to-run differences, and decide whether Helix should return more than 25 hits or offer a species filter.
 4. Check the Ghose and TPSA source papers before the paper cites either rule.
@@ -99,7 +100,7 @@ Anchor's long solvated MD, binding free energies and GPU use, docking scoring po
 ## Reproducing
 
 ```
-python scripts/run_validation.py <quill|scout|nexus|fate|compass|flux|atlas|pose|orbit|interactions|anchor|helix|routing>
+python scripts/run_validation.py <quill|scout|nexus|fate|compass|flux|atlas|pose|orbit|interactions|anchor|helix|routing|fluxheldout>
 ```
 
 External files used (hashes are in the manifests and every run record): AutoDock Vina 1.2.5 (Windows build, `bin/vina.exe`), xTB 6.7.1pre (`bin/xtb-6.7.1pre/`), the QM9 table (`validation/data/qm9.csv`), BLAST+ 2.17.0 and a Swiss-Prot BLAST database for Helix (`bin/blast`, database under `E:\mumo-validation-env\blastdb`, built from the UniProt file downloaded 2026-10-30), and a micromamba 2.10.0 conda-forge environment for Anchor (`bin/mdenv`, 5.1 GB, with `openmmforcefields` 0.15.1 added by pip without AmberTools because AmberTools does not exist for Windows). The MD environment and micromamba cache live on `E:\mumo-validation-env\` and are reached through junctions at `bin/mdenv` and `bin/mamba/root`. None of these is committed. The runner uses the operating-system certificate store (`truststore`) because the local antivirus intercepts TLS. PLIP 3.0 needs a stub for one OpenBabel metadata call (InChIKey); interaction results are unaffected.

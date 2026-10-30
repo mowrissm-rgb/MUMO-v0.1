@@ -1,6 +1,6 @@
 # MUMO validation and manuscript plan
 
-Drafted 2026-10-29. Updated 2026-10-30. Status: **Phases 0 to 3 are largely done.** All 12 workflow checks and the routing and specialist-outage tests have run, with protocols frozen and tagged first. Full results, defects fixed and open failures are in [`validation/RESULTS.md`](../validation/RESULTS.md). The new components (pharmacophore, mass-spec) are not built, and the held-out re-tests for tuned items are still to do.
+Drafted 2026-10-29. Updated 2026-10-30. Status: **Phases 0 to 3 are largely done.** All 12 workflow checks and the routing and specialist-outage tests have run, with protocols frozen and tagged first. Full results, defects fixed and open failures are in [`validation/RESULTS.md`](../validation/RESULTS.md). The Flux rules added after seeing failures have had their held-out re-test (protocol v1.3). The new components (pharmacophore, mass-spec) are not built, and held-out re-tests for the Atlas pocket detector and the two Pose entries are still to do.
 
 ## 1. Goal and sequencing
 
