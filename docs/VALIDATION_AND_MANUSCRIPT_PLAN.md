@@ -1,6 +1,6 @@
 # MUMO validation and manuscript plan
 
-Drafted 2026-10-29. Updated 2026-10-30. Status: **Phases 0 to 3 are largely done.** All 12 workflow checks have run, with protocols frozen and tagged first. Full results, defects fixed and open failures are in [`validation/RESULTS.md`](../validation/RESULTS.md). The routing and specialist-outage tests are still to do, and the new components (pharmacophore, mass-spec) are not built.
+Drafted 2026-10-29. Updated 2026-10-30. Status: **Phases 0 to 3 are largely done.** All 12 workflow checks and the routing and specialist-outage tests have run, with protocols frozen and tagged first. Full results, defects fixed and open failures are in [`validation/RESULTS.md`](../validation/RESULTS.md). The new components (pharmacophore, mass-spec) are not built, and the held-out re-tests for tuned items are still to do.
 
 ## 1. Goal and sequencing
 
@@ -82,7 +82,7 @@ Every run records: git commit, tool versions, settings, random seeds, input hash
 | Phase | Work | Output |
 |---|---|---|
 | 0. Freeze | Choose benchmarks, metrics, pass criteria per workflow; resolve section 7; tag `PROTOCOL.md` | **Done per workflow**: each protocol version was committed and tagged (`validation-protocol-v0.1` to `v0.9a`) before its first run |
-| 1. Tier A | Repeat-run, failure-injection, routing tests; fix defects found | **Mostly done**: repeat-run and failure-injection are in every workflow check. **Routing accuracy and specialist-outage tests (section 3, cross-cutting) are not done.** |
+| 1. Tier A | Repeat-run, failure-injection, routing tests; fix defects found | **Done**: repeat-run and failure-injection are in every workflow check, and the routing-accuracy and specialist-outage tests have run. Open finding: the remote-specialist path is not wired into the app. |
 | 2. Tier B, light workflows | Quill, Scout, Compass, Nexus, Helix, Fate, Flux | **Done.** Helix paralogue retrieval is an open failure (6/9). |
 | 3. Tier B, heavy workflows | Pose, Atlas, Anchor, Orbit | **Done.** Open failures: Atlas pocket detector, Pose interactions (H-bond recall), Anchor (3ERT and run-to-run differences). |
 | 4. Build new components | Pharmacophore agent, mass-spec agent, graphs | Not started |
@@ -123,7 +123,7 @@ Order of drafting: Methods first (after freeze), Results as each phase lands, In
 ## 9. Immediate next steps
 
 1. Mowriss picks a journal (or confirms "full article for now"). Authors and the public-Space decision can wait until drafting.
-2. Finish the remaining checks: the routing-accuracy and specialist-outage tests from section 3.
+2. Decide whether the remote-specialist path is wired into the front door or removed from the README (section 3 finding).
 3. Resolve the open failures, using held-out data for anything tuned after seeing results: Atlas pocket detector, Pose interaction H-bond recall (start with 1CX2), and the three Pose redocking misses.
 4. Check the Ghose and TPSA source papers, then decide whether to add the TPSA sulfur and phosphorus variant.
 5. Rerun every check from a fresh environment at a tagged commit.
