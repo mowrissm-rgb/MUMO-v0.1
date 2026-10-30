@@ -410,3 +410,44 @@ Contacts are compared at residue level, per interaction type: H-bond, hydrophobi
 **Known limits.** Eleven complexes, mostly kinases, proteases and nucleotide-binding sites, show broad agreement only. Crystal ligands are easier than docked poses (exact geometry). Protonation and hydrogen placement differ between tools, so some H-bond disagreement is expected from preparation, not from detection rules.
 
 **Addendum 0.9a (written after the first Interactions run, disclosed as such).** In the first run, three complexes (3ERT, 1HCK, 1ATP) returned an error: MUMO's pose-identity guard (`pose_matches_ligand`) rejected the crystal-derived ligand. The deposited SMILES of these ligands carry stereo labels (a double bond in 4-hydroxytamoxifen, phosphorus centres in ATP), and the stereo perceived from the crystal coordinates did not equal them. The guard exists to stop a docked pose being analysed under the wrong ligand name, which is not what this check tests, and for docked poses the stereo comes from the same SMILES. The check is therefore amended: when the analysis fails **only** with the identity message, it is repeated once with `ligand_smiles=None`, and the item records `identity_guard_bypassed`. Thresholds and criteria are unchanged. The first run is kept as recorded. The first run's I1 recall was depressed because the three failed complexes still contributed their PLIP contacts to the denominator, as the protocol specified.
+
+---
+
+# Version 1.0 (draft), 2026-10-30. Adds Anchor. Earlier criteria are unchanged.
+
+## Anchor: gas-phase pose refinement and short relaxation
+
+**Question.** Does Anchor (`agents.md_analyst`, run through MUMO's isolated runner) report its own energies and ligand movement consistently, behave reproducibly where it should, fail safely, and tell a crystal pose from a deliberately wrong one?
+
+**What Anchor is.** MUMO describes it as a fast gas-phase pose refinement: energy minimisation of the complex, then about 2 ps of dynamics at 300 K with the protein backbone restrained, using Amber14 for the protein and OpenFF Sage for the ligand with Gasteiger charges. It is explicitly **not** production MD. This protocol tests it as what it claims to be.
+
+**Scope, stated up front.** Not tested: long solvated MD, binding free energies, MM-GBSA, GPU execution, convergence, or whether a "stable" verdict predicts experimental binding. A pass shows internal consistency and a basic ability to flag a displaced pose, nothing about binding.
+
+**Software.** OpenMM, OpenFF toolkit and openmmforcefields from conda-forge in an isolated environment under `bin/mdenv/`, created with micromamba 2.10.0 (binary hash in `manifests/anchor.json`). The package list and versions are recorded in every run. The check runs MUMO's own isolated path (`run_stability_md_isolated`) with `MUMO_MD_PYTHON` pointing at that environment.
+
+**Items and selection rule, frozen.** From the 11 Pose complexes, those whose ligand has a net charge between -1 and +1 at pH 7.4 and at most 50 heavy atoms (a gas-phase refinement of a multiply charged ligand is not meaningful). That leaves 8: 1HSG, 1M17, 3ERT, 1STP, 2OJG, 1CX2, 3PTB, 2RH1. Excluded by the rule: 4DFR (charge -2), 1HCK and 1ATP (charge -3).
+
+**Inputs.** As in the Interactions check: the cleaned receptor, and the crystal ligand with bond orders from the RCSB SMILES protonated at pH 7.4 and hydrogens added with RDKit, keeping crystal coordinates. Receptor waters are removed by Anchor itself.
+
+**Decoy pose.** Each native ligand is also run after a fixed rigid move: rotation by 180 degrees about the axis (1, 2, 3) through its centroid, then translation of 3.0 angstrom along that axis. The move does not depend on any result.
+
+**Check A1, movement bookkeeping (native runs).** From the refined complex PDB, the ligand atoms are the last N atoms (N = ligand atom count; element order must match). The RMSD between the input ligand coordinates and these final coordinates is computed independently. Anchor reports two movements: input to minimised (`lig_rmsd_min`) and minimised to relaxed (`lig_rmsd_relax`). By the triangle inequality the independent input-to-final RMSD must lie between |min - relax| and min + relax, each side within 0.02 angstrom (PDB coordinates are rounded).
+- Pass: 100% of native runs, with the ligand-atom element order matching.
+
+**Check A2, report consistency (all native and decoy runs).** `energy_drop` equals `energy_initial - energy_minimized` to 0.2 kcal/mol; `energy_drop` is not negative; `relax_ps` equals the requested value; the verdict matches the code's stated thresholds applied to `lig_rmsd_relax` (below 1.5 A "Stable", below 3.0 A "Mostly stable", otherwise "Unstable").
+- Pass: 100% of runs.
+
+**Check A3, repeatability.** For `3PTB`, `1STP` and `2OJG`, the native run is repeated. The deterministic quantities `energy_initial`, `energy_minimized` and `lig_rmsd_min` must be identical to 0.1 kcal/mol and 0.01 angstrom. The relaxation uses random velocities with no seed, so `lig_rmsd_relax` is expected to vary; its spread is recorded, not judged.
+- Pass: 3 of 3.
+
+**Check A4, honest failure.** Three cases must return an error record (a dict with `_error`) and not raise: a receptor path that does not exist; a ligand molecule with no 3D conformer; and `MUMO_MD_PYTHON` pointing at a missing interpreter.
+- Pass: 3 of 3.
+
+**Check B1, native versus displaced pose.** Over the 8 complexes:
+- (i) the native run has a smaller `energy_drop` than its decoy in at least 75% of complexes (6 of 8);
+- (ii) the native run's verdict is "Stable" in at least 50% of complexes (4 of 8).
+- Both thresholds are methodological choices fixed before the run. They are floors for "does something sensible", not published standards. A decoy that lands in empty space might relax with little energy change, which is part of what this tests.
+
+**Recorded, no pass/fail.** Per-complex energies, RMSDs, verdicts and runtimes for native and decoy; the spread of `lig_rmsd_relax` across repeats; package versions; any run that errored (errors count as failures in every denominator).
+
+**Known limits.** Gas-phase minimisation with unoptimised hydrogens produces large energy drops for any pose, so the energy comparison rewards relative, not absolute, differences. Eight complexes and one fixed decoy per complex give a coarse picture. The 2 ps relaxation is far too short to say anything about binding stability, and MUMO's report says so.

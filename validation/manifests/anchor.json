@@ -1,0 +1,82 @@
+{
+  "workflow": "Anchor",
+  "protocol_version": "1.0",
+  "source": "RCSB PDB holo complexes; MUMO's isolated OpenMM runner",
+  "licence": "CC0 (PDB); OpenMM and OpenFF are MIT",
+  "micromamba_sha256": "f8b4284bd4eb1134122eaf93b3ea6c7be567e596de5829e1a6f478e34e41974a",
+  "md_python": "bin/mdenv/python.exe",
+  "relax_ps": 2.0,
+  "timeout_seconds": 1500,
+  "ph": 7.4,
+  "max_abs_charge": 1,
+  "max_heavy_atoms": 50,
+  "complexes": [
+    {
+      "pdb": "1HSG",
+      "ligand": "MK1"
+    },
+    {
+      "pdb": "1M17",
+      "ligand": "AQ4"
+    },
+    {
+      "pdb": "3ERT",
+      "ligand": "OHT"
+    },
+    {
+      "pdb": "1STP",
+      "ligand": "BTN"
+    },
+    {
+      "pdb": "2OJG",
+      "ligand": "19A"
+    },
+    {
+      "pdb": "1CX2",
+      "ligand": "S58"
+    },
+    {
+      "pdb": "3PTB",
+      "ligand": "BEN"
+    },
+    {
+      "pdb": "2RH1",
+      "ligand": "CAU"
+    }
+  ],
+  "excluded_by_rule": [
+    {
+      "pdb": "4DFR",
+      "ligand": "MTX",
+      "reason": "net charge -2 at pH 7.4"
+    },
+    {
+      "pdb": "1HCK",
+      "ligand": "ATP",
+      "reason": "net charge -3 at pH 7.4"
+    },
+    {
+      "pdb": "1ATP",
+      "ligand": "ATP",
+      "reason": "net charge -3 at pH 7.4"
+    }
+  ],
+  "decoy": {
+    "axis": [
+      1,
+      2,
+      3
+    ],
+    "rotation_degrees": 180,
+    "translation_angstrom": 3.0
+  },
+  "repeat_subset": [
+    "3PTB",
+    "1STP",
+    "2OJG"
+  ],
+  "decoy_min_fraction": 0.75,
+  "stable_min_fraction": 0.5,
+  "stable_rmsd_angstrom": 1.5,
+  "rmsd_tolerance": 0.02
+}
