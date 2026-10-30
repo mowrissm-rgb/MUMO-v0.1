@@ -1,0 +1,1548 @@
+{
+  "drugs": {
+    "CHEMBL101": {
+      "name": "PHENYLBUTAZONE",
+      "refs": {
+        "HFHZKZSRXITVMK": "OXYPHENBUTAZONE",
+        "PPJYQSFRNGSEBH": "3'-HYDROXYPHENYLBUTAZONE",
+        "SNZHHTBLYLBORW": "PHENYLBUTAZONE-C4-GLUCURONIDE METABOLITE"
+      },
+      "smiles": "CCCCC1C(=O)N(c2ccccc2)N(c2ccccc2)C1=O"
+    },
+    "CHEMBL104": {
+      "name": "CLOTRIMAZOLE",
+      "refs": {
+        "IWUWHGXBCVDMST": "2-CHLOROPHENYL-BISPHENYLMETHANE"
+      },
+      "smiles": "Clc1ccccc1C(c1ccccc1)(c1ccccc1)n1ccnc1"
+    },
+    "CHEMBL1046": {
+      "name": "AMINOCAPROIC ACID",
+      "refs": {
+        "WNLRTRBMVRJNCN": "ADIPIC ACID"
+      },
+      "smiles": "NCCCCCC(=O)O"
+    },
+    "CHEMBL1064": {
+      "name": "SIMVASTATIN",
+      "refs": {
+        "WDTQWJUBUXHODX": "6'-EXOMETHYLENE SIMVASTATIN",
+        "WJKSTNFUSXHVRJ": "6'-HYDROXY SIMVASTATIN",
+        "XWLXKKNPFMNSFA": "SIMVASTATIN ACID"
+      },
+      "smiles": "CCC(C)(C)C(=O)O[C@H]1C[C@@H](C)C=C2C=C[C@H](C)[C@H](CC[C@@H]3C[C@@H](O)CC(=O)O3)[C@H]21"
+    },
+    "CHEMBL1070": {
+      "name": "NABUMETONE",
+      "refs": {
+        "JNVOSYBERVWSGY": "BRL18275",
+        "MLTSMDXZECLWCK": "BRL19478",
+        "PQTCWVBCWVAYKX": "3-HYDROXYNABUMETONE"
+      },
+      "smiles": "COc1ccc2cc(CCC(C)=O)ccc2c1"
+    },
+    "CHEMBL1087720": {
+      "name": "2, TMF",
+      "refs": {
+        "JPMYFOBNRRGFNO": "M2",
+        "MIXUZJDETFYGJQ": "M7",
+        "XDAYLGJQBQRSER": "M8"
+      },
+      "smiles": "COc1ccc(-c2cc(=O)c3c(OC)cc(OC)cc3o2)cc1"
+    },
+    "CHEMBL112": {
+      "name": "ACETAMINOPHEN",
+      "refs": {
+        "IGTYILLPRJOVFY": "SULFATE CONJUGATE OF ACETAMINOPHEN",
+        "IPROLSVTVHAQLE": "GLUCURONIDE CONJUGATE OF ACETAMINOPHEN",
+        "URNSECGXFRDEDC": "N-ACETYL-P-BENZOQUINONEIMINE"
+      },
+      "smiles": "CC(=O)Nc1ccc(O)cc1"
+    },
+    "CHEMBL1163": {
+      "name": "ATV, Atazanavir, Reyataz",
+      "refs": {
+        "CUXBSWCTEGIRQD": "M13",
+        "DFSGZTKGZSLNEC": "M15'",
+        "JTDOEPWAZDTPRH": "M14",
+        "LUAXFCAWZAZCNR": "M1",
+        "NMLYGLCBSFKJFI": "m1",
+        "OJYUSGQDUGFHOF": "M2",
+        "ZQCYFRRVVVAWHJ": "M15"
+      },
+      "smiles": "COC(=O)N[C@H](C(=O)N[C@@H](Cc1ccccc1)[C@@H](O)CN(Cc1ccc(-c2ccccn2)cc1)NC(=O)[C@@H](NC(=O)OC)C(C)(C)C)C(C)(C)C"
+    },
+    "CHEMBL118": {
+      "name": "CELECOXIB",
+      "refs": {
+        "ICRSYPPLGADZKA": "PRIMARY ALCOHOL METABOLITE OF CELECOXIB",
+        "WTHNOVFEXONZMI": "CARBOXYLIC ACID METABOLITE OF CELECOXIB",
+        "ZSTBSABHKHAHNU": "GLUCURONIDE CONJUGATE OF THE CARBOXYLIC ACID METABOLITE OF CELECOXIB"
+      },
+      "smiles": "Cc1ccc(-c2cc(C(F)(F)F)nn2-c2ccc(S(N)(=O)=O)cc2)cc1"
+    },
+    "CHEMBL1200585": {
+      "name": "OXYMETHOLONE",
+      "refs": {
+        "OUOPIDHLKVJXSK": "17BETA-HYDROXY-3-KETO-17ALPHA-METHYL-5ALPHA-ANDROSTONE-2-CARBOXYLIC ACID (A)"
+      },
+      "smiles": "C[C@]12C/C(=C/O)C(=O)C[C@@H]1CC[C@@H]1[C@@H]2CC[C@@]2(C)[C@H]1CC[C@]2(C)O"
+    },
+    "CHEMBL1201146": {
+      "name": "NORETHINDRONE ACETATE",
+      "refs": {
+        "VIKNJXKGJWUCNN": "NORETHINDRONE"
+      },
+      "smiles": "C#C[C@]1(OC(C)=O)CC[C@H]2[C@@H]3CCC4=CC(=O)CC[C@@H]4[C@H]3CC[C@@]21C"
+    },
+    "CHEMBL1258517": {
+      "name": "1",
+      "refs": {
+        "KXIQRMIPXPVUID": "Rac-M1"
+      },
+      "smiles": "O=C(Nc1ccncc1)Nc1ccc(-c2nc(N3CCOCC3)nc(N3C4CCC3COC4)n2)cc1"
+    },
+    "CHEMBL1308": {
+      "name": "FOMEPIZOLE",
+      "refs": {
+        "JRMKJOOJKCAEJK": "4-HYDROXYMETHYLPYRAZOLE"
+      },
+      "smiles": "Cc1cn[nH]c1"
+    },
+    "CHEMBL1314": {
+      "name": "TIOPRONIN",
+      "refs": {
+        "PMNLUUOXGOOLSP": "2-MERCAPTOPROPIONIC ACID"
+      },
+      "smiles": "CC(S)C(=O)NCC(=O)O"
+    },
+    "CHEMBL1370": {
+      "name": "Budesonide",
+      "refs": {
+        "HDGUJHRQHWTOIY": "22-hydroxy intermediate",
+        "JBVVDXJXIDYDMF": "6beta-hydroxy budesonide",
+        "OBFKEHNWUXWRPI": "23-hydroxy budesonide",
+        "OFBFHEDLHIWDQX": "delta6-budesonide"
+      },
+      "smiles": "CCCC1O[C@@H]2C[C@H]3[C@@H]4CCC5=CC(=O)C=C[C@]5(C)[C@H]4[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1"
+    },
+    "CHEMBL1373": {
+      "name": "MODAFINIL",
+      "refs": {
+        "QARQPIWTMBRJFX": "MODAFINIL ACID",
+        "XTXZDQKYJIHOMB": "2-[(DIPHENYLMETHYL)SULFONYL] ACETIC ACID",
+        "ZESNOWZYHYRSRY": "MODAFINIL SULFONE"
+      },
+      "smiles": "NC(=O)C[S+]([O-])C(c1ccccc1)c1ccccc1"
+    },
+    "CHEMBL139": {
+      "name": "DICLOFENAC",
+      "refs": {
+        "DRZFITWJHHNHAD": "4',5-DIHYDROXY-DICLOFENAC",
+        "HYPJZSYXUWYJDG": "3'-HYDROXY-DICLOFENAC",
+        "KGVXVPRLBMWZLG": "4'-HYDROXY-DICLOFENAC",
+        "VNQURRWYKFZKJZ": "5'-HYDROXY-DICLOFENAC",
+        "YALZBLAHGKGDMB": "3'-HYDROXY-4'-METHOXY-DICLOFENAC"
+      },
+      "smiles": "O=C(O)Cc1ccccc1Nc1c(Cl)cccc1Cl"
+    },
+    "CHEMBL1393": {
+      "name": "SPIRONOLACTONE",
+      "refs": {
+        "NZCDWYJROUPYPT": "V",
+        "UJVLDDZCTMKXJK": "CANRENONE"
+      },
+      "smiles": "CC(=O)S[C@@H]1CC2=CC(=O)CC[C@]2(C)[C@H]2CC[C@@]3(C)[C@@H](CC[C@@]34CCC(=O)O4)[C@H]12"
+    },
+    "CHEMBL1430": {
+      "name": "PENICILLAMINE",
+      "refs": {
+        "BOTADXJBFXFSLA": "CYSTEINE-PENICILLAMINE DISULPHIDE",
+        "POYPKGFSZHXASD": "PENICILLAMINE DISULPHIDE",
+        "XSMLYGQTOGLZDA": "S-METHYL-D-PENICILLAMINE"
+      },
+      "smiles": "CC(C)(S)[C@@H](N)C(=O)O"
+    },
+    "CHEMBL1454": {
+      "name": "Levamisole",
+      "refs": {
+        "JBYSGMHTZLJSKQ": "unknown 3",
+        "JSXCIKSXIVBFOH": "unknown 1",
+        "QBEDXUHDXKEDES": "1",
+        "ZUSMDKHVRFBRNJ": "3"
+      },
+      "smiles": "c1ccc([C@H]2CN3CCSC3=N2)cc1"
+    },
+    "CHEMBL1455": {
+      "name": "ALTRETAMINE",
+      "refs": {
+        "CHOSFPFCXKKOHO": "N2,N4-DIMETHYLMELAMINE",
+        "CTRPRMNBTVRDFH": "MONOMETHYLMELAMINE",
+        "IEFWDQQGFDLKFK": "N2,N2-DIMETHYLMELAMINE",
+        "JDSHMPZPIAZGSV": "MELAMINE",
+        "KOTLUXGSMFWUKB": "N2,N2,N4-TRIMETHYLMELAMINE",
+        "LGEXGKUJMFHVSY": "N2,N4,N6-TRIMETHYLMELAMINE",
+        "SXPIROLPYODZEU": "N2,N2,N4,N6-TETRAMETHYLMELAMINE",
+        "XIFVTSIIYVGRHJ": "PENTAMETHYLMELAMINE"
+      },
+      "smiles": "CN(C)c1nc(N(C)C)nc(N(C)C)n1"
+    },
+    "CHEMBL1473": {
+      "name": "Fluticasone propionate",
+      "refs": {
+        "DEDYNJVITFVPOG": "17beta-carboxy fluticasone propionate"
+      },
+      "smiles": "CCC(=O)O[C@]1(C(=O)SCF)[C@H](C)C[C@H]2[C@@H]3C[C@H](F)C4=CC(=O)C=C[C@]4(C)[C@@]3(F)[C@@H](O)C[C@@]21C"
+    },
+    "CHEMBL1479": {
+      "name": "DANAZOL",
+      "refs": {
+        "JGJFMZZHCOKXHX": "2-HYDROXYMETHYLETHISTERONE"
+      },
+      "smiles": "C#C[C@]1(O)CC[C@H]2[C@@H]3CCC4=Cc5oncc5C[C@]4(C)[C@H]3CC[C@@]21C"
+    },
+    "CHEMBL1504": {
+      "name": "Triamcinolone acetonide",
+      "refs": {
+        "JWPZLQJLMNKVAZ": "delata6-triamcinolone acetonide",
+        "WMJSKWRCHLTCCW": "6beta-hydroxy triamcinolone acetonide",
+        "WSNWGUDQZFLDGP": "21-carboxy triamcinolone acetonide"
+      },
+      "smiles": "CC1(C)O[C@@H]2C[C@H]3[C@@H]4CCC5=CC(=O)C=C[C@]5(C)[C@@]4(F)[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1"
+    },
+    "CHEMBL151": {
+      "name": "Luteolin",
+      "refs": {
+        "MBNGWHIJMBWFHU": "M2",
+        "SCZVLDHREVKTSH": "M1"
+      },
+      "smiles": "O=c1cc(-c2ccc(O)c(O)c2)oc2cc(O)cc(O)c12"
+    },
+    "CHEMBL1512": {
+      "name": "Flunisolide",
+      "refs": {
+        "GAZQXPXVWOYDFQ": "delta6-flunisolide",
+        "ITHXPNLMNQYZMN": "6-hydroxy intermediate",
+        "OMZOJSAQNPOYTG": "21-carboxy flunisolide"
+      },
+      "smiles": "CC1(C)O[C@@H]2C[C@H]3[C@@H]4C[C@H](F)C5=CC(=O)C=C[C@]5(C)[C@H]4[C@@H](O)C[C@]3(C)[C@]2(C(=O)CO)O1"
+    },
+    "CHEMBL1542": {
+      "name": "AZATHIOPRINE",
+      "refs": {
+        "DPGGDVPPQMXEOF": "1-METHYL-4-NITRO-5-THIO-IMIDAZOLE",
+        "GLVAUDGFNGKCSF": "6-MERCAPTOPURINE",
+        "HSCOLDQJZRZQMV": "1-METHYL-4-NITRO-IMIDAZOLE",
+        "QEDRSXFCTUSQBY": "1-METHYL-4-NITRO-5-(S-GLUTATHIONYL) IMIDAZOLE"
+      },
+      "smiles": "Cn1cnc([N+](=O)[O-])c1Sc1ncnc2[nH]cnc12"
+    },
+    "CHEMBL16": {
+      "name": "PHENYTOIN",
+      "refs": {
+        "FEEKFEKCXIDMIS": "5-(3,4-DIHYDROXY-1,5-CYCLOHEXADIENE-1-YL)-5-PHENYLDANTOIN",
+        "FSPRLRPJSPWQNC": "5-(M-HYDROXYPHENYL)-5-PHENYLDANTOIN",
+        "GBLWJPOZRJSBFQ": "5-5-BIS(4-HYDROXYPHENYL)HYDANTOIN",
+        "HZJBKAOEYINXGB": "PHENYTOIN-N-GLUCURONIDE",
+        "UESCARMREGSPTP": "DIPHENYLDANTOIC ACID",
+        "XEEDURHPFVXALT": "5-(P-HYDROXYPHENYL)-5-PHENYLDANTOIN"
+      },
+      "smiles": "O=C1NC(=O)C(c2ccccc2)(c2ccccc2)N1"
+    },
+    "CHEMBL160": {
+      "name": "CYCLOSPORINE",
+      "refs": {
+        "MIIRLHRXLLVIMF": "CYCLOSPORINE_M21",
+        "ODPRYBDBGFBROY": "CYCLOSPORINE_M1",
+        "ZPZHKIOMBYYVRD": "CYCLOSPORINE_M17"
+      },
+      "smiles": "C/C=C/C[C@@H](C)[C@@H](O)[C@H]1C(=O)N[C@@H](CC)C(=O)N(C)CC(=O)N(C)[C@@H](CC(C)C)C(=O)N[C@@H](C(C)C)C(=O)N(C)[C@@H](CC(C)C)C(=O)N[C@@H](C)C(=O)N[C@H](C)C(=O)N(C)[C@@H](CC(C)C)C(=O)N(C)[C@@H](CC(C)C)C(=O)N(C)[C@@H](C(C)C)C(=O)N1C"
+    },
+    "CHEMBL163": {
+      "name": "RITONAVIR",
+      "refs": {
+        "CLEDZMPJHBBTNZ": "RITONAVIR_M2 (R3)",
+        "CYQJXDGHGQCURZ": "RITONAVIR_M10",
+        "IQKWCORIMSRQGZ": "RITONAVIR_M1 [R5 (R2)]",
+        "SQANVQYLDPEULW": "RITONAVIR_M7 (R1)",
+        "UVQJGJZZUNOHCX": "RITONAVIR_M11 (R1)"
+      },
+      "smiles": "CC(C)c1nc(CN(C)C(=O)N[C@H](C(=O)N[C@@H](Cc2ccccc2)C[C@H](O)[C@H](Cc2ccccc2)NC(=O)OCc2cncs2)C(C)C)cs1"
+    },
+    "CHEMBL165": {
+      "name": "RES, trans-resveratrol",
+      "refs": {
+        "DULQFFCIVGYOFH": "R3S",
+        "QWSAYEBSTMCFKY": "R3G"
+      },
+      "smiles": "Oc1ccc(/C=C/c2cc(O)cc(O)c2)cc1"
+    },
+    "CHEMBL169901": {
+      "name": "Debrisoquine",
+      "refs": {
+        "AKFURXZANOMQBD": "4-hydroxydebrisoquine",
+        "GNHPFQJFGPVJNU": "8-hydroxydebrisoquine",
+        "JUUCJGVPMCXDNV": "6-hydroxydebrisoquine",
+        "NDFYJSUPIOLUTI": "5-hydroxydebrisoquine",
+        "VHVRXMHGWNGANF": "7-hydroxydebrisoquine"
+      },
+      "smiles": "N=C(N)N1CCc2ccccc2C1"
+    },
+    "CHEMBL1726": {
+      "name": "NISOLDIPINE",
+      "refs": {
+        "MISIVWJIYYKBHA": "HYDROXYMETHYL DERIVATIVE",
+        "RDURPJVQMHMFAY": "HYDROXYISOBUTYL DERIVATIVE"
+      },
+      "smiles": "COC(=O)C1=C(C)NC(C)=C(C(=O)OCC(C)C)C1c1ccccc1[N+](=O)[O-]"
+    },
+    "CHEMBL174": {
+      "name": "AMPICILLIN",
+      "refs": {
+        "KDAWOPKDXRJNHV": "PENICILLOIC ACID"
+      },
+      "smiles": "CC1(C)S[C@@H]2[C@H](NC(=O)[C@H](N)c3ccccc3)C(=O)N2[C@H]1C(=O)O"
+    },
+    "CHEMBL1741": {
+      "name": "CLARITHROMYCIN",
+      "refs": {
+        "BLPFDXNVUDZBII": "14R-HYDROXYCLARITHROMYCIN",
+        "CIJTVUQEURKBDL": "N-DEMETHYLCLARITHROMYCIN",
+        "QTLYNHBYTKOXTE": "DESCLADINOSYL-6-O-METHYLERYTHROMYCIN",
+        "YHVUVJYEERGYNU": "CLANIDOSE"
+      },
+      "smiles": "CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@](C)(OC)C[C@@H](C)C(=O)[C@H](C)[C@@H](O)[C@]1(C)O"
+    },
+    "CHEMBL1783834": {
+      "name": "Rh2",
+      "refs": {
+        "AXCOBOCWEVCUNT": "unknown 1",
+        "UTTXMCFEQIEWFA": "M1-2, 27-hydroxy Rh2"
+      },
+      "smiles": "CC(C)=CCC[C@](C)(O)[C@H]1CC[C@]2(C)[C@@H]1[C@H](O)C[C@@H]1[C@@]3(C)CC[C@H](O[C@@H]4O[C@H](CO)[C@@H](O)[C@H](O)[C@H]4O)C(C)(C)[C@@H]3CC[C@]12C"
+    },
+    "CHEMBL184": {
+      "name": "ACYCLOVIR",
+      "refs": {
+        "MICNQLKUSOVNNG": "9-CARBOXYMETHOXYMETHYLGUANINE",
+        "PTSDSAPWOJZBNX": "8-HYDROXY-ACYCLOVIR"
+      },
+      "smiles": "Nc1nc2c(ncn2COCCO)c(=O)[nH]1"
+    },
+    "CHEMBL185": {
+      "name": "5-FLUOROURACIL",
+      "refs": {
+        "FHIDNBAQOFJWCA": "5-FLUORO-URIDINE",
+        "ODKNJVUHOIMIIZ": "5-FLUORO-2'-DEOXYURIDINE",
+        "RAIRJKWTBBDDAR": "5-FLUORO-5,6-DIHYDROURACIL",
+        "RNBMPPYRHNWTMA": "5-FLUOROURIDINE MONOPHOSPHATE"
+      },
+      "smiles": "O=c1[nH]cc(F)c(=O)[nH]1"
+    },
+    "CHEMBL1900528": {
+      "name": "Tiotropium",
+      "refs": {
+        "FVEJUHUCFCAYRP": "dithienylglycolic acid",
+        "IHDIVGVZYGVCEG": "N-methylscopine",
+        "YEAMHTXDSGCXQR": "Postulated intermediate 1"
+      },
+      "smiles": "C[N+]1(C)[C@@H]2C[C@@H](OC(=O)C(O)(c3cccs3)c3cccs3)C[C@H]1[C@@H]1O[C@@H]12"
+    },
+    "CHEMBL19032": {
+      "name": "1, PMF",
+      "refs": {
+        "DUTKEQCBGLKZRI": "M6"
+      },
+      "smiles": "COc1cc(OC)c2c(=O)c(OC)c(-c3ccc(OC)c(OC)c3)oc2c1"
+    },
+    "CHEMBL193": {
+      "name": "NIFEDIPINE",
+      "refs": {
+        "UMQHJQGNGLQJPF": "DEHYDRONIFEDIPINE"
+      },
+      "smiles": "COC(=O)C1=C(C)NC(C)=C(C(=O)OC)C1c1ccccc1[N+](=O)[O-]"
+    },
+    "CHEMBL1939697": {
+      "name": "M2",
+      "refs": {
+        "MQALWYAUVNQTEM": "Intermediate A",
+        "MWKVVVYHBBLDMI": "Intermediate C1",
+        "RBAFEVKXJYQUND": "M4a",
+        "WPDXXEVGEALJAF": "M4b"
+      },
+      "smiles": "C[C@H](c1nc2ncccc2c(=O)n1-c1ccc(O)cc1)N(Cc1cccnc1)C(=O)Cc1ccc(OC(F)(F)F)cc1"
+    },
+    "CHEMBL2105653": {
+      "name": "Setileuton",
+      "refs": {
+        "VJVBFZMBABUMRT": "M5"
+      },
+      "smiles": "CC[C@](O)(c1nnc(NCc2ccc3c(-c4ccc(F)cc4)cc(=O)oc3c2)o1)C(F)(F)F"
+    },
+    "CHEMBL2105704": {
+      "name": "Lenvatinib, E7080, C7",
+      "refs": {
+        "ISCLPTLEFCRHEZ": "C2"
+      },
+      "smiles": "COc1cc2nccc(Oc3ccc(NC(=O)NC4CC4)c(Cl)c3)c2cc1C(N)=O"
+    },
+    "CHEMBL2177904": {
+      "name": "(S)-25",
+      "refs": {
+        "NHOIYRIYXINORZ": "M4a",
+        "WWDAOWSUJIRCSX": "M1a"
+      },
+      "smiles": "NC1=N[C@](c2ccncc2)(c2cccc(-c3cncnc3)c2)c2cccc(F)c21"
+    },
+    "CHEMBL2335418": {
+      "name": "2",
+      "refs": {
+        "DBVPTSHVZYEAGO": "M2-1",
+        "LICWGHPXONKZMR": "M2-2"
+      },
+      "smiles": "COc1cc(-c2ccncc2)cc(C(C)C#Cc2c(C)nc(N)nc2N)c1"
+    },
+    "CHEMBL2335419": {
+      "name": "3",
+      "refs": {
+        "IXIFWIBCVJFBNR": "M3-2",
+        "PBYLESSQIWZUEG": "M3-1"
+      },
+      "smiles": "CCc1nc(N)nc(N)c1C#CC(C)c1cc(OC)cc(-c2ccncc2)c1"
+    },
+    "CHEMBL24": {
+      "name": "ATENOLOL",
+      "refs": {
+        "GSZUNNBDULASMA": "1-[4-(C-CARBAMOYLHYDROXYMETHYL)PHENOXY]-3-ISOPROPYLAMINOPROPAN-2-OL"
+      },
+      "smiles": "CC(C)NCC(O)COc1ccc(CC(N)=O)cc1"
+    },
+    "CHEMBL2440659": {
+      "name": "VU0409106",
+      "refs": {
+        "VWCQVFVHLJVTDY": "M1"
+      },
+      "smiles": "Cc1csc(NC(=O)c2cc(F)cc(Oc3cncnc3)c2)n1"
+    },
+    "CHEMBL25": {
+      "name": "ASPIRIN",
+      "refs": {
+        "YGSDEFSMJLZEOE": "SALICYLIC ACID"
+      },
+      "smiles": "CC(=O)Oc1ccccc1C(=O)O"
+    },
+    "CHEMBL250785": {
+      "name": "CB",
+      "refs": {
+        "KBKUJJFDSHBPPA": "M-2, 5-HCB",
+        "LSTXJZUCJIEQDL": "M-1, 1-HCB"
+      },
+      "smiles": "CC(=O)O[C@H]1[C@H]2O[C@]23[C@@H]2CC[C@@H]4C[C@@H](O)CC[C@]4(C)[C@H]2CC[C@]3(C)[C@H]1c1ccc(=O)oc1"
+    },
+    "CHEMBL252915": {
+      "name": "sesamin",
+      "refs": {
+        "CGEORJKFOZSMEZ": "Sesamin Monocatechol"
+      },
+      "smiles": "c1cc2c(cc1[C@H]1OC[C@H]3[C@@H]1CO[C@@H]3c1ccc3c(c1)OCO3)OCO2"
+    },
+    "CHEMBL269732": {
+      "name": "TACROLIMUS",
+      "refs": {
+        "ODUXJSOTFOZOFQ": "12-HYDROXYTACROLIMUS M-IV",
+        "OKRZOXIQNKYTBL": "13-O-DESMETHYL TACROLIMUS (M-I)",
+        "SSXBEFGDCZWVOY": "M-VII",
+        "VHOPGJHKSPGXIZ": "31-O-DESMETHYL TACROLIMUS (M-II)",
+        "ZQRSWRVAAABQEF": "15-O-DESMETHYL TACROLIMUS (M-III)"
+      },
+      "smiles": "C=CC[C@@H]1/C=C(\\C)C[C@H](C)C[C@H](OC)[C@H]2O[C@@](O)(C(=O)C(=O)N3CCCC[C@H]3C(=O)O[C@H](/C(C)=C/[C@@H]3CC[C@@H](O)[C@H](OC)C3)[C@H](C)[C@@H](O)CC1=O)[C@H](C)C[C@@H]2OC"
+    },
+    "CHEMBL275391": {
+      "name": "3, DMF",
+      "refs": {
+        "RSAYCEBOGOJPLS": "M5",
+        "RTIXKCRFFJGDFG": "M1"
+      },
+      "smiles": "COc1cc(OC)c2c(=O)cc(-c3ccccc3)oc2c1"
+    },
+    "CHEMBL3": {
+      "name": "NICOTINE",
+      "refs": {
+        "BOQRPPFUUSHFGW": "2'-HYDROXYNICOTINE",
+        "GTQXYYYOJZZJHL": "NICOTINE-DELTA 1'[5']-IMINIUM ION",
+        "HIOROZIUERMMRQ": "NICOTINE ISOMETHONIUM ION",
+        "MYKUKUCHPMASKF": "NORNICOTINE",
+        "RWFBQHICRCUQJJ": "NICOTINE-N-OXIDE",
+        "SAWAIULJDYFLPD": "NICOTINE GLUCURONIDE"
+      },
+      "smiles": "CN1CCC[C@H]1c1cccnc1"
+    },
+    "CHEMBL3219804": {
+      "name": "7",
+      "refs": {
+        "INPGPHDXMLTJME": "M7-2",
+        "MFLQOQCFTFKHBW": "M7-1"
+      },
+      "smiles": "CCc1nc(N)nc(N)c1C#CCc1cc(OC)cc(-c2ccncc2)c1"
+    },
+    "CHEMBL34259": {
+      "name": "METHOTREXATE",
+      "refs": {
+        "HODZDDDNGRLGSI": "7-HYDROXYMETHOTREXATE",
+        "LWCXZSDKANNOAR": "2,4-DIAMINO-N10-METHYL-PTEROIC ACID"
+      },
+      "smiles": "CN(Cc1cnc2nc(N)nc(N)c2n1)c1ccc(C(=O)N[C@@H](CCC(=O)O)C(=O)O)cc1"
+    },
+    "CHEMBL3526190": {
+      "name": "DB868",
+      "refs": {
+        "RTNOOAOQALMKNE": "M1",
+        "YFRKBXFEZJONPH": "M3"
+      },
+      "smiles": "CO/N=C(\\N)c1ccc(-c2ccc(-c3ccc(/C(N)=N/OC)cn3)o2)nc1"
+    },
+    "CHEMBL3526249": {
+      "name": "8",
+      "refs": {
+        "OXFSNJXCPBQPFH": "M8-1",
+        "XGPVKEVSLLJQTF": "M8-2"
+      },
+      "smiles": "CCc1nc(N)nc(N)c1C#CCc1cc(-c2ccncc2)ccc1OC"
+    },
+    "CHEMBL3526267": {
+      "name": "M7",
+      "refs": {
+        "JCYWNWUXVVIBHJ": "D"
+      },
+      "smiles": "Cc1cc2c(c(C)c1CC(=O)O)C(=O)[C@](C)(CO)[C@@H]2O"
+    },
+    "CHEMBL3526691": {
+      "name": "1",
+      "refs": {
+        "BZNVTHSIQYCKSS": "M14",
+        "DTPWYUAUCFZJHT": "M9",
+        "HHQVBGOTHAMAJR": "M2",
+        "KDKPSRNOJNMROT": "A",
+        "OOAFRMHKOSBPID": "M3",
+        "QSHDVHAOMMBPQB": "M12",
+        "SJNCSXMTBXDZQA": "M19"
+      },
+      "smiles": "Cc1cc2c(c(C)c1CCO)C(=O)[C@](C)(CO)C2"
+    },
+    "CHEMBL3526905": {
+      "name": "rivoglitazone",
+      "refs": {
+        "CUADXVBMFGPUEU": "M17",
+        "JSADDQGRCAESLY": "Intermediate I",
+        "OIEQYSVXVNGAOF": "M12",
+        "WASSWJLBZXXADR": "M13",
+        "XNQOLTRRIYKGSB": "M18"
+      },
+      "smiles": "COc1ccc2nc(COc3ccc(CC4SC(=O)NC4=O)cc3)n(C)c2c1"
+    },
+    "CHEMBL3526913": {
+      "name": "I-387",
+      "refs": {
+        "CZRCZPDGOKBZFR": "M2"
+      },
+      "smiles": "COc1cc(C(=O)c2cccc(-c3cc4ccccc4[nH]3)c2)cc(OC)c1OC"
+    },
+    "CHEMBL3526981": {
+      "name": "LY654322",
+      "refs": {
+        "HAMLHDLTXOXVBD": "M2"
+      },
+      "smiles": "CC(C)(N)C(=O)N[C@H](CCCc1ccccc1)C(=O)Nc1cn([C@@](C)(C(=O)N2CCCC2)c2ccc(F)cc2)cn1"
+    },
+    "CHEMBL3527000": {
+      "name": "E7016",
+      "refs": {
+        "IOKIRBHBKCBKDH": "ER-879819"
+      },
+      "smiles": "O=c1[nH]nc2c3c(cccc13)Oc1ccc(CN3CCC(O)CC3)cc1-2"
+    },
+    "CHEMBL3527048": {
+      "name": "CYP3cide, PF-04981517",
+      "refs": {
+        "DKAAVHCAIRBPCF": "M1",
+        "RXDAAEYRXNNICB": "M4",
+        "VTWIVIRXGOQIDT": "M5"
+      },
+      "smiles": "Cc1ccc(-c2c(-c3nn(C)c4ncnc(N5CC[C@H](N6CCCCC6)C5)c34)cnn2C)cc1"
+    },
+    "CHEMBL3527054": {
+      "name": "(S)-Sulindac",
+      "refs": {
+        "LFWHFZJPXXOYNR": "Sulindac sulfide",
+        "MVGSNCBCUWPVDA": "Sulindac sulfone"
+      },
+      "smiles": "CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\\c1ccc([S@+](C)[O-])cc1"
+    },
+    "CHEMBL3527091": {
+      "name": "10",
+      "refs": {
+        "MGCUGQVBCWHPAL": "M10-1",
+        "ULQGWBPPMOMZGR": "M10-2"
+      },
+      "smiles": "CCc1nc(N)nc(N)c1C#CC(C)c1cc(-c2ccncc2)ccc1OC"
+    },
+    "CHEMBL3527223": {
+      "name": "CS-1036",
+      "refs": {
+        "CXYHCWWDNXTNJQ": "M3",
+        "OQEBIHBLFRADNM": "M1"
+      },
+      "smiles": "C[C@H]1O[C@@H](O[C@H]2[C@H](O)[C@@H](O)[C@@H](O[C@H]3[C@H](O)CN[C@@H]3CO)O[C@@H]2CO)[C@H](O)[C@@H](O)[C@@H]1O"
+    },
+    "CHEMBL3527264": {
+      "name": "M2",
+      "refs": {
+        "AFKSLKMCRZFTDC": "B",
+        "URNVXKHPCQZRFE": "C"
+      },
+      "smiles": "Cc1c(CCO)c(CO)cc2c1C(=O)[C@](C)(CO)C2"
+    },
+    "CHEMBL3527329": {
+      "name": "IRI, Irilone",
+      "refs": {
+        "FESPZFPAJCTMLG": "Irisolone G4",
+        "LLPADQARYIBKIE": "IRI-G4', IRI-O-4'-monoglucuronide",
+        "PFDLVUAOSRYYLT": "IRI-G5, IRI-O-5-monoglucuronide"
+      },
+      "smiles": "O=c1c(-c2ccc(O)cc2)coc2cc3c(c(O)c12)OCO3"
+    },
+    "CHEMBL3527377": {
+      "name": "GSK2251052, AN3365",
+      "refs": {
+        "IECQEDZZJUTCHL": "M7",
+        "NKPQLPDLYGBNBS": "M2",
+        "RQRQDBIDTKEZAW": "M1",
+        "XEQBYTQNGXUXPA": "M3"
+      },
+      "smiles": "NC[C@H]1OB(O)c2c(OCCCO)cccc21"
+    },
+    "CHEMBL3527416": {
+      "name": "monoHER",
+      "refs": {
+        "DDJWGUBUBAQMLH": "M5",
+        "UHYDBRGABTXPDS": "M7",
+        "XZUDGURLLDSHSI": "M4"
+      },
+      "smiles": "C[C@@H]1O[C@@H](OC[C@H]2O[C@@H](Oc3c(-c4ccc(O)c(O)c4)oc4cc(OCCO)cc(O)c4c3=O)[C@H](O)[C@@H](O)[C@@H]2O)[C@H](O)[C@H](O)[C@H]1O"
+    },
+    "CHEMBL3542194": {
+      "name": "M0, Ssa",
+      "refs": {
+        "PCWRNSQTXLIUDT": "M13, HOSSa",
+        "WSSVJIGMYVWUJL": "M1, PSGf"
+      },
+      "smiles": "C[C@H]1O[C@@H](O[C@H]2CC[C@@]3(C)[C@@H](CC[C@]4(C)[C@@H]3C=C[C@]35OC[C@@]6(CCC(C)(C)C[C@H]63)[C@@H](O)C[C@]54C)[C@]2(C)CO)[C@H](O)[C@@H](O[C@@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)[C@H]1O"
+    },
+    "CHEMBL3542235": {
+      "name": "figopitant, BIIF 1149, M528",
+      "refs": {
+        "BUXWWIVUXFTSCQ": "M544(2)",
+        "CCIZGCFBHMZVTA": "M474(1)",
+        "DMZASYPWXKNYFF": "M448(1)"
+      },
+      "smiles": "CN(CCc1cc(C(F)(F)F)cc(C(F)(F)F)c1)C(=O)[C@H](c1ccccc1)N1CCN(CC2CC2)CC1"
+    },
+    "CHEMBL3542290": {
+      "name": "AZD3839",
+      "refs": {
+        "AWTLKDTWTRYGGF": "M31",
+        "DSPCXWHHXBALGZ": "M16",
+        "UNSNINDRKQJMGU": "M2",
+        "VMSPWHMGQBHTLB": "M9",
+        "WMBZGQBNOGDEBN": "M1"
+      },
+      "smiles": "NC1=N[C@@](c2cccc(-c3cncnc3)c2)(c2ccnc(C(F)F)c2)c2cccc(F)c21"
+    },
+    "CHEMBL356036": {
+      "name": "3,5,7,4'-Tetramethoxyflavone",
+      "refs": {
+        "KZBAXKKOXPLOBX": "M3"
+      },
+      "smiles": "COc1ccc(-c2oc3cc(OC)cc(OC)c3c(=O)c2OC)cc1"
+    },
+    "CHEMBL374478": {
+      "name": "RIFAMPIN",
+      "refs": {
+        "BBNQHOMJRFAQBN": "3-FORMYLRIFAMPIN",
+        "KUJZTIJOBQNKDR": "25-DESACETYL-RIFAMPIN"
+      },
+      "smiles": "CO[C@H]1/C=C/O[C@@]2(C)Oc3c(C)c(O)c4c(O)c(c(/C=N/N5CCN(C)CC5)c(O)c4c3C2=O)NC(=O)/C(C)=C\\C=C\\[C@H](C)[C@H](O)[C@@H](C)[C@@H](O)[C@@H](C)[C@H](OC(C)=O)[C@@H]1C"
+    },
+    "CHEMBL377300": {
+      "name": "brivanib, BMS-540215",
+      "refs": {
+        "IMSSWPIYKUYCCX": "M30",
+        "NBBOVDMBSDVVFP": "M9",
+        "NRYXTTFKQXSWLA": "M7",
+        "QPCFTEORHPYSBL": "M25",
+        "TYHCOOSLCVMBBW": "M28",
+        "YYEPDBKFCHASFG": "M31"
+      },
+      "smiles": "Cc1cc2c(F)c(Oc3ncnn4cc(OC[C@@H](C)O)c(C)c34)ccc2[nH]1"
+    },
+    "CHEMBL397983": {
+      "name": "AMG 487",
+      "refs": {
+        "DMBGCHREERYYSP": "M1",
+        "QTVDULQPUXPKEL": "M2"
+      },
+      "smiles": "CCOc1ccc(-n2c([C@@H](C)N(Cc3cccnc3)C(=O)Cc3ccc(OC(F)(F)F)cc3)nc3ncccc3c2=O)cc1"
+    },
+    "CHEMBL4106201": {
+      "name": "GD",
+      "refs": {
+        "BKOSGCGOQWCRKA": "M17",
+        "CVHFVQATNDCTBO": "M16",
+        "HEVGRJBCZMHZIA": "M20",
+        "IFUHVXQJFIIVGX": "M8",
+        "INYGYBPRGVBVKJ": "M19",
+        "LWPLEHFGBRFRKI": "M1",
+        "SKGSIAKZQNLEHL": "M22",
+        "VBGDQDJVTLQGNO": "M2",
+        "YBFMHFRKIFVPJA": "M3",
+        "ZFTRNVQMRZXSKV": "M7",
+        "ZKHZGAPANLMARS": "M6"
+      },
+      "smiles": "CC(CC(=O)CC(C)[C@H]1CC(=O)[C@@]2(C)C3=C(C(=O)C[C@]12C)[C@@]1(C)CCC(=O)C(C)(C)[C@@H]1C[C@@H]3O)C(=O)O"
+    },
+    "CHEMBL411": {
+      "name": "DIETHYLSTILBESTROL",
+      "refs": {
+        "LJMPVHCKUXKZAV": "MONO-GLUCURONIDE CONJUGATE METABOLITE",
+        "NFDFQCUYFHCNBW": "BETA-DIENESTROL"
+      },
+      "smiles": "CC/C(=C(/CC)c1ccc(O)cc1)c1ccc(O)cc1"
+    },
+    "CHEMBL413": {
+      "name": "SIROLIMUS",
+      "refs": {
+        "IPSCPJKWFFXCSS": "12-HYDROXY SIROLIMUS",
+        "RGRYVHKBWYXMGM": "39-O-DESMETHYL SIROLIMUS",
+        "ZHYGVVKSAGDVDY": "16-O-DESMETHYL SIROLIMUS"
+      },
+      "smiles": "CO[C@H]1C[C@@H]2CC[C@@H](C)[C@@](O)(O2)C(=O)C(=O)N2CCCC[C@H]2C(=O)O[C@H]([C@H](C)C[C@@H]2CC[C@@H](O)[C@H](OC)C2)CC(=O)[C@H](C)/C=C(\\C)[C@@H](O)[C@@H](OC)C(=O)[C@H](C)C[C@H](C)/C=C/C=C/C=C/1C"
+    },
+    "CHEMBL43469": {
+      "name": "Episesamin",
+      "refs": {
+        "CGEORJKFOZSMEZ": "M1"
+      },
+      "smiles": "c1cc2c(cc1[C@H]1OC[C@H]3[C@@H]1CO[C@H]3c1ccc3c(c1)OCO3)OCO2"
+    },
+    "CHEMBL435176": {
+      "name": "Sibrafiban",
+      "refs": {
+        "BHOGTSLQMNCJHA": "Ro 44-3888",
+        "IGVCMKIDNIJWLV": "Ro 48-3656"
+      },
+      "smiles": "CCOC(=O)COC1CCN(C(=O)[C@H](C)NC(=O)c2ccc(/C(N)=N/O)cc2)CC1"
+    },
+    "CHEMBL444633": {
+      "name": "RIFABUTIN",
+      "refs": {
+        "PANFHCPHSZTZMK": "31-HYDROXY-RIFABUTIN",
+        "REPAMJYMVCXTIA": "30-HYDROXYL-RIFABUTIN",
+        "SCGFWNINBXENQT": "25-O-DEACETYL-RIFABUTIN",
+        "UQEGVCYMAKMTGK": "32-HYDROXY-RIFABUTIN"
+      },
+      "smiles": "CO[C@H]1/C=C/O[C@@]2(C)Oc3c(C)c(O)c4c(c3C2=O)C2=NC3(CCN(CC(C)C)CC3)NC2=C(NC(=O)/C(C)=C\\C=C\\[C@H](C)[C@H](O)[C@@H](C)[C@@H](O)[C@@H](C)[C@H](OC(C)=O)[C@@H]1C)C4=O"
+    },
+    "CHEMBL445990": {
+      "name": "CBIO",
+      "refs": {
+        "CTTBHMCHOSMGAE": "CBIO-glucuronide"
+      },
+      "smiles": "Oc1noc2cc(Cl)ccc12"
+    },
+    "CHEMBL459": {
+      "name": "METHYLDOPA",
+      "refs": {
+        "BQHWFYPBSKGBMV": "3-O-METHYL-ALPHA-METHYLDOPA",
+        "GPBOYXOSSQEJBH": "3-O-METHYL-ALPHA-METHYLDOPAMINE",
+        "JQXBETDGCMQLMK": "3,4-DIHYDROXYPHENYLACETONE",
+        "KSRGADMGIRTXAF": "ALPHA-METHYLDOPAMINE"
+      },
+      "smiles": "C[C@](N)(Cc1ccc(O)c(O)c1)C(=O)O"
+    },
+    "CHEMBL464825": {
+      "name": "M0",
+      "refs": {
+        "ZHTQCPCDXKMMLU": "M32"
+      },
+      "smiles": "O=c1c2cc(O)c(O)cc2oc2cc(O)c([C@@H]3O[C@H](CO)[C@@H](O)[C@H](O)[C@H]3O)c(O)c12"
+    },
+    "CHEMBL467": {
+      "name": "HYDROXYUREA",
+      "refs": {
+        "RRUDCFGSUDOHDG": "ACETOHYDROXAMIC ACID"
+      },
+      "smiles": "NC(=O)NO"
+    },
+    "CHEMBL467399": {
+      "name": "BIIB021",
+      "refs": {
+        "DFSIZXZUYZJXGY": "M10, CF2483",
+        "HCWKFWHRTPRJCB": "M18",
+        "KPMYVWBVTQHIQI": "M7, 5-hydroxymethyl BIIB021, CF3785",
+        "RYYIULNRIVUMTQ": "M11",
+        "UBBCAAXVXOVGLY": "M2, CF2246, O-desmethyl BIIB021,",
+        "XTGVOKJNROZXIC": "M6",
+        "YKXFUOQZGXTJHK": "M12"
+      },
+      "smiles": "COc1c(C)cnc(Cn2cnc3c(Cl)nc(N)nc32)c1C"
+    },
+    "CHEMBL479": {
+      "name": "THIORIDAZINE",
+      "refs": {
+        "DCXXSSIALADGCY": "N-DESMETHYLTHIORIDAZINE",
+        "OJCZHARCPHEHPT": "THIORIDAZINE GLUTATHIONE CONJUGATE",
+        "SLVMESMUVMCQIY": "THIORIDAZINE-2-SULFOXIDE",
+        "XLDFFVBQCMLXIE": "THIORIDAZINE-5-SULFOXIDE"
+      },
+      "smiles": "CSc1ccc2c(c1)N(CCC1CCCCN1C)c1ccccc1S2"
+    },
+    "CHEMBL486826": {
+      "name": "Irisolone",
+      "refs": {
+        "FESPZFPAJCTMLG": "Irisolone G4",
+        "LLPADQARYIBKIE": "IRI-G4', IRI-O-4'-monoglucuronide"
+      },
+      "smiles": "COc1c2c(cc3occ(-c4ccc(O)cc4)c(=O)c13)OCO2"
+    },
+    "CHEMBL490": {
+      "name": "Paroxetine",
+      "refs": {
+        "VJMXXTJAPJRAQL": "Paroxetine catechol"
+      },
+      "smiles": "Fc1ccc([C@@H]2CCNC[C@H]2COc2ccc3c(c2)OCO3)cc1"
+    },
+    "CHEMBL49429": {
+      "name": "VPA-985, Lixi, Lixivaptan",
+      "refs": {
+        "HAZIGHWLODGDFY": "M4, WAY-137930",
+        "OXCLWDVDHQWXLM": "M3, WAY-138451",
+        "RRGQTZFOQQMAOA": "M5, WAY-141624",
+        "UNYQXQUVEHPPBK": "M7"
+      },
+      "smiles": "Cc1ccc(F)cc1C(=O)Nc1ccc(C(=O)N2Cc3cccn3Cc3ccccc32)c(Cl)c1"
+    },
+    "CHEMBL49563": {
+      "name": "alpha-tocopherol",
+      "refs": {
+        "URYLCCKXLNXSRS": "13'-hydroxy-alpha-tocopherol"
+      },
+      "smiles": "Cc1c(C)c2c(c(C)c1O)CCC(C)(CCCC(C)CCCC(C)CCCC(C)C)O2"
+    },
+    "CHEMBL498": {
+      "name": "CHLORPROPAMIDE",
+      "refs": {
+        "AZEPYUPSYWCRBG": "P-CHLOROBENZENESULFONYLUREA",
+        "CRTPSTLXICFKCU": "2-HYDROXYCHLOROPROPAMIDE",
+        "HHHDJHHNEURCNV": "P-CHLOROBENZENESULFONAMIDE",
+        "KFZPWGMPVBXMQF": "3-HYDROXYCHLORPROPAMIDE"
+      },
+      "smiles": "CCCNC(=O)NS(=O)(=O)c1ccc(Cl)cc1"
+    },
+    "CHEMBL503": {
+      "name": "LOVASTATIN",
+      "refs": {
+        "CUFUDDFNKHOQEC": "6'-EXOMETHYLENE LOVASTATIN (LACTONE FORM)",
+        "FUCXPWLYQFERRA": "6' BETA-HYDROXY LOVASTATIN (LACTONE FORM)",
+        "PEIPDDGCLUETGA": "3''-HYDROXY LOVASTATIN (LACTONE FORM)",
+        "QLJODMDSTUBWDW": "BETA HYDROXY ACID OF LOVASTATIN"
+      },
+      "smiles": "CC[C@H](C)C(=O)O[C@H]1C[C@@H](C)C=C2C=C[C@H](C)[C@H](CC[C@@H]3C[C@@H](O)CC(=O)O3)[C@H]21"
+    },
+    "CHEMBL512306": {
+      "name": "DPA-714",
+      "refs": {
+        "AVLWPJPOFCYXDB": "M1",
+        "IGPHRGQVBIEWSO": "M3",
+        "LHPXGUQPDQIIDB": "M6a",
+        "OLHQKFBSYAZTLL": "M2",
+        "XNPWVZZOTNFVLY": "M5",
+        "XVEMLJMKAADARM": "M6b",
+        "XWKKOXKPHNQLLO": "M4"
+      },
+      "smiles": "CCN(CC)C(=O)Cc1c(-c2ccc(OCCF)cc2)nn2c(C)cc(C)nc12"
+    },
+    "CHEMBL515387": {
+      "name": "PF-00734200",
+      "refs": {
+        "BHSNEBFIJUPZMI": "M11",
+        "FEGYZLGYBMDBMS": "M1",
+        "FQROQANSKAURFV": "M7",
+        "INJVVUKKJYWKRZ": "M17",
+        "KVBSCTHYNPVKDO": "M5",
+        "MRBFGEHILMYPTF": "M3",
+        "ONLWTLFZJOTQDB": "M18",
+        "VCCFQBLZHYOGRY": "M8",
+        "VMDSRLIVAHMKJX": "M10",
+        "WJFYIIZQOWPJRA": "M9",
+        "XEPYKZIDLULSRS": "M15",
+        "XIVLJKIXZCUOQB": "M2"
+      },
+      "smiles": "O=C([C@@H]1C[C@H](N2CCN(c3ncccn3)CC2)CN1)N1CCC(F)(F)C1"
+    },
+    "CHEMBL527": {
+      "name": "PIROXICAM",
+      "refs": {
+        "CCKOORANQAQKKV": "5'-HYDROXY-PIROXICAM"
+      },
+      "smiles": "CN1C(C(=O)Nc2ccccn2)=C(O)c2ccccc2S1(=O)=O"
+    },
+    "CHEMBL53463": {
+      "name": "Doxorubicin",
+      "refs": {
+        "IBZGBXXTIGCACK": "Doxorubicinone",
+        "NKZRZOVSJNSBFR": "Doxorubicinol",
+        "QHGFPRZWWKUHKF": "7-deoxydoxorubicinone"
+      },
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1"
+    },
+    "CHEMBL535": {
+      "name": "Sunitinib, Sutent",
+      "refs": {
+        "DNCVCKYIYMUMFC": "M2E, SU012487",
+        "LIZNIAKSBJKPQC": "M1, SU012662",
+        "LUEBEPGSIMTQCE": "M2F",
+        "MUXSMSOGTBJZDC": "M3, SU014335",
+        "NRDHEYRGEVUWJD": "M9, PHA-774731",
+        "PCPTUYGTADXVFI": "M11",
+        "QUJFMDVNASGNAN": "M4E",
+        "YBNMTJYLJWAMGJ": "M8, PHA-782584"
+      },
+      "smiles": "CCN(CC)CCNC(=O)c1c(C)[nH]c(/C=C2\\C(=O)Nc3ccc(F)cc32)c1C"
+    },
+    "CHEMBL571": {
+      "name": "KETOPROFEN",
+      "refs": {
+        "PBTXSZZKPHBHMA": "GLUCURONIDE ESTER METABOLITE"
+      },
+      "smiles": "CC(C(=O)O)c1cccc(C(=O)c2ccccc2)c1"
+    },
+    "CHEMBL585": {
+      "name": "TRIAMTERENE",
+      "refs": {
+        "QNJVMSASTUDLGC": "4'-HYDROXYTRIAMTERENE"
+      },
+      "smiles": "Nc1nc(N)c2nc(-c3ccccc3)c(N)nc2n1"
+    },
+    "CHEMBL6": {
+      "name": "INDOMETHACIN",
+      "refs": {
+        "KMLNWQPYFBIALN": "O-DESMETHYL INDOMETHACIN",
+        "TXWGINUZLBAKDF": "N-DESCHLOROBENZOYL INDOMETHACIN"
+      },
+      "smiles": "COc1ccc2c(c1)c(CC(=O)O)c(C)n2C(=O)c1ccc(Cl)cc1"
+    },
+    "CHEMBL622": {
+      "name": "ETODOLAC",
+      "refs": {
+        "FOYLTCVVCSZQDD": "4-UREIDOETODOLAC",
+        "GQHWDDBALZVXBU": "6-HYDROXYETODOLAC",
+        "IIJKSRXOHAISPV": "8-(1-HYDROXYETHYL)ETODOLAC",
+        "LOALFJPXZIHKNH": "7-HYDROXYETODOLAC"
+      },
+      "smiles": "CCc1cccc2c3c([nH]c12)C(CC)(CC(=O)O)OCC3"
+    },
+    "CHEMBL628": {
+      "name": "PENTOXIFYLLINE",
+      "refs": {
+        "NSMXQKNUPPXBRG": "1-(5-HYDROXYHEXYL))-3,7-DIMETHYLXANTHINE",
+        "PVUYHZOYPIJUBZ": "3-METHYL-1-(5-OXOHEXYL)XANTHINE",
+        "WKASGTGXOGALBG": "1-(3-CARBOXYPROPYL)-3,7-DIMETHYLXANTHINE"
+      },
+      "smiles": "CC(=O)CCCCn1c(=O)c2c(ncn2C)n(C)c1=O"
+    },
+    "CHEMBL635": {
+      "name": "PREDNISONE",
+      "refs": {
+        "OIGNJSKKLXVSLS": "PREDNISOLONE"
+      },
+      "smiles": "C[C@]12C=CC(=O)C=C1CC[C@@H]1[C@@H]2C(=O)C[C@@]2(C)[C@H]1CC[C@]2(O)C(=O)CO"
+    },
+    "CHEMBL64": {
+      "name": "ISONIAZID",
+      "refs": {
+        "BQEJOYRHBWOWQV": "GLUCOSE CONJUGATE HYDRAZINE METABOLITE",
+        "CCBSJXHUMYNUKH": "ALPHA-KETOGLUTARIC ACID",
+        "CVBGNAKQQUWBQV": "N-ACETYL ISONIAZID",
+        "TWBYWOBDOCUKOW": "ISONICOTINIC ACID",
+        "ZGGPNDKKJIWQJU": "PYRUVIC ACID HYDRAZINE"
+      },
+      "smiles": "NNC(=O)c1ccncc1"
+    },
+    "CHEMBL651": {
+      "name": "Methadone",
+      "refs": {
+        "SCIYBRNSSXZMKG": "EDDP+"
+      },
+      "smiles": "CCC(=O)C(CC(C)N(C)C)(c1ccccc1)c1ccccc1"
+    },
+    "CHEMBL661": {
+      "name": "ALPRAZOLAM",
+      "refs": {
+        "CEYGCFLPQFNPST": "4-HYDROXYALPRAZOLAM",
+        "ZURUZYHEEMDQBU": "1-HYDROXYALPRAZOLAM"
+      },
+      "smiles": "Cc1nnc2n1-c1ccc(Cl)cc1C(c1ccccc1)=NC2"
+    },
+    "CHEMBL672": {
+      "name": "FENOFIBRATE",
+      "refs": {
+        "MQOBSOSZFYZQOK": "FENOFIBRIC ACID"
+      },
+      "smiles": "CC(C)OC(=O)C(C)(C)Oc1ccc(C(=O)c2ccc(Cl)cc2)cc1"
+    },
+    "CHEMBL686": {
+      "name": "MFA, Mefenamic acid",
+      "refs": {
+        "DAHIGOGKMFBIOR": "MFA-1-beta-O-G",
+        "PIUWXHGKQDOBPS": "MFA-SCoA"
+      },
+      "smiles": "Cc1cccc(Nc2ccccc2C(=O)O)c1C"
+    },
+    "CHEMBL691": {
+      "name": "ETHINYL ESTRADIOL",
+      "refs": {
+        "DYBBEZHAELJFKW": "ETHINYL ESTRADIOL-3-O-GLUCURONIDE",
+        "JHKCCDZKVDAGJH": "ETHINYL ESTRADIOL-17-O-SULFATE",
+        "KQJCDKMHNQVWDV": "2-HYDROXY ETHINYL ESTRADIOL",
+        "SQQXJBRONRGLRT": "ETHINYL ESTRADIOL-17-O-GLUCURONIDE",
+        "SYFHJXSYRPNSOI": "4-HYDROXYL ETHINYL ESTRADIOL",
+        "VSODIPLKPBLGCC": "16 BETA-HYDROXYL ETHINYL ESTRADIOL",
+        "WLGIWVFFGMPRLM": "ETHINYL ESTRADIOL-3-O-SULFATE",
+        "XFBUZQAUNLRYCT": "6 ALPHA-HYDROXYL ETHINYL ESTRADIOL"
+      },
+      "smiles": "C#C[C@]1(O)CC[C@H]2[C@@H]3CCc4cc(O)ccc4[C@H]3CC[C@@]21C"
+    },
+    "CHEMBL696": {
+      "name": "ETHOSUXIMIDE",
+      "refs": {
+        "JDNLIMWIEMRHRE": "2-ETHYL-2-(HYDROXYMETHYL)SUCCINIMIDE",
+        "NAEVKGHXFVBGHJ": "2-(1-HYDROXYETHYL)-2-METHYLSUCCINIMIDE",
+        "SIZWFFGZMYBCOM": "2-ACETYL-2-METHYLSUCCINIMIDE",
+        "SSUHRQWVHLYBBU": "2-ETHYL-2-METHYL-3-HYDROXYSUCCINIMIDE",
+        "YPHULFCUFXXVGD": "2-(2-HYDROXYETHYL)-2-METHYLSUCCINIMIDE"
+      },
+      "smiles": "CCC1(C)CC(=O)NC1=O"
+    },
+    "CHEMBL71": {
+      "name": "CHLORPROMAZINE",
+      "refs": {
+        "HICFFJZGXWEIHN": "7-HYDROXYCHLORPROMAZINE",
+        "LFDFWIIFGRXCFR": "CHLORPROMAZINE N-OXIDE",
+        "QEPPAOXKZOTMPM": "CHLORPROMAZINE SULFOXIDE",
+        "ZTQZBABFEUDZFE": "NOR2-CHLORPROMAZINE"
+      },
+      "smiles": "CN(C)CCCN1c2ccccc2Sc2ccc(Cl)cc21"
+    },
+    "CHEMBL710": {
+      "name": "Finasteride",
+      "refs": {
+        "MFUJYZCMHDCXGQ": "M1"
+      },
+      "smiles": "CC(C)(C)NC(=O)[C@H]1CC[C@H]2[C@@H]3CC[C@H]4NC(=O)C=C[C@]4(C)[C@H]3CC[C@]12C"
+    },
+    "CHEMBL715": {
+      "name": "OLANZAPINE",
+      "refs": {
+        "AVDLUALFBAOEQY": "OLANZAPINE 4'-N-GLUCURONIDE METABOLITE",
+        "FHPIXVHJEIZKJW": "OLANZAPINE N-DESMETHYL METABOLITE",
+        "FPDIERBPQFAFSI": "OLANZAPINE 2-HYDROXYMETHYL METABOLITE",
+        "LJVNYCDXBXGQIK": "OLANZAPINE N-OXIDE METABOLITE",
+        "YFKYIRHIYFAJLP": "OLANZAPINE 10-N-GLUCURONIDE METABOLITE"
+      },
+      "smiles": "Cc1cc2c(s1)Nc1ccccc1N=C2N1CCN(C)CC1"
+    },
+    "CHEMBL727": {
+      "name": "THIOGUANINE",
+      "refs": {
+        "BPZXYEUJBFHASJ": "6-THIOGUANYLIC ACID",
+        "RJOXFJDOUQJOMQ": "6-THIOXANTHINE",
+        "YEGKYFQLKYGHAR": "2-AMINO-6-METHYL-THIOGUANINE"
+      },
+      "smiles": "Nc1nc2[nH]cnc2c(=S)[nH]1"
+    },
+    "CHEMBL817": {
+      "name": "TOLAZAMIDE",
+      "refs": {
+        "HVPVTQSCBZIEEA": "1-(4-HYDROXYHEXAHYDROAZEPIN-1-YL)-3-P-TOLY-SULFONYLUREA",
+        "LMYRWZFENFIFIT": "P-TOLUENE SULFONAMIDE",
+        "QMQDCPLIWVLTAU": "1-(HEXAHYDROAZEPIN-1-YL)-3-P-(HYDROXYMETHYLPHENYL)SULFONYLUREA"
+      },
+      "smiles": "Cc1ccc(S(=O)(=O)NC(=O)NN2CCCCCC2)cc1"
+    },
+    "CHEMBL820": {
+      "name": "BUSULFAN",
+      "refs": {
+        "AFVFQIVMOAPDHO": "METHANESULFONIC ACID",
+        "HTIJTTYZWFCQEZ": "GLUTATHIONE CONJUGATE METABOLITE",
+        "WYURNTSHIVDZCO": "TETRAHYDROFURAN"
+      },
+      "smiles": "CS(=O)(=O)OCCCCOS(C)(=O)=O"
+    },
+    "CHEMBL833": {
+      "name": "Ticlopidine",
+      "refs": {
+        "CQFPOEHJTLVPFO": "Ticlopidine S-oxide",
+        "DJZQIXWGIZIETJ": "M2",
+        "GWHGEZHHJDSDMI": "M1",
+        "RLTCLQFOWWSHJX": "M3",
+        "YEICEJCPALKCAT": "M5"
+      },
+      "smiles": "Clc1ccccc1CN1CCc2sccc2C1"
+    },
+    "CHEMBL846": {
+      "name": "CALCITRIOL",
+      "refs": {
+        "MBLYZRMZFUWLOZ": "CALCITROIC ACID",
+        "NHRGJVVEKNHIIE": "M1, 1alpha,23S,25(OH)3D3",
+        "WFZKUWGUJVKMHC": "1 ALPHA,24R,25-TRIHYDROXYLCHOLECALCIFEROL"
+      },
+      "smiles": "C=C1/C(=C\\C=C2/CCC[C@]3(C)[C@@H]([C@H](C)CCCC(C)(C)O)CC[C@@H]23)C[C@@H](O)C[C@@H]1O"
+    },
+    "CHEMBL853": {
+      "name": "ZALCITABINE",
+      "refs": {
+        "RAJMXAZJKUGYGW": "2',3'-DIDEOXYCYTIDINE-5'-MONOPHOSPHATE"
+      },
+      "smiles": "Nc1ccn([C@H]2CC[C@@H](CO)O2)c(=O)n1"
+    },
+    "CHEMBL898": {
+      "name": "DIFLUNISAL",
+      "refs": {
+        "HDNSISKAKJZJPR": "ESTER GLUCURONIDE COJUGATE METABOLITE",
+        "RBZXVQOCMCPTHC": "ETHER GLUCURONIDE CONJUGATE METABOLITE"
+      },
+      "smiles": "O=C(O)c1cc(-c2ccc(F)cc2F)ccc1O"
+    },
+    "CHEMBL902": {
+      "name": "FAMOTIDINE",
+      "refs": {
+        "LAZSSGBZNCVJCB": "FAMOTIDINE SULFOXIDE METABOLITE"
+      },
+      "smiles": "NC(N)=Nc1nc(CSCC/C(N)=N/S(N)(=O)=O)cs1"
+    },
+    "CHEMBL917": {
+      "name": "5-FLUORO-2'-DEOXYURIDINE",
+      "refs": {
+        "GHASVSINZRGABV": "5-FLUOROURACIL"
+      },
+      "smiles": "O=c1[nH]c(=O)n([C@H]2C[C@H](O)[C@@H](CO)O2)cc1F"
+    },
+    "CHEMBL942": {
+      "name": "BISACODYL",
+      "refs": {
+        "LJROKJGQSPMTKB": "BISACODYL DIPHENOL"
+      },
+      "smiles": "CC(=O)Oc1ccc(C(c2ccc(OC(C)=O)cc2)c2ccccn2)cc1"
+    },
+    "CHEMBL991": {
+      "name": "STAVUDINE",
+      "refs": {
+        "RWQNBRDOKXIBIV": "THYMINE"
+      },
+      "smiles": "Cc1cn([C@H]2C=C[C@@H](CO)O2)c(=O)[nH]c1=O"
+    }
+  },
+  "organisms": {
+    "CHEMBL101": [
+      "unspecified"
+    ],
+    "CHEMBL104": [
+      "unspecified"
+    ],
+    "CHEMBL1046": [
+      "unspecified"
+    ],
+    "CHEMBL1064": [
+      "unspecified"
+    ],
+    "CHEMBL1070": [
+      "unspecified"
+    ],
+    "CHEMBL1087720": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL112": [
+      "unspecified"
+    ],
+    "CHEMBL1163": [
+      "unspecified"
+    ],
+    "CHEMBL118": [
+      "unspecified"
+    ],
+    "CHEMBL1200585": [
+      "unspecified"
+    ],
+    "CHEMBL1201146": [
+      "unspecified"
+    ],
+    "CHEMBL1258517": [
+      "unspecified"
+    ],
+    "CHEMBL1308": [
+      "unspecified"
+    ],
+    "CHEMBL1314": [
+      "unspecified"
+    ],
+    "CHEMBL1370": [
+      "unspecified"
+    ],
+    "CHEMBL1373": [
+      "unspecified"
+    ],
+    "CHEMBL139": [
+      "unspecified"
+    ],
+    "CHEMBL1393": [
+      "unspecified"
+    ],
+    "CHEMBL1430": [
+      "unspecified"
+    ],
+    "CHEMBL1454": [
+      "unspecified"
+    ],
+    "CHEMBL1455": [
+      "unspecified"
+    ],
+    "CHEMBL1473": [
+      "unspecified"
+    ],
+    "CHEMBL1479": [
+      "unspecified"
+    ],
+    "CHEMBL1504": [
+      "unspecified"
+    ],
+    "CHEMBL151": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL1512": [
+      "unspecified"
+    ],
+    "CHEMBL1542": [
+      "unspecified"
+    ],
+    "CHEMBL16": [
+      "unspecified"
+    ],
+    "CHEMBL160": [
+      "unspecified"
+    ],
+    "CHEMBL163": [
+      "unspecified"
+    ],
+    "CHEMBL165": [
+      "unspecified"
+    ],
+    "CHEMBL169901": [
+      "Callithrix jacchus"
+    ],
+    "CHEMBL1726": [
+      "unspecified"
+    ],
+    "CHEMBL174": [
+      "unspecified"
+    ],
+    "CHEMBL1741": [
+      "unspecified"
+    ],
+    "CHEMBL1783834": [
+      "unspecified"
+    ],
+    "CHEMBL184": [
+      "unspecified"
+    ],
+    "CHEMBL185": [
+      "unspecified"
+    ],
+    "CHEMBL1900528": [
+      "unspecified"
+    ],
+    "CHEMBL19032": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL193": [
+      "unspecified"
+    ],
+    "CHEMBL1939697": [
+      "unspecified"
+    ],
+    "CHEMBL2105653": [
+      "unspecified"
+    ],
+    "CHEMBL2105704": [
+      "Macaca fascicularis"
+    ],
+    "CHEMBL2177904": [
+      "unspecified"
+    ],
+    "CHEMBL2335418": [
+      "Mus musculus"
+    ],
+    "CHEMBL2335419": [
+      "Mus musculus"
+    ],
+    "CHEMBL24": [
+      "unspecified"
+    ],
+    "CHEMBL2440659": [
+      "unspecified"
+    ],
+    "CHEMBL25": [
+      "unspecified"
+    ],
+    "CHEMBL250785": [
+      "unspecified"
+    ],
+    "CHEMBL252915": [
+      "unspecified"
+    ],
+    "CHEMBL269732": [
+      "unspecified"
+    ],
+    "CHEMBL275391": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL3": [
+      "unspecified"
+    ],
+    "CHEMBL3219804": [
+      "Mus musculus"
+    ],
+    "CHEMBL34259": [
+      "unspecified"
+    ],
+    "CHEMBL3526190": [
+      "unspecified"
+    ],
+    "CHEMBL3526249": [
+      "Mus musculus"
+    ],
+    "CHEMBL3526267": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL3526691": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL3526905": [
+      "unspecified"
+    ],
+    "CHEMBL3526913": [
+      "unspecified"
+    ],
+    "CHEMBL3526981": [
+      "unspecified"
+    ],
+    "CHEMBL3527000": [
+      "unspecified"
+    ],
+    "CHEMBL3527048": [
+      "unspecified"
+    ],
+    "CHEMBL3527054": [
+      "unspecified"
+    ],
+    "CHEMBL3527091": [
+      "Mus musculus"
+    ],
+    "CHEMBL3527223": [
+      "unspecified"
+    ],
+    "CHEMBL3527264": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL3527329": [
+      "unspecified"
+    ],
+    "CHEMBL3527377": [
+      "unspecified"
+    ],
+    "CHEMBL3527416": [
+      "Mus musculus"
+    ],
+    "CHEMBL3542194": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL3542235": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL3542290": [
+      "unspecified"
+    ],
+    "CHEMBL356036": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL374478": [
+      "unspecified"
+    ],
+    "CHEMBL377300": [
+      "unspecified"
+    ],
+    "CHEMBL397983": [
+      "unspecified"
+    ],
+    "CHEMBL4106201": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL411": [
+      "unspecified"
+    ],
+    "CHEMBL413": [
+      "unspecified"
+    ],
+    "CHEMBL43469": [
+      "unspecified"
+    ],
+    "CHEMBL435176": [
+      "Canis lupus familiaris"
+    ],
+    "CHEMBL444633": [
+      "unspecified"
+    ],
+    "CHEMBL445990": [
+      "unspecified"
+    ],
+    "CHEMBL459": [
+      "unspecified"
+    ],
+    "CHEMBL464825": [
+      "Rattus norvegicus"
+    ],
+    "CHEMBL467": [
+      "unspecified"
+    ],
+    "CHEMBL467399": [
+      "unspecified"
+    ],
+    "CHEMBL479": [
+      "unspecified"
+    ],
+    "CHEMBL486826": [
+      "unspecified"
+    ],
+    "CHEMBL490": [
+      "unspecified"
+    ],
+    "CHEMBL49429": [
+      "unspecified"
+    ],
+    "CHEMBL49563": [
+      "Mus musculus"
+    ],
+    "CHEMBL498": [
+      "unspecified"
+    ],
+    "CHEMBL503": [
+      "unspecified"
+    ],
+    "CHEMBL512306": [
+      "unspecified"
+    ],
+    "CHEMBL515387": [
+      "unspecified"
+    ],
+    "CHEMBL527": [
+      "unspecified"
+    ],
+    "CHEMBL53463": [
+      "Rattus norvegicus",
+      "unspecified"
+    ],
+    "CHEMBL535": [
+      "unspecified"
+    ],
+    "CHEMBL571": [
+      "unspecified"
+    ],
+    "CHEMBL585": [
+      "unspecified"
+    ],
+    "CHEMBL6": [
+      "unspecified"
+    ],
+    "CHEMBL622": [
+      "unspecified"
+    ],
+    "CHEMBL628": [
+      "unspecified"
+    ],
+    "CHEMBL635": [
+      "unspecified"
+    ],
+    "CHEMBL64": [
+      "unspecified"
+    ],
+    "CHEMBL651": [
+      "unspecified"
+    ],
+    "CHEMBL661": [
+      "unspecified"
+    ],
+    "CHEMBL672": [
+      "unspecified"
+    ],
+    "CHEMBL686": [
+      "unspecified"
+    ],
+    "CHEMBL691": [
+      "unspecified"
+    ],
+    "CHEMBL696": [
+      "unspecified"
+    ],
+    "CHEMBL71": [
+      "unspecified"
+    ],
+    "CHEMBL710": [
+      "Sus scrofa"
+    ],
+    "CHEMBL715": [
+      "unspecified"
+    ],
+    "CHEMBL727": [
+      "unspecified"
+    ],
+    "CHEMBL817": [
+      "unspecified"
+    ],
+    "CHEMBL820": [
+      "unspecified"
+    ],
+    "CHEMBL833": [
+      "unspecified"
+    ],
+    "CHEMBL846": [
+      "unspecified"
+    ],
+    "CHEMBL853": [
+      "unspecified"
+    ],
+    "CHEMBL898": [
+      "unspecified"
+    ],
+    "CHEMBL902": [
+      "unspecified"
+    ],
+    "CHEMBL917": [
+      "unspecified"
+    ],
+    "CHEMBL942": [
+      "unspecified"
+    ],
+    "CHEMBL991": [
+      "unspecified"
+    ]
+  }
+}

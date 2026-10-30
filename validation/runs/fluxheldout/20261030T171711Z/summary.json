@@ -1,0 +1,86 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 133
+  },
+  "criteria": [
+    {
+      "description": "held-out recall gain >= 0.05 and paired 95% CI above 0",
+      "id": "FH1",
+      "passed": true,
+      "value": "old 0.342, new 0.442, gain +0.100, 95% CI [+0.069, +0.134]"
+    },
+    {
+      "description": "new-rule score AUC lower bound above 0.5",
+      "id": "FH2",
+      "passed": true,
+      "value": "AUC 0.794 [0.756, 0.829] (old 0.839)"
+    },
+    {
+      "description": "top-10 recall not more than 0.02 below the old rules",
+      "id": "FH3",
+      "passed": true,
+      "value": "old 0.275, new 0.315"
+    },
+    {
+      "description": "integrity on every held-out drug and 3 of 3 fault inputs",
+      "id": "FH4",
+      "passed": true,
+      "value": "130/130 drugs; faults 3/3"
+    }
+  ],
+  "extras": {
+    "candidate_edges": 504,
+    "ceiling_drugs": {
+      "new": 15,
+      "old": 9
+    },
+    "chembl_records": 2147,
+    "development_not_evidence": {
+      "recall_new": 0.558974358974359,
+      "recall_old": 0.41025641025641024,
+      "top_k_new": 0.3076923076923077,
+      "top_k_old": 0.2717948717948718
+    },
+    "dropped_edges": 72,
+    "heldout": {
+      "auc_new": 0.7944044837154959,
+      "auc_old": 0.8386183683106557,
+      "recall_new": 0.4420485175202156,
+      "recall_old": 0.3423180592991914,
+      "top_k_new": 0.31536388140161725,
+      "top_k_old": 0.2749326145552561
+    },
+    "heldout_drugs": 130,
+    "heldout_refs": 371,
+    "heldout_snapshot": {
+      "file": "heldout_snapshot.json",
+      "sha256": "8148a84ffc677d99600e112977e488470a86df6fc97db3704a8859d1198d77ca"
+    },
+    "mean_predictions": {
+      "new": 38.715384615384615,
+      "old": 38.34615384615385
+    },
+    "new_rule_hits_on_heldout": {
+      "Ketone or aldehyde reduction": 6,
+      "Methyl hydroxylation": 22,
+      "O-deethylation": 1,
+      "Tertiary C-H hydroxylation": 7
+    },
+    "new_rules_seconds": 69.3,
+    "recall_by_group_new": {
+      "named": 0.41935483870967744,
+      "unspecified": 0.44660194174757284
+    },
+    "recall_by_group_old": {
+      "named": 0.3064516129032258,
+      "unspecified": 0.34951456310679613
+    }
+  },
+  "n_items": 133,
+  "protocol_version": "1.3",
+  "workflow": "Flux held-out"
+}
