@@ -23,6 +23,7 @@ Status as of 2026-10-30. Every number below comes from a saved run under `valida
 | Atlas: Ramachandran | wwPDB validation reports, 23 entries, 8,838 residues | Classes 100% agree; angles 99.69% within 0.2 degrees | Pass |
 | Atlas: target identity | UniProt | 10/10 accessions; 10/10 AlphaFold sequences | Pass |
 | Atlas: pocket detection | Bound-ligand position, 13 complexes | 5/13 within 4 A (centroid baseline 0/13) | **Fail** (floor 0.5) |
+| Atlas: pocket detection, held-out | 40 complexes chosen by a fixed PDB query and seed, unchanged detector | 13/40 = 33% (CI 20 to 48%); centroid baseline 2/40; pocket returned 39/40; docking box contains the ligand centroid 27/40 | **Fail** (floor 0.5); confirms the first result |
 | Pose: docking | Native redocking, 11 complexes | 8/11 under 2 A (73%, 95% CI 43 to 90%); repeatable; bookkeeping consistent | Pass |
 | Pose: interactions | PLIP 3.0 on crystal poses, 11 complexes | H-bond precision 0.68, recall 0.46; any-contact Jaccard 0.455; 10/11 run | **Fail** (H-bond recall floor 0.6; 1 complex fails) |
 | Orbit (xTB orbitals) | xTB's own output; QM9 DFT, 200 molecules | Transcription 20/20; state handling 8/8; gap r = 0.85 | Pass (large offsets vs DFT) |
@@ -68,7 +69,7 @@ These were errors in my protocol or check code, not in MUMO. Each is recorded as
 ## Findings to state in the manuscript
 
 **Open failures**
-- **Atlas pocket detector** finds the ligand site within 4 A in 5 of 13 complexes. Four near misses (4 to 9 A) and four complete misses. The docking box still contains the ligand centroid in 9 of 13. It matters only when no co-crystal ligand exists, for example AlphaFold models. P2Rank was not run (Java missing).
+- **Atlas pocket detector** was re-tested on 40 held-out complexes chosen by a fixed rule (protocol v1.4) and finds the ligand site within 4 A in 13 of 40 (33%, CI 20 to 48%), confirming the first result (5 of 13). A development comparison of four cavity rankings and eight detection settings found nothing that adds the required two successes (best +1), so no default was changed; top-3 is 17 of 40. It is clearly better than the protein centroid (2 of 40) and its box contains the ligand centroid in 27 of 40. Treat blind pocket detection as a rough starting point. Original first-run detail: it finds the ligand site within 4 A in 5 of 13 complexes. Four near misses (4 to 9 A) and four complete misses. The docking box still contains the ligand centroid in 9 of 13. It matters only when no co-crystal ligand exists, for example AlphaFold models. P2Rank was not run (Java missing).
 - **Pose interactions** report fewer H-bonds than PLIP (recall 0.46) and no water bridges. 1CX2 shows 4 PLIP H-bond residues against 0 for MUMO; the cause is not yet established. 1ATP fails cleanly because RDKit adds an extra bond to the Arg165 backbone oxygen.
 - **Pose docking** misses 1HSG (11.4 A, flexible indinavir with torsions capped), 1M17 (7.8 A, seed-sensitive erlotinib) and 4DFR (5.9 A).
 
@@ -91,7 +92,7 @@ Anchor's long solvated MD, binding free energies and GPU use, docking scoring po
 
 ## Recommended follow-ups before submission
 
-1. **Held-out sets** for any improvement made after seeing results. Done for the Flux rules (protocol v1.3). Still to do: the Atlas pocket detector (no improvement made yet, so a development and held-out split is needed first), and the two Pose entries (1CX2, 2RH1) whose fix followed their failure.
+1. **Held-out sets** for any improvement made after seeing results. Done for the Flux rules (protocol v1.3). Done for the Atlas pocket detector (protocol v1.4): no improvement was found on the development set, so the unchanged detector was measured on 40 held-out complexes (33%). Still to do: the two Pose entries (1CX2, 2RH1) whose fix followed their failure, and a stronger pocket method if blind pocket finding matters (for example P2Rank, which needs Java).
 2. Investigate the 1CX2 H-bond gap in Pose interactions.
 3. Decide whether the remote-specialist path should be wired into the front door or removed from the README. Decide whether to add PDBFixer for Anchor (3ERT), find the source of Anchor's remaining run-to-run differences, and decide whether Helix should return more than 25 hits or offer a species filter.
 4. Check the Ghose and TPSA source papers before the paper cites either rule.
@@ -100,7 +101,7 @@ Anchor's long solvated MD, binding free energies and GPU use, docking scoring po
 ## Reproducing
 
 ```
-python scripts/run_validation.py <quill|scout|nexus|fate|compass|flux|atlas|pose|orbit|interactions|anchor|helix|routing|fluxheldout>
+python scripts/run_validation.py <quill|scout|nexus|fate|compass|flux|atlas|pose|orbit|interactions|anchor|helix|routing|fluxheldout|pocketheldout>
 ```
 
 External files used (hashes are in the manifests and every run record): AutoDock Vina 1.2.5 (Windows build, `bin/vina.exe`), xTB 6.7.1pre (`bin/xtb-6.7.1pre/`), the QM9 table (`validation/data/qm9.csv`), BLAST+ 2.17.0 and a Swiss-Prot BLAST database for Helix (`bin/blast`, database under `E:\mumo-validation-env\blastdb`, built from the UniProt file downloaded 2026-10-30), and a micromamba 2.10.0 conda-forge environment for Anchor (`bin/mdenv`, 5.1 GB, with `openmmforcefields` 0.15.1 added by pip without AmberTools because AmberTools does not exist for Windows). The MD environment and micromamba cache live on `E:\mumo-validation-env\` and are reached through junctions at `bin/mdenv` and `bin/mamba/root`. None of these is committed. The runner uses the operating-system certificate store (`truststore`) because the local antivirus intercepts TLS. PLIP 3.0 needs a stub for one OpenBabel metadata call (InChIKey); interaction results are unaffected.
