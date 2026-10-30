@@ -1,0 +1,807 @@
+[
+ {
+  "delta": "C-6 H-11 N-1 O-3",
+  "drug": "Epirubicin",
+  "metabolite": "7d-Aon",
+  "parent": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@@H](O)[C@H](C)O1",
+  "met": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)CC3"
+ },
+ {
+  "delta": "C-6 H-11 N-1 O-2",
+  "drug": "Epirubicin",
+  "metabolite": "Doxorubicin aglycone",
+  "parent": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@@H](O)[C@H](C)O1",
+  "met": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)CC3O"
+ },
+ {
+  "delta": "H+2",
+  "drug": "Epirubicin",
+  "metabolite": "Epidoxorubicinol, 4'-epiadriamycinol",
+  "parent": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@@H](O)[C@H](C)O1",
+  "met": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@@H](O)[C@H](C)O1"
+ },
+ {
+  "delta": "C-4 H-8 O-1",
+  "drug": "Aliskiren, SPP100",
+  "metabolite": "Metabolite M4",
+  "parent": "COCCCOc1cc(C[C@@H](C[C@H](N)[C@@H](O)C[C@H](C(=O)NCC(C)(C)C(N)=O)C(C)C)C(C)C)ccc1OC",
+  "met": "COc1ccc(C[C@@H](C[C@H](N)[C@@H](O)C[C@H](C(=O)NCC(C)(C)C(N)=O)C(C)C)C(C)C)cc1O"
+ },
+ {
+  "delta": "C-5 H-12 N-2 O-1",
+  "drug": "Aliskiren, SPP100",
+  "metabolite": "Metabolite M9",
+  "parent": "COCCCOc1cc(C[C@@H](C[C@H](N)[C@@H](O)C[C@H](C(=O)NCC(C)(C)C(N)=O)C(C)C)C(C)C)ccc1OC",
+  "met": "COCCCOc1cc(C[C@@H](C[C@H](N)[C@@H]2C[C@H](C(C)C)C(=O)O2)C(C)C)ccc1OC"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Aromasin, Exemestane",
+  "metabolite": "MII",
+  "parent": "C=C1C[C@@H]2[C@H](CC[C@]3(C)C(=O)CC[C@@H]23)[C@@]2(C)C=CC(=O)C=C12",
+  "met": "C[C@]12C=CC(=O)C=C1C(CO)=C[C@@H]1[C@@H]2CC[C@]2(C)C(=O)CC[C@@H]12"
+ },
+ {
+  "delta": "H+2",
+  "drug": "Aromasin, Exemestane",
+  "metabolite": "MI",
+  "parent": "C=C1C[C@@H]2[C@H](CC[C@]3(C)C(=O)CC[C@@H]23)[C@@]2(C)C=CC(=O)C=C12",
+  "met": "C=C1C[C@@H]2[C@H](CC[C@]3(C)C(O)CC[C@@H]23)[C@@]2(C)C=CC(=O)C=C12"
+ },
+ {
+  "delta": "O+1",
+  "drug": "17-DMAG",
+  "metabolite": "M1",
+  "parent": "CO[C@H]1/C=C\\C=C(/C)C(=O)NC2=CC(=O)C(NCCN(C)C)=C(C[C@@H](C)C[C@H](OC)[C@H](O)[C@@H](C)/C=C(\\C)[C@@H]1OC(N)=O)C2=O",
+  "met": "CO[C@H]1/C=C\\C=C(/C)C(=O)NC2=CC(=O)C(NCCN(C)C)=C(C[C@@H](C)C[C@H](OC)[C@H](O)[C@@H](C)/C=C(\\CO)[C@@H]1OC(N)=O)C2=O"
+ },
+ {
+  "delta": "C+1 H+3",
+  "drug": "NAM",
+  "metabolite": "MNAM",
+  "parent": "NC(=O)c1cccnc1",
+  "met": "C[n+]1cccc(C(N)=O)c1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "NAM",
+  "metabolite": "NAM N-oxide",
+  "parent": "NC(=O)c1cccnc1",
+  "met": "NC(=O)c1ccc[n+]([O-])c1"
+ },
+ {
+  "delta": "C-2 H-2 O-1",
+  "drug": "CS-747, LY640315, Prasugrel",
+  "metabolite": "R-95913, Prasugrel thiolactone",
+  "parent": "CC(=O)Oc1cc2c(s1)CCN(C(C(=O)C1CC1)c1ccccc1F)C2",
+  "met": "O=C1C=C2CN(C(C(=O)C3CC3)c3ccccc3F)CCC2S1"
+ },
+ {
+  "delta": "C-3 H-4 O-2",
+  "drug": "SCH 530348, Vorapaxar",
+  "metabolite": "M19",
+  "parent": "CCOC(=O)N[C@@H]1CC[C@@H]2[C@@H](C1)C[C@H]1C(=O)O[C@H](C)[C@H]1[C@H]2/C=C/c1ccc(-c2cccc(F)c2)cn1",
+  "met": "C[C@H]1OC(=O)[C@@H]2C[C@@H]3C[C@H](N)CC[C@H]3[C@H](/C=C/c3ccc(-c4cccc(F)c4)cn3)[C@H]12"
+ },
+ {
+  "delta": "O+1",
+  "drug": "SCH 530348, Vorapaxar",
+  "metabolite": "M20",
+  "parent": "CCOC(=O)N[C@@H]1CC[C@@H]2[C@@H](C1)C[C@H]1C(=O)O[C@H](C)[C@H]1[C@H]2/C=C/c1ccc(-c2cccc(F)c2)cn1",
+  "met": "C[C@H]1OC(=O)[C@@H]2C[C@@H]3C[C@H](NC(=O)OCCO)CC[C@H]3[C@H](/C=C/c3ccc(-c4cccc(F)c4)cn3)[C@H]12"
+ },
+ {
+  "delta": "C+10 H+17 N+3 O+6 S+1",
+  "drug": "PEITC",
+  "metabolite": "PEITC-GSH",
+  "parent": "S=C=NCCc1ccccc1",
+  "met": "N[C@@H](CCC(=O)N[C@@H](CSC(=S)NCCc1ccccc1)C(=O)NCC(=O)O)C(=O)O"
+ },
+ {
+  "delta": "O+1 S-1",
+  "drug": "PEITC",
+  "metabolite": "PIC",
+  "parent": "S=C=NCCc1ccccc1",
+  "met": "O=C=NCCc1ccccc1"
+ },
+ {
+  "delta": "C+7 H+8 O+8",
+  "drug": "YM178, Mirabegron",
+  "metabolite": "M13, YM-538859",
+  "parent": "Nc1nc(CC(=O)Nc2ccc(CCNC[C@H](O)c3ccccc3)cc2)cs1",
+  "met": "Nc1nc(CC(=O)Nc2ccc(CCN(C[C@H](O)c3ccccc3)C(=O)O[C@@H]3O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]3O)cc2)cs1"
+ },
+ {
+  "delta": "C+7 H+6 O+8",
+  "drug": "YM178, Mirabegron",
+  "metabolite": "M12, YM-538858",
+  "parent": "Nc1nc(CC(=O)Nc2ccc(CCNC[C@H](O)c3ccccc3)cc2)cs1",
+  "met": "Nc1nc(CC(=O)Nc2ccc(CCN(CC(=O)c3ccccc3)C(=O)O[C@@H]3O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]3O)cc2)cs1"
+ },
+ {
+  "delta": "C-8 H-11 N-1 O+1",
+  "drug": "YM178, Mirabegron",
+  "metabolite": "M8, YM-538853",
+  "parent": "Nc1nc(CC(=O)Nc2ccc(CCNC[C@H](O)c3ccccc3)cc2)cs1",
+  "met": "Nc1nc(CC(=O)Nc2ccc(CC(=O)O)cc2)cs1"
+ },
+ {
+  "delta": "C-5 H-4 N-2 O-1 S-1",
+  "drug": "YM178, Mirabegron",
+  "metabolite": "M16, YM-208876",
+  "parent": "Nc1nc(CC(=O)Nc2ccc(CCNC[C@H](O)c3ccccc3)cc2)cs1",
+  "met": "Nc1ccc(CCNC[C@H](O)c2ccccc2)cc1"
+ },
+ {
+  "delta": "C+6 H+8 O+6",
+  "drug": "YM178, Mirabegron",
+  "metabolite": "M14, YM-554028",
+  "parent": "Nc1nc(CC(=O)Nc2ccc(CCNC[C@H](O)c3ccccc3)cc2)cs1",
+  "met": "O=C(Cc1csc(N[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)n1)Nc1ccc(CCNC[C@H](O)c2ccccc2)cc1"
+ },
+ {
+  "delta": "C+6 H+8 O+7",
+  "drug": "YM178, Mirabegron",
+  "metabolite": "M15, YM-9636324",
+  "parent": "Nc1nc(CC(=O)Nc2ccc(CCNC[C@H](O)c3ccccc3)cc2)cs1",
+  "met": "Nc1nc(CC(=O)Nc2ccc(CCN(C[C@H](O)c3ccccc3)O[C@@H]3O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]3O)cc2)cs1"
+ },
+ {
+  "delta": "C-9 H-4 O-2",
+  "drug": "SB-649868",
+  "metabolite": "M8",
+  "parent": "Cc1nc(C(=O)N2CCCC[C@H]2CNC(=O)c2cccc3occc23)c(-c2ccc(F)cc2)s1",
+  "met": "Cc1nc(C(=O)N2CCCC[C@H]2CN)c(-c2ccc(F)cc2)s1"
+ },
+ {
+  "delta": "O+2",
+  "drug": "SB-649868",
+  "metabolite": "M32",
+  "parent": "Cc1nc(C(=O)N2CCCC[C@H]2CNC(=O)c2cccc3occc23)c(-c2ccc(F)cc2)s1",
+  "met": "Cc1nc(C(=O)N[C@@H](CCCC(=O)O)CNC(=O)c2cccc3occc23)c(-c2ccc(F)cc2)s1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "SB-649868",
+  "metabolite": "inferred metabolite 1",
+  "parent": "Cc1nc(C(=O)N2CCCC[C@H]2CNC(=O)c2cccc3occc23)c(-c2ccc(F)cc2)s1",
+  "met": "Cc1nc(C(=O)N2CCCCC2CNC(=O)c2cccc3c2C2OC2O3)c(-c2ccc(F)cc2)s1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Ambrisentan",
+  "metabolite": "4-hydroxymethyl ambrisentan (M3)",
+  "parent": "COC(c1ccccc1)(c1ccccc1)[C@H](Oc1nc(C)cc(C)n1)C(=O)O",
+  "met": "COC(c1ccccc1)(c1ccccc1)[C@H](Oc1nc(C)cc(CO)n1)C(=O)O"
+ },
+ {
+  "delta": "C-3 H-6",
+  "drug": "Carisoprodol",
+  "metabolite": "Meprobamate",
+  "parent": "CCCC(C)(COC(N)=O)COC(=O)NC(C)C",
+  "met": "CCCC(C)(COC(N)=O)COC(N)=O"
+ },
+ {
+  "delta": "C-2 Cl-1 H-3",
+  "drug": "Cyclophosphamide",
+  "metabolite": "3-Dechloroethylifosfamide",
+  "parent": "O=P1(N(CCCl)CCCl)NCCCO1",
+  "met": "O=P1(NCCCl)NCCCO1"
+ },
+ {
+  "delta": "C-5 Cl-1 H-12 N-2 O-1 P-1",
+  "drug": "Cyclophosphamide",
+  "metabolite": "Chloroacetaldehyde",
+  "parent": "O=P1(N(CCCl)CCCl)NCCCO1",
+  "met": "O=CCCl"
+ },
+ {
+  "delta": "H-2",
+  "drug": "Valproic acid",
+  "metabolite": "2-en(Z) valproic acid",
+  "parent": "CCCC(CCC)C(=O)O",
+  "met": "CC/C=C(/CCC)C(=O)O"
+ },
+ {
+  "delta": "H-2",
+  "drug": "Valproic acid",
+  "metabolite": "3-en(E) valproic acid",
+  "parent": "CCCC(CCC)C(=O)O",
+  "met": "C/C=C/C(CCC)C(=O)O"
+ },
+ {
+  "delta": "H-2",
+  "drug": "Valproic acid",
+  "metabolite": "4-en valproic acid",
+  "parent": "CCCC(CCC)C(=O)O",
+  "met": "C=CCC(CCC)C(=O)O"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Valproic acid",
+  "metabolite": "5-OH valproic acid",
+  "parent": "CCCC(CCC)C(=O)O",
+  "met": "CCCC(CCCO)C(=O)O"
+ },
+ {
+  "delta": "H-4 O+1",
+  "drug": "Valproic acid",
+  "metabolite": "3-keto-4'-en valproic acid",
+  "parent": "CCCC(CCC)C(=O)O",
+  "met": "C=CCC(C(=O)O)C(=O)CC"
+ },
+ {
+  "delta": "H-2 O+1",
+  "drug": "Mitoxantrone",
+  "metabolite": "Monocarboxylic acid derivative of mitoxantrone",
+  "parent": "O=C1c2c(O)ccc(O)c2C(=O)c2c(NCCNCCO)ccc(NCCNCCO)c21",
+  "met": "O=C(O)CNCCNc1ccc(NCCNCCO)c2c1C(=O)c1c(O)ccc(O)c1C2=O"
+ },
+ {
+  "delta": "H-4 O+2",
+  "drug": "Mitoxantrone",
+  "metabolite": "Dicarboxylic acid derivative of mitoxantrone",
+  "parent": "O=C1c2c(O)ccc(O)c2C(=O)c2c(NCCNCCO)ccc(NCCNCCO)c21",
+  "met": "O=C(O)CNCCNc1ccc(NCCNCC(=O)O)c2c1C(=O)c1c(O)ccc(O)c1C2=O"
+ },
+ {
+  "delta": "H+2",
+  "drug": "Idarubicin",
+  "metabolite": "Idarubicinol",
+  "parent": "CC(=O)[C@]1(O)Cc2c(O)c3c(c(O)c2[C@@H](O[C@H]2C[C@H](N)[C@H](O)[C@H](C)O2)C1)C(=O)c1ccccc1C3=O",
+  "met": "CC(O)[C@]1(O)Cc2c(O)c3c(c(O)c2[C@@H](O[C@H]2C[C@H](N)[C@H](O)[C@H](C)O2)C1)C(=O)c1ccccc1C3=O"
+ },
+ {
+  "delta": "C-6 H-11 N-1 O-2",
+  "drug": "Idarubicin",
+  "metabolite": "4-demethoxydaunomycinone",
+  "parent": "CC(=O)[C@]1(O)Cc2c(O)c3c(c(O)c2[C@@H](O[C@H]2C[C@H](N)[C@H](O)[C@H](C)O2)C1)C(=O)c1ccccc1C3=O",
+  "met": "CC(=O)[C@]1(O)Cc2c(O)c3c(c(O)c2[C@@H](O)C1)C(=O)c1ccccc1C3=O"
+ },
+ {
+  "delta": "H+2",
+  "drug": "Daunorubicin",
+  "metabolite": "Daunorubicinol",
+  "parent": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(C)=O)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1",
+  "met": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(C)O)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1"
+ },
+ {
+  "delta": "H+2 O+1",
+  "drug": "Benzylpenicillin",
+  "metabolite": "Benzylpenicilloic acid",
+  "parent": "CC1(C)S[C@@H]2[C@H](NC(=O)Cc3ccccc3)C(=O)N2[C@H]1C(=O)O",
+  "met": "CC1(C)S[C@H]([C@H](NC(=O)Cc2ccccc2)C(=O)O)N[C@H]1C(=O)O"
+ },
+ {
+  "delta": "H+2 O+2",
+  "drug": "Phenobarbital",
+  "metabolite": "dihydrodiol metabolite of phenobarbital",
+  "parent": "CCC1(c2ccccc2)C(=O)NC(=O)NC1=O",
+  "met": "CCC1(C2=CC(O)C(O)C=C2)C(=O)NC(=O)NC1=O"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Phenobarbital",
+  "metabolite": "hydroxyethyl metabolite",
+  "parent": "CCC1(c2ccccc2)C(=O)NC(=O)NC1=O",
+  "met": "O=C1NC(=O)C(CCO)(c2ccccc2)C(=O)N1"
+ },
+ {
+  "delta": "C+6 H+10 O+5",
+  "drug": "Phenobarbital",
+  "metabolite": "phenobarbital-N-glucoside",
+  "parent": "CCC1(c2ccccc2)C(=O)NC(=O)NC1=O",
+  "met": "CCC1(c2ccccc2)C(=O)NC(=O)N([C@@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)C1=O"
+ },
+ {
+  "delta": "C-2 H-2 N-2 O-1",
+  "drug": "Phenobarbital",
+  "metabolite": "alpha-phenyl-gamma-butyrolactone",
+  "parent": "CCC1(c2ccccc2)C(=O)NC(=O)NC1=O",
+  "met": "O=C1OCCC1c1ccccc1"
+ },
+ {
+  "delta": "C-24 H-24 N-4 O-4",
+  "drug": "Saquinavir",
+  "metabolite": "M22",
+  "parent": "CC(C)(C)NC(=O)[C@@H]1C[C@@H]2CCCC[C@@H]2CN1C[C@@H](O)[C@H](Cc1ccccc1)NC(=O)[C@H](CC(N)=O)NC(=O)c1ccc2ccccc2n1",
+  "met": "CC(C)(C)NC(=O)C1CC2CCCCC2CN1"
+ },
+ {
+  "delta": "C-14 H-26 N-2",
+  "drug": "Saquinavir",
+  "metabolite": "M22",
+  "parent": "CC(C)(C)NC(=O)[C@@H]1C[C@@H]2CCCC[C@@H]2CN1C[C@@H](O)[C@H](Cc1ccccc1)NC(=O)[C@H](CC(N)=O)NC(=O)c1ccc2ccccc2n1",
+  "met": "NC(=O)C[C@H](NC(=O)c1ccc2ccccc2n1)C(=O)N[C@@H](Cc1ccccc1)[C@H](O)C=O"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Saquinavir",
+  "metabolite": "M10",
+  "parent": "CC(C)(C)NC(=O)[C@@H]1C[C@@H]2CCCC[C@@H]2CN1C[C@@H](O)[C@H](Cc1ccccc1)NC(=O)[C@H](CC(N)=O)NC(=O)c1ccc2ccccc2n1",
+  "met": "CC(C)(CO)NC(=O)[C@@H]1C[C@@H]2CCCC[C@@H]2CN1C[C@@H](O)[C@H](Cc1ccccc1)NC(=O)[C@H](CC(N)=O)NC(=O)c1ccc2ccccc2n1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Docetaxel",
+  "metabolite": "M2",
+  "parent": "CC(=O)O[C@@]12CO[C@@H]1C[C@H](O)[C@@]1(C)C(=O)[C@H](O)C3=C(C)[C@@H](OC(=O)[C@H](O)[C@@H](NC(=O)OC(C)(C)C)c4ccccc4)C[C@@](O)([C@@H](OC(=O)c4ccccc4)[C@H]21)C3(C)C",
+  "met": "CC(=O)O[C@@]12CO[C@@H]1C[C@H](O)[C@@]1(C)C(=O)[C@H](O)C3=C(C)[C@@H](OC(=O)[C@H](O)[C@@H](NC(=O)OC(C)(C)CO)c4ccccc4)C[C@@](O)([C@@H](OC(=O)c4ccccc4)[C@H]21)C3(C)C"
+ },
+ {
+  "delta": "H-2 O-1",
+  "drug": "Erythromycin",
+  "metabolite": "Anhydroerythromycin A",
+  "parent": "CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@](C)(O)C[C@@H](C)C(=O)[C@H](C)[C@@H](O)[C@]1(C)O",
+  "met": "CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)[C@@H](O[C@@H]2O[C@H](C)C[C@H](N(C)C)[C@H]2O)[C@]2(C)C[C@@H](C)[C@]3(O[C@@]1(C)[C@H](O)[C@H]3C)O2"
+ },
+ {
+  "delta": "O+1",
+  "drug": "LBH589",
+  "metabolite": "epoxide intermediate",
+  "parent": "Cc1[nH]c2ccccc2c1CCNCc1ccc(/C=C/C(=O)NO)cc1",
+  "met": "CC12Nc3ccccc3C1(CCNCc1ccc(/C=C/C(=O)NO)cc1)O2"
+ },
+ {
+  "delta": "O-1",
+  "drug": "LBH589",
+  "metabolite": "M4",
+  "parent": "Cc1[nH]c2ccccc2c1CCNCc1ccc(/C=C/C(=O)NO)cc1",
+  "met": "Cc1[nH]c2ccccc2c1CCNCc1ccc(/C=C/C(N)=O)cc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "LBH589",
+  "metabolite": "M1",
+  "parent": "Cc1[nH]c2ccccc2c1CCNCc1ccc(/C=C/C(=O)NO)cc1",
+  "met": "C[C@@]12Nc3ccccc3[C@]1(O)CCN2Cc1ccc(/C=C/C(=O)NO)cc1"
+ },
+ {
+  "delta": "C-4 H-6 O-2",
+  "drug": "LY2452473",
+  "metabolite": "S4, LSN2519879",
+  "parent": "CC(C)OC(=O)N[C@H]1Cc2c(n(Cc3ccccn3)c3ccc(C#N)cc23)C1",
+  "met": "N#Cc1ccc2c(c1)c1c(n2Cc2ccccn2)C[C@@H](N)C1"
+ },
+ {
+  "delta": "H+2 O+2",
+  "drug": "LY2452473",
+  "metabolite": "S10",
+  "parent": "CC(C)OC(=O)N[C@H]1Cc2c(n(Cc3ccccn3)c3ccc(C#N)cc23)C1",
+  "met": "CC(C)OC(=O)N[C@H]1CC2(O)c3cc(C#N)ccc3N(Cc3ccccn3)C2(O)C1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "LY2452473",
+  "metabolite": "S60, LSN3040393",
+  "parent": "CC(C)OC(=O)N[C@H]1Cc2c(n(Cc3ccccn3)c3ccc(C#N)cc23)C1",
+  "met": "C[C@H](CO)OC(=O)N[C@H]1Cc2c(n(Cc3ccccn3)c3ccc(C#N)cc23)C1"
+ },
+ {
+  "delta": "C-4 H-9 N-1",
+  "drug": "Tamoxifen",
+  "metabolite": "Metabolite E",
+  "parent": "CC/C(=C(\\c1ccccc1)c1ccc(OCCN(C)C)cc1)c1ccccc1",
+  "met": "CC/C(=C(\\c1ccccc1)c1ccc(O)cc1)c1ccccc1"
+ },
+ {
+  "delta": "C+6 H+8 O+6",
+  "drug": "Edoxaban",
+  "metabolite": "M3",
+  "parent": "CN1CCc2nc(C(=O)N[C@@H]3C[C@@H](C(=O)N(C)C)CC[C@@H]3NC(=O)C(=O)Nc3ccc(Cl)cn3)sc2C1",
+  "met": "CN(C)C(=O)[C@H]1CC[C@H](NC(=O)C(=O)Nc2ccc(Cl)cn2)[C@H](NC(=O)c2nc3c(s2)C[N+](C)([C@@H]2O[C@H](C(=O)[O-])[C@@H](O)[C@H](O)[C@H]2O)CC3)C1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Edoxaban",
+  "metabolite": "M7",
+  "parent": "CN1CCc2nc(C(=O)N[C@@H]3C[C@@H](C(=O)N(C)C)CC[C@@H]3NC(=O)C(=O)Nc3ccc(Cl)cn3)sc2C1",
+  "met": "CN1CCc2nc(C(=O)N[C@@H]3C[C@@H](C(=O)N(C)CO)CC[C@@H]3NC(=O)C(=O)Nc3ccc(Cl)cn3)sc2C1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "1",
+  "metabolite": "unknown 1",
+  "parent": "CC(C)(O)c1ccc(N2CCN(c3nnc(Cc4ccc(F)cc4F)c4ccccc34)CC2)nc1",
+  "met": "CC(C)(O)c1ccc(N2CCN(c3nnc(CC4=CC=C(F)C5OC45F)c4ccccc34)CC2)nc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "1",
+  "metabolite": "unknown 2",
+  "parent": "CC(C)(O)c1ccc(N2CCN(c3nnc(Cc4ccc(F)cc4F)c4ccccc34)CC2)nc1",
+  "met": "CC(C)(O)c1ccc(N2CCN(c3nnc(CC4=CC5OC5(F)C=C4F)c4ccccc34)CC2)nc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "1",
+  "metabolite": "unknown 3",
+  "parent": "CC(C)(O)c1ccc(N2CCN(c3nnc(Cc4ccc(F)cc4F)c4ccccc34)CC2)nc1",
+  "met": "CC(C)(O)c1ccc(N2CCN(c3nnc(/C=C4\\C=CC(O)(F)C=C4F)c4ccccc34)CC2)nc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "1",
+  "metabolite": "unknown 4",
+  "parent": "CC(C)(O)c1ccc(N2CCN(c3nnc(Cc4ccc(F)cc4F)c4ccccc34)CC2)nc1",
+  "met": "CC(C)(O)c1ccc(N2CCN(c3nnc(/C=C4\\C=CC(F)=CC4(O)F)c4ccccc34)CC2)nc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Clopidogrel",
+  "metabolite": "R -115991",
+  "parent": "COC(=O)[C@H](c1ccccc1Cl)N1CCc2sccc2C1",
+  "met": "COC(=O)[C@H](c1ccccc1Cl)N1CCC2SC(=O)C=C2C1"
+ },
+ {
+  "delta": "C-2 H-4",
+  "drug": "Rac-Milnacipran",
+  "metabolite": "N-Desethyl Milnacipran",
+  "parent": "CCN(CC)C(=O)C1(c2ccccc2)CC1CN",
+  "met": "CCNC(=O)[C@@]1(c2ccccc2)CC1CN"
+ },
+ {
+  "delta": "C+1 O+2",
+  "drug": "Rac-Milnacipran",
+  "metabolite": "Milnacipran carbamicacid",
+  "parent": "CCN(CC)C(=O)C1(c2ccccc2)CC1CN",
+  "met": "CCN(CC)C(=O)C1(c2ccccc2)CC1CNC(=O)O"
+ },
+ {
+  "delta": "C-9 H-7 N-1 O-1",
+  "drug": "QAB149, Indacaterol",
+  "metabolite": "P38.2",
+  "parent": "CCc1cc2c(cc1CC)CC(NC[C@H](O)c1ccc(O)c3[nH]c(=O)ccc13)C2",
+  "met": "CCc1cc2c(cc1CC)CC(NCC(=O)O)C2"
+ },
+ {
+  "delta": "C-11 H-9 N-1 O-3",
+  "drug": "QAB149, Indacaterol",
+  "metabolite": "P39",
+  "parent": "CCc1cc2c(cc1CC)CC(NC[C@H](O)c1ccc(O)c3[nH]c(=O)ccc13)C2",
+  "met": "CCc1cc2c(cc1CC)CC(N)C2"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Lu AA21004",
+  "metabolite": "N-hydroxylated Lu AA21004",
+  "parent": "Cc1ccc(Sc2ccccc2N2CCNCC2)c(C)c1",
+  "met": "Cc1ccc(Sc2ccccc2N2CCN(O)CC2)c(C)c1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Lu AA21004",
+  "metabolite": "Benzylic alcohol of Lu AA21004",
+  "parent": "Cc1ccc(Sc2ccccc2N2CCNCC2)c(C)c1",
+  "met": "Cc1cc(CO)ccc1Sc1ccccc1N1CCNCC1"
+ },
+ {
+  "delta": "",
+  "drug": "Saxagliptin, Onglyza",
+  "metabolite": "D1",
+  "parent": "N#C[C@@H]1C[C@@H]2C[C@@H]2N1C(=O)[C@@H](N)C12CC3CC(CC(O)(C3)C1)C2",
+  "met": "N=C1N[C@@H](C23CC4CC(CC(O)(C4)C2)C3)C(=O)N2[C@@H]1C[C@@H]1C[C@@H]12"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Saxagliptin, Onglyza",
+  "metabolite": "M2",
+  "parent": "N#C[C@@H]1C[C@@H]2C[C@@H]2N1C(=O)[C@@H](N)C12CC3CC(CC(O)(C3)C1)C2",
+  "met": "N#C[C@@H]1C[C@@H]2C[C@@H]2N1C(=O)[C@@H](N)C12CC3CC(O)(CC(O)(C3)C1)C2"
+ },
+ {
+  "delta": "C-2 H-2 O+1",
+  "drug": "Peliglitazar",
+  "metabolite": "M10",
+  "parent": "COc1ccc(OC(=O)N(CC(=O)O)[C@@H](C)c2ccc(OCCc3nc(-c4ccccc4)oc3C)cc2)cc1",
+  "met": "COc1ccc(OC(=O)N(CC(=O)O)[C@@H](C)c2ccc(OCCC(=O)NC(=O)c3ccccc3)cc2)cc1"
+ },
+ {
+  "delta": "C+5 H+6 O+6",
+  "drug": "Peliglitazar",
+  "metabolite": "M17",
+  "parent": "COc1ccc(OC(=O)N(CC(=O)O)[C@@H](C)c2ccc(OCCc3nc(-c4ccccc4)oc3C)cc2)cc1",
+  "met": "Cc1oc(-c2ccccc2)nc1CCOc1ccc([C@H](C)N(CC(=O)O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)C(=O)Oc2ccc(O)cc2)cc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Peliglitazar",
+  "metabolite": "M4",
+  "parent": "COc1ccc(OC(=O)N(CC(=O)O)[C@@H](C)c2ccc(OCCc3nc(-c4ccccc4)oc3C)cc2)cc1",
+  "met": "COc1ccc(OC(=O)N(CC(=O)O)[C@@H](C)c2ccc(OCCc3nc(-c4ccccc4)oc3CO)cc2)cc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "1, PPD",
+  "metabolite": "M1-1, 6",
+  "parent": "CC(C)=CCC[C@](C)(O)[C@H]1CC[C@]2(C)[C@@H]1[C@H](O)C[C@@H]1[C@@]3(C)CC[C@H](O)C(C)(C)[C@@H]3CC[C@]12C",
+  "met": "CC1(C)O[C@H]1CC[C@](C)(O)[C@H]1CC[C@]2(C)[C@@H]1[C@H](O)C[C@@H]1[C@@]3(C)CC[C@H](O)C(C)(C)[C@@H]3CC[C@]12C"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Oxymetazoline",
+  "metabolite": "M1",
+  "parent": "Cc1cc(C(C)(C)C)c(O)c(C)c1CC1=NCCN1",
+  "met": "Cc1cc(C(C)(C)CO)c(O)c(C)c1CC1=NCCN1"
+ },
+ {
+  "delta": "C+10 H+15 N+3 O+6 S+1",
+  "drug": "Oxymetazoline",
+  "metabolite": "M6",
+  "parent": "Cc1cc(C(C)(C)C)c(O)c(C)c1CC1=NCCN1",
+  "met": "Cc1c(O)c(C(C)(C)C)cc(CSC[C@H](NC(=O)CC[C@H](N)C(=O)O)C(=O)NCC(=O)O)c1CC1=NCCN1"
+ },
+ {
+  "delta": "C+6 H+8 O+7",
+  "drug": "Losartan",
+  "metabolite": "Losartan glucuronide",
+  "parent": "CCCCc1nc(Cl)c(CO)n1Cc1ccc(-c2ccccc2-c2nnn[nH]2)cc1",
+  "met": "CCCCc1nc(Cl)c(CO)n1Cc1ccc(-c2ccccc2-c2nnnn2O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)cc1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Montelukast",
+  "metabolite": "M6, montelukast 1,2-diol",
+  "parent": "CC(C)(O)c1ccccc1CC[C@@H](SCC1(CC(=O)O)CC1)c1cccc(/C=C/c2ccc3ccc(Cl)cc3n2)c1",
+  "met": "CC(O)(CO)c1ccccc1CC[C@@H](SCC1(CC(=O)O)CC1)c1cccc(/C=C/c2ccc3ccc(Cl)cc3n2)c1"
+ },
+ {
+  "delta": "C-6 H-13 N-1",
+  "drug": "Amiodarone",
+  "metabolite": "M3",
+  "parent": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1",
+  "met": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(O)c(I)c1"
+ },
+ {
+  "delta": "C-4 H-9 N-1 O+1",
+  "drug": "Amiodarone",
+  "metabolite": "M5",
+  "parent": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1",
+  "met": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCO)c(I)c1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Amiodarone",
+  "metabolite": "M11-1",
+  "parent": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1",
+  "met": "CCN(CC)CCOc1c(I)cc(C(=O)c2c(CCCCO)oc3ccccc23)cc1I"
+ },
+ {
+  "delta": "C-2 H-4",
+  "drug": "Amiodarone",
+  "metabolite": "M7, MDEA",
+  "parent": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1",
+  "met": "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCNCC)c(I)c1"
+ },
+ {
+  "delta": "O+3 S+1",
+  "drug": "OXC, Oxcarbazepine, Trileptal",
+  "metabolite": "O-SUL",
+  "parent": "NC(=O)N1c2ccccc2CC(=O)c2ccccc21",
+  "met": "NC(=O)N1c2ccccc2C=C(OS(=O)(=O)O)c2ccccc21"
+ },
+ {
+  "delta": "C+6 H+8 O+6",
+  "drug": "OXC, Oxcarbazepine, Trileptal",
+  "metabolite": "O-GLU",
+  "parent": "NC(=O)N1c2ccccc2CC(=O)c2ccccc21",
+  "met": "NC(=O)N1c2ccccc2C=C(O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)c2ccccc21"
+ },
+ {
+  "delta": "H+2",
+  "drug": "OXC, Oxcarbazepine, Trileptal",
+  "metabolite": "(R)-MHD",
+  "parent": "NC(=O)N1c2ccccc2CC(=O)c2ccccc21",
+  "met": "NC(=O)N1c2ccccc2C[C@@H](O)c2ccccc21"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Lapatinib, Tykerb, Tyverb, GW572016",
+  "metabolite": "M8",
+  "parent": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1",
+  "met": "CS(=O)(=O)CCN(O)Cc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Omeprazole",
+  "metabolite": "5-OH-Omeprazole",
+  "parent": "COc1ccc2[nH]c([S+]([O-])Cc3ncc(C)c(OC)c3C)nc2c1",
+  "met": "COc1ccc2[nH]c([S+]([O-])Cc3ncc(CO)c(OC)c3C)nc2c1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Omeprazole",
+  "metabolite": "Omeprazole sulfone",
+  "parent": "COc1ccc2[nH]c([S+]([O-])Cc3ncc(C)c(OC)c3C)nc2c1",
+  "met": "COc1ccc2[nH]c(S(=O)(=O)Cc3ncc(C)c(OC)c3C)nc2c1"
+ },
+ {
+  "delta": "C+6 H+9 O+7",
+  "drug": "Haloperidol",
+  "metabolite": "Haloperidol-N-glucuronide",
+  "parent": "O=C(CCCN1CCC(O)(c2ccc(Cl)cc2)CC1)c1ccc(F)cc1",
+  "met": "O=C(CCC[N+]1(O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)CCC(O)(c2ccc(Cl)cc2)CC1)c1ccc(F)cc1"
+ },
+ {
+  "delta": "H+2",
+  "drug": "Haloperidol",
+  "metabolite": "Reduced haloperidol",
+  "parent": "O=C(CCCN1CCC(O)(c2ccc(Cl)cc2)CC1)c1ccc(F)cc1",
+  "met": "OC(CCCN1CCC(O)(c2ccc(Cl)cc2)CC1)c1ccc(F)cc1"
+ },
+ {
+  "delta": "H-5 O-1",
+  "drug": "Haloperidol",
+  "metabolite": "HPP+",
+  "parent": "O=C(CCCN1CCC(O)(c2ccc(Cl)cc2)CC1)c1ccc(F)cc1",
+  "met": "O=C(CCC[n+]1ccc(-c2ccc(Cl)cc2)cc1)c1ccc(F)cc1"
+ },
+ {
+  "delta": "C-10 H-7 N-1 S-1",
+  "drug": "Sipoglitazar",
+  "metabolite": "M-II",
+  "parent": "CCOc1nn(Cc2ccc(OCc3csc(-c4ccccc4)n3)cc2)cc1CCC(=O)O",
+  "met": "CCOc1nn(Cc2ccc(O)cc2)cc1CCC(=O)O"
+ },
+ {
+  "delta": "C-2 H-4",
+  "drug": "CP-945,598",
+  "metabolite": "M1, CE-156,706",
+  "parent": "CCNC1(C(N)=O)CCN(c2ncnc3c2nc(-c2ccccc2Cl)n3-c2ccc(Cl)cc2)CC1",
+  "met": "NC(=O)C1(N)CCN(c2ncnc3c2nc(-c2ccccc2Cl)n3-c2ccc(Cl)cc2)CC1"
+ },
+ {
+  "delta": "C+6 H+8 O+6",
+  "drug": "Anastrozole",
+  "metabolite": "Anastrozole N-glucuronide",
+  "parent": "CC(C)(C#N)c1cc(Cn2cncn2)cc(C(C)(C)C#N)c1",
+  "met": "CC(C)(C#N)c1cc(Cn2c[n+]([C@@H]3O[C@H](C(=O)[O-])[C@@H](O)[C@H](O)[C@H]3O)cn2)cc(C(C)(C)C#N)c1"
+ },
+ {
+  "delta": "C+6 H+8 O+6",
+  "drug": "Lamotrigine",
+  "metabolite": "Lamotrigine N2-glucuronide",
+  "parent": "Nc1nnc(-c2cccc(Cl)c2Cl)c(N)n1",
+  "met": "Nc1nc(N)[n+]([C@@H]2O[C@H](C(=O)[O-])[C@@H](O)[C@H](O)[C@H]2O)nc1-c1cccc(Cl)c1Cl"
+ },
+ {
+  "delta": "C-5 H-8",
+  "drug": "Repaglinide",
+  "metabolite": "M1",
+  "parent": "CCOc1cc(CC(=O)N[C@@H](CC(C)C)c2ccccc2N2CCCCC2)ccc1C(=O)O",
+  "met": "CCOc1cc(CC(=O)N[C@@H](CC(C)C)c2ccccc2N)ccc1C(=O)O"
+ },
+ {
+  "delta": "O+1",
+  "drug": "Repaglinide",
+  "metabolite": "M0-OH",
+  "parent": "CCOc1cc(CC(=O)N[C@@H](CC(C)C)c2ccccc2N2CCCCC2)ccc1C(=O)O",
+  "met": "CCOc1cc(CC(=O)N[C@@H](CC(C)(C)O)c2ccccc2N2CCCCC2)ccc1C(=O)O"
+ },
+ {
+  "delta": "C-2 H-4",
+  "drug": "Repaglinide",
+  "metabolite": "M5",
+  "parent": "CCOc1cc(CC(=O)N[C@@H](CC(C)C)c2ccccc2N2CCCCC2)ccc1C(=O)O",
+  "met": "CC(C)C[C@H](NC(=O)Cc1ccc(C(=O)O)c(O)c1)c1ccccc1N1CCCCC1"
+ },
+ {
+  "delta": "O-1",
+  "drug": "BILR 355",
+  "metabolite": "BILR 402",
+  "parent": "CCN1c2ncc(CCOc3cc[n+]([O-])c4ccccc34)cc2C(=O)N(C)c2cccnc21",
+  "met": "CCN1c2ncc(CCOc3ccnc4ccccc34)cc2C(=O)N(C)c2cccnc21"
+ },
+ {
+  "delta": "H+2",
+  "drug": "Mebendazole",
+  "metabolite": "Metabolite A",
+  "parent": "COC(=O)Nc1nc2cc(C(=O)c3ccccc3)ccc2[nH]1",
+  "met": "COC(=O)Nc1nc2ccc(C(O)c3ccccc3)cc2[nH]1"
+ },
+ {
+  "delta": "C-2 H-2 O-2",
+  "drug": "Mebendazole",
+  "metabolite": "Metabolite B",
+  "parent": "COC(=O)Nc1nc2cc(C(=O)c3ccccc3)ccc2[nH]1",
+  "met": "Nc1nc2ccc(C(=O)c3ccccc3)cc2[nH]1"
+ },
+ {
+  "delta": "C-9 H-9 N-1 O-1",
+  "drug": "Almorexant, ACT-078573",
+  "metabolite": "M6, ACT-078332",
+  "parent": "CNC(=O)[C@@H](c1ccccc1)N1CCc2cc(OC)c(OC)cc2[C@@H]1CCc1ccc(C(F)(F)F)cc1",
+  "met": "COc1cc2c(cc1OC)[C@H](CCc1ccc(C(F)(F)F)cc1)NCC2"
+ },
+ {
+  "delta": "H-3",
+  "drug": "Almorexant, ACT-078573",
+  "metabolite": "M5, ACT-172515",
+  "parent": "CNC(=O)[C@@H](c1ccccc1)N1CCc2cc(OC)c(OC)cc2[C@@H]1CCc1ccc(C(F)(F)F)cc1",
+  "met": "CNC(=O)[C@@H](c1ccccc1)[n+]1ccc2cc(OC)c(OC)cc2c1CCc1ccc(C(F)(F)F)cc1"
+ },
+ {
+  "delta": "C-1 H-2 O+1",
+  "drug": "Almorexant, ACT-078573",
+  "metabolite": "M37",
+  "parent": "CNC(=O)[C@@H](c1ccccc1)N1CCc2cc(OC)c(OC)cc2[C@@H]1CCc1ccc(C(F)(F)F)cc1",
+  "met": "COc1cc2c(cc1OC)[C@H](CC(O)c1ccc(C(F)(F)F)cc1)N([C@@H](C(N)=O)c1ccccc1)CC2"
+ },
+ {
+  "delta": "C-7 F-1 H-5",
+  "drug": "lapatinib",
+  "metabolite": "M1",
+  "parent": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1",
+  "met": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(O)c(Cl)c4)c3c2)o1"
+ },
+ {
+  "delta": "C-3 H-9 N-1 O-1 S-1",
+  "drug": "lapatinib",
+  "metabolite": "M10",
+  "parent": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1",
+  "met": "O=Cc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1"
+ },
+ {
+  "delta": "C-3 H-6 O-2 S-1",
+  "drug": "lapatinib",
+  "metabolite": "M4",
+  "parent": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1",
+  "met": "NCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1"
+ },
+ {
+  "delta": "O+1",
+  "drug": "lapatinib",
+  "metabolite": "M8",
+  "parent": "CS(=O)(=O)CCNCc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1",
+  "met": "CS(=O)(=O)CCN(O)Cc1ccc(-c2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2)o1"
+ },
+ {
+  "delta": "H-1",
+  "drug": "CLZ",
+  "metabolite": "Nitrenium ion",
+  "parent": "CN1CCN(C2=Nc3cc(Cl)ccc3Nc3ccccc32)CC1",
+  "met": "CN1CC[N+](=c2nc3cc(Cl)ccc3nc3ccccc23)CC1"
+ },
+ {
+  "delta": "H-1",
+  "drug": "CLZ",
+  "metabolite": "Iminium ion-1",
+  "parent": "CN1CCN(C2=Nc3cc(Cl)ccc3Nc3ccccc32)CC1",
+  "met": "C[N+]1=CCN(C2=Nc3cc(Cl)ccc3Nc3ccccc32)CC1"
+ },
+ {
+  "delta": "H-1",
+  "drug": "CLZ",
+  "metabolite": "Iminium ion-2",
+  "parent": "CN1CCN(C2=Nc3cc(Cl)ccc3Nc3ccccc32)CC1",
+  "met": "CN1CC=[N+](C2=Nc3cc(Cl)ccc3Nc3ccccc32)CC1"
+ },
+ {
+  "delta": "C-2 H-2",
+  "drug": "CLZ",
+  "metabolite": "C-3",
+  "parent": "CN1CCN(C2=Nc3cc(Cl)ccc3Nc3ccccc32)CC1",
+  "met": "CNCCNC1=Nc2cc(Cl)ccc2Nc2ccccc21"
+ },
+ {
+  "delta": "C-2 H-4",
+  "drug": "Ertugliflozin, PF-04971729",
+  "metabolite": "M2, des-ethyl ertugliflozin",
+  "parent": "CCOc1ccc(Cc2cc([C@]34OC[C@](CO)(O3)[C@@H](O)[C@H](O)[C@H]4O)ccc2Cl)cc1",
+  "met": "OC[C@@]12CO[C@@](c3ccc(Cl)c(Cc4ccc(O)cc4)c3)(O1)[C@H](O)[C@@H](O)[C@@H]2O"
+ },
+ {
+  "delta": "C-5 H-8 O-3",
+  "drug": "2, Rp,Sp-2",
+  "metabolite": "1, Rp,Sp-1, dA-ps-U2'-OMe",
+  "parent": "CO[C@@H]1[C@H](OP(=O)(OC[C@H]2O[C@@H](n3cnc4c(N)ncnc43)C[C@@H]2O)SCOC(=O)OC(C)C)[C@@H](CO)O[C@H]1n1ccc(=O)[nH]c1=O",
+  "met": "CO[C@@H]1[C@H](OP(=O)(S)OC[C@H]2O[C@@H](n3cnc4c(N)ncnc43)C[C@@H]2O)[C@@H](CO)O[C@H]1n1ccc(=O)[nH]c1=O"
+ },
+ {
+  "delta": "C-5 H-8 O-2 S-1",
+  "drug": "2, Rp,Sp-2",
+  "metabolite": "10",
+  "parent": "CO[C@@H]1[C@H](OP(=O)(OC[C@H]2O[C@@H](n3cnc4c(N)ncnc43)C[C@@H]2O)SCOC(=O)OC(C)C)[C@@H](CO)O[C@H]1n1ccc(=O)[nH]c1=O",
+  "met": "CO[C@@H]1[C@H](OP(=O)(O)OC[C@H]2O[C@@H](n3cnc4c(N)ncnc43)C[C@@H]2O)[C@@H](CO)O[C@H]1n1ccc(=O)[nH]c1=O"
+ }
+]

@@ -546,3 +546,31 @@ All of these run in-process. Specialist services are made "remote" by setting th
 **Recorded, no pass/fail.** Which routing cases failed and what they returned (a confusion table by category), the false triggers by message, runtimes, and the wording of the unavailable and referral messages.
 
 **Known limits.** The labelled set is small and written by one person. The outage tests simulate failure with unreachable addresses and a fake server, not a real crashed Pose container (the original failure, a segmentation fault, is not reproduced). The message wording is checked only for the named points. The registry docstring says the unavailable message "always says what is still available"; the code does not say so, and this check does not require it. The README promise that MUMO "keeps serving everything else" is tested by O3.
+
+---
+
+# Version 1.3 (draft), 2026-10-30. Flux held-out re-test of rules added after seeing failures. Earlier criteria are unchanged.
+
+## Flux held-out: do rules added from development misses generalise?
+
+**Why.** After the first Flux run (protocol v0.5) five new rules were added to `agents.metabolism` because they recover development misses. Re-testing them on the same data would only show the data they were fitted to. This protocol tests them once on drugs that were never examined.
+
+**Development data (seen, used to choose the rules).** The 66 drugs with one-step *human* records from the v0.5 run (`validation/runs/flux/20261029T101227Z/reference_snapshot.json`). The five rules were chosen by testing candidate rules against the misses on this set only. Rule inclusion criterion, fixed before looking at held-out data: a candidate rule is added only if it recovers **at least two** development misses. Candidates that recovered one or none (N-deethylation, desaturation, aromatic N-oxidation, N-glucuronidation of primary amines, sulfone formation, acyl glucuronidation, secondary-alcohol oxidation, deamination, amide N-hydroxylation) were **not** added, even where they are standard chemistry, because there is no development evidence for them.
+
+**The five added rules.** Methyl hydroxylation (recovered 14 development misses), ketone or aldehyde reduction (7), secondary amine N-hydroxylation (3), tertiary C-H hydroxylation (2), O-deethylation (2). Their weights (0.10 to 0.22) are relative ranking choices set by analogy with existing rules, not occurrence ratios from Ridder and Wagener (2008). The rules and weights are in `src/agents/metabolism.py` at the commit this protocol is tagged on; they are not to change before the held-out run.
+
+**Held-out data (never examined).** ChEMBL `metabolism` records whose organism is **not** `Homo sapiens` (rat, mouse, marmoset, dog, macaque, or unspecified species), where the substrate equals the drug (one-step edges), for drugs **not** in the development set, with both structures resolvable. The query found 132 drugs and 504 edges before structure filtering. This set was counted but its contents were not looked at.
+
+**Limits of the held-out set, stated up front.** Most records (413 of 504) have no species recorded, so this is not a human test. Reference completeness differs from the human set. Metabolic chemistry is shared across mammals but not identical, so a gain here supports generality of the added transformations, not human accuracy.
+
+**Method.** One run, same drugs, two rule sets: the *old* set is `ALL_RULES` without the five new rules, the *new* set is the current `ALL_RULES`. `predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40)`. Matching, selection and metrics are as in protocol v0.5 (InChIKey connectivity block of the largest fragment; micro recall; score AUC with a drug-level bootstrap).
+
+**Check FH1, recall gain.** Held-out micro recall with the new rules minus with the old rules is at least 0.05, **and** the lower bound of a paired 95% bootstrap interval of that difference (resampling drugs, 2000 resamples, seed 20261030) is above 0.
+**Check FH2, ranking signal kept.** The new-rule score AUC lower bound (drug-level bootstrap, as in v0.5) is above 0.5.
+**Check FH3, no burying.** Held-out top-10 micro recall with the new rules is no more than 0.02 below that with the old rules (more rules must not push hits out of the top of the list).
+**Check FH4, integrity.** For every held-out drug under the new rules: every SMILES parses, no duplicates and the parent not listed, scores in (0, 1] and descending, `generation` equals pathway length, and two runs are identical. The three fault inputs (invalid SMILES, empty SMILES, `depth=0`) each return an error record without raising.
+- Pass for each of FH1 to FH4 as stated. All thresholds are methodological choices fixed before the run.
+
+**Recorded, no pass/fail.** Old and new recall, top-10 recall and AUC on the held-out set and on the development set (development numbers must not be quoted as evidence); mean predictions per drug and drugs that reach the 400-metabolite ceiling, old versus new; held-out recall split by unspecified-species versus named-species records; the hits recovered by each new rule; drugs whose structures could not be resolved.
+
+**Known limits.** Ten more rules could be added without end. This test says whether these five generalise, not whether the rule set is good. A positive result here does not extend to the human-specific claims of protocol v0.5.
