@@ -1,6 +1,6 @@
 # MUMO validation and manuscript plan
 
-Drafted 2026-10-29. Status: **proposal for review, nothing executed yet.**
+Drafted 2026-10-29. Updated 2026-10-30. Status: **Phases 0 to 3 are largely done.** Ten of the 12 workflow checks have run, with protocols frozen and tagged first. Full results, defects fixed and open failures are in [`validation/RESULTS.md`](../validation/RESULTS.md). Helix and Anchor are not yet validated, and the new components (pharmacophore, mass-spec) are not built.
 
 ## 1. Goal and sequencing
 
@@ -81,13 +81,15 @@ Every run records: git commit, tool versions, settings, random seeds, input hash
 
 | Phase | Work | Output |
 |---|---|---|
-| 0. Freeze | Choose benchmarks, metrics, pass criteria per workflow; resolve section 7; tag `PROTOCOL.md` | Frozen protocol |
-| 1. Tier A | Repeat-run, failure-injection, routing tests; fix defects found | Technical evidence |
-| 2. Tier B, light workflows | Quill, Scout, Compass, Nexus, Helix, Fate, Flux (cheap, no heavy native stack) | First results |
-| 3. Tier B, heavy workflows | Pose, Atlas, Anchor, Orbit (compute-heavy; Specialist A isolation applies) | Docking/MD/QM results |
-| 4. Build new components | Pharmacophore agent, mass-spec agent, graphs | New agents |
-| 5. Validate new components | Same protocol, frozen first | Remaining results |
-| 6. Manuscript | Section 8 | Submission |
+| 0. Freeze | Choose benchmarks, metrics, pass criteria per workflow; resolve section 7; tag `PROTOCOL.md` | **Done per workflow**: each protocol version was committed and tagged (`validation-protocol-v0.1` to `v0.9a`) before its first run |
+| 1. Tier A | Repeat-run, failure-injection, routing tests; fix defects found | **Mostly done**: repeat-run and failure-injection are in every workflow check. **Routing accuracy and specialist-outage tests (section 3, cross-cutting) are not done.** |
+| 2. Tier B, light workflows | Quill, Scout, Compass, Nexus, Helix, Fate, Flux | **Done except Helix** (needs BLAST+ and SwissProt installed) |
+| 3. Tier B, heavy workflows | Pose, Atlas, Anchor, Orbit | **Done except Anchor.** Atlas pocket detector and Pose interactions have open failures. |
+| 4. Build new components | Pharmacophore agent, mass-spec agent, graphs | Not started |
+| 5. Validate new components | Same protocol, frozen first | Not started |
+| 6. Manuscript | Section 8 | Not started; evidence summary is in `validation/RESULTS.md` |
+
+Deviation from section 5: results are kept per run under `validation/runs/` (items, summary, environment) and summarised in `validation/RESULTS.md`; the separate `results/`, `figures/` and `env/` folders were not created. Figures can be generated from the run folders when the manuscript needs them.
 
 Phases 0–3 do not depend on the mass-spec or pharmacophore decisions, so they can start now. Phase 3 needs the compute answer.
 
@@ -100,7 +102,7 @@ Phases 0–3 do not depend on the mass-spec or pharmacophore decisions, so they 
 **Still open**
 1. **Journal and article type.** None chosen. Decide before Phase 0 ends, since it sets how deep each benchmark must go. Until then the plan assumes a full research article, the more demanding case.
 2. **Authors and affiliations.** Mowriss will supply these later. Not needed until drafting.
-3. **Compute.** Local Windows only, or also the Cloud Run Specialist A for docking and MD? A CASF-scale docking run is hours to days. Needed before Phase 3.
+3. **Compute.** Everything so far ran on this Windows machine (16 cores); the largest run took about 35 minutes. The plan's CASF-scale docking was replaced by an 11-complex redocking set. Whether to scale up on the Cloud Run Specialist A is still open and is needed only for a larger docking benchmark or Anchor.
 4. **Public Space during review.** Does the Hugging Face Space stay public? Some journals expect a working link.
 5. **Mass-spec scope** (task, data format, reference library). Not needed until Phase 4.
 6. **Pharmacophore integration route.** Disclose the ERK2 negative result, or validate on a new multi-target panel first (recommended). Not needed until Phase 4.
@@ -120,6 +122,9 @@ Order of drafting: Methods first (after freeze), Results as each phase lands, In
 
 ## 9. Immediate next steps
 
-1. Mowriss picks a journal (or confirms "full article for now") and answers the compute question.
-2. Write and tag `validation/PROTOCOL.md` with exact benchmarks and pass criteria.
-3. Build `scripts/run_validation.py` and the manifest format, starting with Quill and Scout as the cheapest end-to-end test of the harness.
+1. Mowriss picks a journal (or confirms "full article for now"). Authors and the public-Space decision can wait until drafting.
+2. Finish the remaining checks: Helix (install BLAST+ and SwissProt), Anchor (OpenMM), and the routing and specialist-outage tests.
+3. Resolve the open failures, using held-out data for anything tuned after seeing results: Atlas pocket detector, Pose interaction H-bond recall (start with 1CX2), and the three Pose redocking misses.
+4. Check the Ghose and TPSA source papers, then decide whether to add the TPSA sulfur and phosphorus variant.
+5. Rerun every check from a fresh environment at a tagged commit.
+6. Begin Phase 4 (pharmacophore agent first) only after Mowriss decides the integration route in section 7.
