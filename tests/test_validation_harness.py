@@ -282,6 +282,51 @@ class OrbitHelperTests(unittest.TestCase):
         self.assertAlmostEqual(st["bias"], 0.0)
 
 
+class InteractionsHelperTests(unittest.TestCase):
+    def _res(self):
+        recs = [
+            {'type': 'H-bond', 'resnr': 189, 'reschain': 'A', 'tag': 'ASP189(A)', 'distance': 2.9,
+             'lig_xyz': (0, 0, 0), 'prot_xyz': (2.9, 0, 0), 'ligand_atom_indices': [1, 2], 'protein_atom_indices': [3]},
+            {'type': 'Hydrophobic', 'resnr': 213, 'reschain': 'A', 'tag': 'VAL213(A)', 'distance': 3.7,
+             'lig_xyz': (0, 0, 0), 'prot_xyz': (3.7, 0, 0), 'ligand_atom_indices': [1], 'protein_atom_indices': [4]},
+        ]
+        return {'records': recs, 'total_interactions': 2, 'n_hbonds': 1, 'hbond_residues': ['ASP189(A)'],
+                'n_hydrophobic': 1, 'hydrophobic_residues': ['VAL213(A)'], 'n_pistacking': 0,
+                'n_saltbridges': 0, 'n_halogen': 0, 'n_pication': 0,
+                'interacting_residues': ['ASP189(A)', 'VAL213(A)']}
+
+    def test_contacts_are_grouped_by_type_and_residue(self):
+        from validation.checks import interactions
+        out = interactions.mumo_contacts(self._res())
+        self.assertEqual(out['H-bond'], {(189, 'A')})
+        self.assertEqual(out['Hydrophobic'], {(213, 'A')})
+        self.assertEqual(out['Salt bridge'], set())
+
+    def test_count_consistency_catches_a_wrong_total(self):
+        from validation.checks import interactions
+        res = self._res()
+        self.assertTrue(interactions.check_counts(res))
+        res['total_interactions'] = 3
+        self.assertFalse(interactions.check_counts(res))
+
+    def test_hydrophobic_distance_must_match_geometry(self):
+        from validation.checks import interactions
+        res = self._res()
+        problems, eligible = interactions.hydrophobic_distance_errors(res, 4.5, 0.01)
+        self.assertEqual((problems, eligible), ([], 1))
+        res['records'][1]['distance'] = 3.0
+        problems, _ = interactions.hydrophobic_distance_errors(res, 4.5, 0.01)
+        self.assertEqual(len(problems), 1)
+
+    def test_first_ligand_residue_ignores_later_copies(self):
+        from validation.checks import interactions
+        text = chr(10).join([
+            'HETATM    1  C1  LIG A   7       0.000   0.000   0.000  1.00  0.00           C',
+            'HETATM    2  C2  LIG B   9       5.000   0.000   0.000  1.00  0.00           C'])
+        key, lines = interactions.first_ligand_residue(text, 'LIG')
+        self.assertEqual((key, len(lines)), (('A', '7', ''), 1))
+
+
 class OrbitValenceTests(unittest.TestCase):
     def test_valence_electrons_not_all_electrons(self):
         from validation.checks import orbit
