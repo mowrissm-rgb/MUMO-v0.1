@@ -74,10 +74,10 @@ def run_xtb(xtb, xyz, charge, uhf):
         Path(tmp, 'mol.xyz').write_text(xyz, encoding='ascii')
         proc = subprocess.run([xtb, 'mol.xyz', '--gfn', '2', '--sp', '--chrg', str(charge),
                                '--uhf', str(uhf), '--molden'], cwd=tmp, capture_output=True,
-                              text=True, timeout=300)
+                              text=True, encoding='utf-8', errors='replace', timeout=300)
         if proc.returncode != 0:
             raise RuntimeError(f'reference xtb exited with {proc.returncode}')
-        return Path(tmp, 'molden.input').read_text(), proc.stdout
+        return Path(tmp, 'molden.input').read_text(encoding='utf-8', errors='replace'), proc.stdout
 
 
 def run(manifest, ctx):

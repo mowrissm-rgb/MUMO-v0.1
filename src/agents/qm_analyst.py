@@ -206,8 +206,10 @@ def orbitals(smiles, timeout=180, charge=None, unpaired_electrons=None):
                '--uhf', str(state['unpaired_electrons']), '--molden']
         evidence['command'] = cmd
         try:
+            # xtb prints non-ASCII characters; the Windows default codec (cp1252) cannot
+            # decode all of them and used to drop the whole output.
             proc = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True,
-                                  timeout=timeout)
+                                  encoding='utf-8', errors='replace', timeout=timeout)
         except subprocess.TimeoutExpired as e:
             def decoded(value):
                 return value.decode('utf-8', errors='replace') if isinstance(value, bytes) else (value or '')

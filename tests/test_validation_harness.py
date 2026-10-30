@@ -282,5 +282,24 @@ class OrbitHelperTests(unittest.TestCase):
         self.assertAlmostEqual(st["bias"], 0.0)
 
 
+class XtbEncodingTests(unittest.TestCase):
+    def test_xtb_output_is_decoded_as_utf8_not_the_windows_codepage(self):
+        import os
+        from unittest import mock
+        from agents import qm_analyst
+        seen = {}
+
+        def fake_run(cmd, **kwargs):
+            seen.update(kwargs)
+            raise RuntimeError("stop after capturing the call")
+
+        with mock.patch.dict(os.environ, {"MUMO_XTB": "xtb-stub"}):
+            with mock.patch.object(qm_analyst.subprocess, "run", fake_run):
+                out = qm_analyst.orbitals("CCO")
+        self.assertIn("_error", out)
+        self.assertEqual(seen.get("encoding"), "utf-8")
+        self.assertEqual(seen.get("errors"), "replace")
+
+
 if __name__ == "__main__":
     unittest.main()
