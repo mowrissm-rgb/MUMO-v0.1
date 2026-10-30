@@ -25,8 +25,8 @@ Status as of 2026-10-30. Every number below comes from a saved run under `valida
 | Pose: docking | Native redocking, 11 complexes | 8/11 under 2 A (73%, 95% CI 43 to 90%); repeatable; bookkeeping consistent | Pass |
 | Pose: interactions | PLIP 3.0 on crystal poses, 11 complexes | H-bond precision 0.68, recall 0.46; any-contact Jaccard 0.455; 10/11 run | **Fail** (H-bond recall floor 0.6; 1 complex fails) |
 | Orbit (xTB orbitals) | xTB's own output; QM9 DFT, 200 molecules | Transcription 20/20; state handling 8/8; gap r = 0.85 | Pass (large offsets vs DFT) |
+| Anchor (gas-phase pose refinement) | Independent RMSD from output PDB; repeat runs; native vs displaced decoy, 8 complexes | 7/8 run; bookkeeping consistent on all that ran; native beats decoy 7/8 and is "Stable" 6/8; repeats not exactly reproducible | **Fail** (A1 to A3 on 3ERT and run-to-run differences); B1 and A4 pass |
 | Helix (BLAST) | n/a | BLAST+ not installed | **Not validated** |
-| Anchor (MD) | n/a | OpenMM not run | **Not validated** |
 
 ## Defects the validation found, fixed and rechecked
 
@@ -40,6 +40,9 @@ Each fix has a regression test, and the failing baseline run is kept beside the 
 | Pose docking | Grid centring and native-redock validation used different ligand-exclusion lists, so 1CX2 was silently skipped (heme) and 2RH1 chose cholesterol | 6/11 | 8/11 |
 | Orbit | xTB output could not be decoded on Windows (cp1252), so every orbital calculation failed locally | 0/20 | 20/20 |
 | Pose interactions | Ligands with unlabelled stereocentres or double bonds failed the export check, so the whole analysis was rejected | 8/11 complexes ran | 10/11 |
+| Anchor | Receptors without a terminal oxygen (OXT) at a chain end or beside a chain break could not be parameterised | 1/8 receptors ran | 4/8 |
+| Anchor | OpenMM bonds residues across a gap, so a capped residue still failed template matching; a TER record now ends the chain | 4/8 | 7/8 |
+| Anchor | Hydrogen placement by OpenMM is random (up to 1.9 A between runs); Python and NumPy are now seeded, and the integrator and velocities use a fixed seed | repeat energies differed by 5 to 62 kcal/mol | 0.9 to 25 kcal/mol (not yet exact) |
 | Compass | Stale disease-ID in a comment | n/a | corrected |
 
 ## Protocol and check errors made and disclosed
@@ -59,6 +62,8 @@ These were errors in my protocol or check code, not in MUMO. Each is recorded as
 - **Pose interactions** report fewer H-bonds than PLIP (recall 0.46) and no water bridges. 1CX2 shows 4 PLIP H-bond residues against 0 for MUMO; the cause is not yet established. 1ATP fails cleanly because RDKit adds an extra bond to the Arg165 backbone oxygen.
 - **Pose docking** misses 1HSG (11.4 A, flexible indinavir with torsions capped), 1M17 (7.8 A, seed-sensitive erlotinib) and 4DFR (5.9 A).
 
+- **Anchor** is a gas-phase refinement with a 2 ps relaxation, not production MD, and the check treats it as such. 3ERT fails because a residue has missing side-chain atoms (needs a missing-atom rebuild; PDBFixer is not installed). 1CX2 (a large multi-chain structure) takes about 21 minutes per run, close to the 25-minute timeout. Repeat runs still differ (minimised energies by 0.9 to 25 kcal/mol, ligand movement by up to 0.04 A) after the seeding fix; the cause was not isolated, since a single-thread test also differed. Verdicts did not change between repeats, so report verdicts, not exact energies.
+
 **Limitations of passing results**
 - **Orbit:** GFN2-xTB orbital energies sit on a different scale from DFT. Gaps are 2.07 eV lower on average, HOMO 4.0 eV lower, LUMO 6.1 eV lower than QM9 B3LYP values. The gap tracks DFT (r = 0.85) but its absolute error (2.2 eV) is worse than predicting the mean (1.08 eV), so raw gaps are useful only after calibration.
 - **Flux:** all recovered metabolites come from the first step, and multi-step pathways were not evaluated. Rules are missing (sulfone formation, methyl hydroxylation). Four large drugs hit the 400-metabolite ceiling. No comparator was run (SyGMa is GPL and did not build).
@@ -70,20 +75,20 @@ These were errors in my protocol or check code, not in MUMO. Each is recorded as
 
 ## Not validated
 
-Helix (needs BLAST+ and SwissProt installed), Anchor (needs an OpenMM run), docking scoring power and screening power, cross-docking, AlphaFold docking, orbital surface rendering, the comparison with Discovery Studio, ADMET-AI accuracy on a held-out benchmark, and the pharmacophore and mass-spec agents (not yet built).
+Helix (needs BLAST+ and SwissProt installed), Anchor's long solvated MD, binding free energies and GPU use, docking scoring power and screening power, cross-docking, AlphaFold docking, orbital surface rendering, the comparison with Discovery Studio, ADMET-AI accuracy on a held-out benchmark, and the pharmacophore and mass-spec agents (not yet built).
 
 ## Recommended follow-ups before submission
 
 1. **Held-out sets** for any improvement made after seeing results: the Atlas pocket detector, Flux rules, and the two Pose entries (1CX2, 2RH1) whose fix followed their failure.
 2. Investigate the 1CX2 H-bond gap in Pose interactions.
-3. Run Helix and Anchor, or state them as not validated.
+3. Run Helix, or state it as not validated. Decide whether to add PDBFixer for Anchor (3ERT) and find the source of the remaining run-to-run differences.
 4. Check the Ghose and TPSA source papers before the paper cites either rule.
 5. A fresh-environment rerun of all checks from the tagged commit.
 
 ## Reproducing
 
 ```
-python scripts/run_validation.py <quill|scout|nexus|fate|compass|flux|atlas|pose|orbit|interactions>
+python scripts/run_validation.py <quill|scout|nexus|fate|compass|flux|atlas|pose|orbit|interactions|anchor>
 ```
 
-External files used (hashes are in the manifests and every run record): AutoDock Vina 1.2.5 (Windows build, `bin/vina.exe`), xTB 6.7.1pre (`bin/xtb-6.7.1pre/`), the QM9 table (`validation/data/qm9.csv`). None of these is committed. The runner uses the operating-system certificate store (`truststore`) because the local antivirus intercepts TLS. PLIP 3.0 needs a stub for one OpenBabel metadata call (InChIKey); interaction results are unaffected.
+External files used (hashes are in the manifests and every run record): AutoDock Vina 1.2.5 (Windows build, `bin/vina.exe`), xTB 6.7.1pre (`bin/xtb-6.7.1pre/`), the QM9 table (`validation/data/qm9.csv`), and a micromamba 2.10.0 conda-forge environment for Anchor (`bin/mdenv`, 5.1 GB, with `openmmforcefields` 0.15.1 added by pip without AmberTools because AmberTools does not exist for Windows). The MD environment and micromamba cache live on `E:\mumo-validation-env\` and are reached through junctions at `bin/mdenv` and `bin/mamba/root`. None of these is committed. The runner uses the operating-system certificate store (`truststore`) because the local antivirus intercepts TLS. PLIP 3.0 needs a stub for one OpenBabel metadata call (InChIKey); interaction results are unaffected.
