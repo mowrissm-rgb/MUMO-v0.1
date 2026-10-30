@@ -1,0 +1,3 @@
+# After the first fix (terminal oxygens), before the second
+
+4 of 8 receptors ran (1HSG, 1STP, 3PTB, 2RH1). 1M17, 3ERT and 2OJG still failed: OpenMM bonds each residue to the next one in its chain even across a real gap, so a residue that had been given a terminal oxygen kept an extra external bond ("match CTHR, but ... has 1 C atom too many"). The fix is a TER record after each capped residue, committed before the next run. 1CX2 timed out at 1500 s (a large multi-chain structure), which is recorded as a failure. The A3 failures here reflect that 3PTB and 1STP energies differed by up to 34 kcal/mol between repeats (see the items), which is a finding; 2OJG never ran.
