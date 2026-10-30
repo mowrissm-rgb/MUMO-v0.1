@@ -18,7 +18,7 @@ from validation.harness import run_workflow  # noqa: E402
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('workflow', choices=['quill', 'scout', 'nexus', 'fate', 'compass', 'flux', 'atlas', 'pose', 'orbit', 'interactions', 'anchor'])
+    parser.add_argument('workflow', choices=['quill', 'scout', 'nexus', 'fate', 'compass', 'flux', 'atlas', 'pose', 'orbit', 'interactions', 'anchor', 'helix'])
     parser.add_argument('--manifest', help='override the default manifest path')
     args = parser.parse_args(argv)
     out_dir, summary = run_workflow(args.workflow, args.manifest)

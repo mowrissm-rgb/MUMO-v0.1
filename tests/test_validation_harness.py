@@ -369,6 +369,45 @@ class AnchorHelperTests(unittest.TestCase):
         self.assertFalse(anchor.check_report(dict(good, verdict='Unstable'), 2.0)['verdict_rule'])
 
 
+class HelixHelperTests(unittest.TestCase):
+    TAB = chr(9)
+
+    def _independent(self):
+        text = chr(10).join([
+            self.TAB.join(['sp|P1|A_HUMAN', '100.0', '300', '0.0', '600']),
+            self.TAB.join(['sp|P2|B_HUMAN', '80.5', '290', '1e-100', '400']),
+            self.TAB.join(['sp|P2|B_HUMAN', '60.0', '50', '1e-5', '90']),      # weaker second HSP
+            self.TAB.join(['sp|P3|C_HUMAN', '50.0', '280', '1e-50', '200'])])
+        from validation.checks import helix
+        return helix.parse_independent(text)
+
+    def test_best_alignment_per_subject_and_ranking(self):
+        from validation.checks import helix
+        best = self._independent()
+        self.assertEqual(best['P2'], (80.5, 1e-100, 400.0))
+        self.assertEqual([a for a, _ in helix.ranked(best)], ['P1', 'P2', 'P3'])
+
+    def test_comparison_accepts_a_faithful_list_and_catches_each_fault(self):
+        from validation.checks import helix
+        best = self._independent()
+
+        def hit(acc, ident, ev, bits):
+            return {'accession': acc, 'identity': ident, 'evalue': ev, 'bit_score': bits}
+        good = [hit('P1', 100.0, 0.0, 600.0), hit('P2', 80.5, 1e-100, 400.0)]
+        ok, _ = helix.compare_hits(good, best, 2, 0.1, 0.1, 0.01)
+        self.assertTrue(ok)
+        # a missing strongest hit
+        ok, d = helix.compare_hits(good[1:], best, 2, 0.1, 0.1, 0.01)
+        self.assertFalse(ok)
+        self.assertIn('P1', d['missing_from_helix'])
+        # a wrong bit score
+        ok, _ = helix.compare_hits([hit('P1', 100.0, 0.0, 590.0), good[1]], best, 2, 0.1, 0.1, 0.01)
+        self.assertFalse(ok)
+        # wrong order
+        ok, d = helix.compare_hits([good[1], good[0]], best, 2, 0.1, 0.1, 0.01)
+        self.assertFalse(d['order_ok'])
+
+
 class OrbitValenceTests(unittest.TestCase):
     def test_valence_electrons_not_all_electrons(self):
         from validation.checks import orbit
