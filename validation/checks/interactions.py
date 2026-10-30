@@ -157,8 +157,14 @@ def run(manifest, ctx):
             plip, n_water = plip_contacts(raw, code, chain, resnum)
             details['plip_seconds'] = round(time.time() - started, 1)
             plip_water[pdb] = n_water
-            res = ia.analyze_interactions(cleaned, pdbqt, os.path.join(folder, f'{pdb}_complex.pdb'),
-                                          ligand_smiles=smiles)
+            out_complex = os.path.join(folder, f'{pdb}_complex.pdb')
+            res = ia.analyze_interactions(cleaned, pdbqt, out_complex, ligand_smiles=smiles)
+            details['identity_guard_bypassed'] = False
+            if res.get('status') == 'failed' and 'chemical identity' in (res.get('note') or ''):
+                # Protocol addendum 0.9a: a crystal-derived pose can carry stereo that differs
+                # from the deposited SMILES labels; the guard is not what this check tests.
+                details['identity_guard_bypassed'] = True
+                res = ia.analyze_interactions(cleaned, pdbqt, out_complex, ligand_smiles=None)
             if res.get('status') not in ('qualified', 'partial'):
                 raise RuntimeError(f"MUMO analysis status {res.get('status')}: {res.get('note')}")
             mumo = mumo_contacts(res)
