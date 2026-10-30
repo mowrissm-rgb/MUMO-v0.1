@@ -327,6 +327,48 @@ class InteractionsHelperTests(unittest.TestCase):
         self.assertEqual((key, len(lines)), (('A', '7', ''), 1))
 
 
+class AnchorHelperTests(unittest.TestCase):
+    def test_rmsd(self):
+        from validation.checks import anchor
+        self.assertAlmostEqual(anchor.rmsd([(0, 0, 0), (1, 0, 0)], [(0, 0, 1), (1, 0, 1)]), 1.0)
+
+    def test_decoy_is_a_rigid_move_by_the_stated_translation(self):
+        import math
+        from validation.checks import anchor
+        pts = [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (0.0, 3.0, 1.0)]
+        out = anchor.decoy_coordinates(pts, (1, 2, 3), 180, 3.0)
+        # distances between atoms are unchanged
+        for i in range(3):
+            for j in range(i + 1, 3):
+                self.assertAlmostEqual(math.dist(pts[i], pts[j]), math.dist(out[i], out[j]), places=9)
+        # the centroid moves by exactly the translation along the unit axis
+        c0 = [sum(p[k] for p in pts) / 3 for k in range(3)]
+        c1 = [sum(p[k] for p in out) / 3 for k in range(3)]
+        self.assertAlmostEqual(math.dist(c0, c1), 3.0, places=9)
+        # a point on the axis through the centroid only translates
+        axis = (1, 2, 3)
+        norm = math.sqrt(14)
+        on_axis = [tuple(c0[k] + axis[k] / norm for k in range(3))]
+        moved = anchor.decoy_coordinates(pts + on_axis, axis, 180, 0.0)[-1]
+        self.assertAlmostEqual(math.dist(moved, on_axis[0]), 0.0, places=9)
+
+    def test_verdict_thresholds(self):
+        from validation.checks import anchor
+        self.assertEqual(anchor.verdict_for(1.49), 'Stable')
+        self.assertEqual(anchor.verdict_for(1.5), 'Mostly stable')
+        self.assertEqual(anchor.verdict_for(3.0), 'Unstable')
+
+    def test_report_consistency_catches_each_error(self):
+        from validation.checks import anchor
+        good = {'energy_initial': -100.0, 'energy_minimized': -150.0, 'energy_drop': 50.0,
+                'relax_ps': 2.0, 'lig_rmsd_min': 0.5, 'lig_rmsd_relax': 0.4, 'verdict': 'Stable - held'}
+        self.assertTrue(all(anchor.check_report(good, 2.0).values()))
+        self.assertFalse(anchor.check_report(dict(good, energy_drop=10.0), 2.0)['energy_drop_formula'])
+        self.assertFalse(anchor.check_report(dict(good, energy_drop=-5.0, energy_minimized=-95.0), 2.0)['energy_drop_nonnegative'])
+        self.assertFalse(anchor.check_report(good, 4.0)['relax_ps'])
+        self.assertFalse(anchor.check_report(dict(good, verdict='Unstable'), 2.0)['verdict_rule'])
+
+
 class OrbitValenceTests(unittest.TestCase):
     def test_valence_electrons_not_all_electrons(self):
         from validation.checks import orbit
