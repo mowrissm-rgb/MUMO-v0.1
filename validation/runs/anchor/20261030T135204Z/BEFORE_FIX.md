@@ -1,0 +1,3 @@
+# Baseline before the fix
+
+Seven of eight complexes errored with "No template found for residue ... externally bonded atoms is missing 1 C atom". Most crystal structures do not model the terminal oxygen (OXT) at a chain end or beside a chain break, and OpenMM's Amber templates cannot match such a residue without it. Only 3PTB, whose file includes an OXT, ran. This is a MUMO defect: the app would fail the same way on those receptors. The fix (`_add_missing_oxt` in `agents/md_analyst.py`) is committed before the next run, and the post-fix run is the reference record. The A3 errors here follow from the missing native runs (1STP and 2OJG never ran).
