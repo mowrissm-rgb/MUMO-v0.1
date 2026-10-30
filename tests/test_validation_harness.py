@@ -408,6 +408,31 @@ class HelixHelperTests(unittest.TestCase):
         self.assertFalse(d['order_ok'])
 
 
+class RoutingManifestTests(unittest.TestCase):
+    def test_labelled_set_has_the_counts_the_protocol_states(self):
+        import json
+        manifest = json.loads((ROOT / 'validation' / 'manifests' / 'routing.json').read_text(encoding='utf-8'))
+        cases = manifest['routing_cases']
+        self.assertEqual(len(cases), 73)
+        self.assertEqual(sum(1 for c in cases if c['category'] in ('plain', 'explicit', 'multi')), 48)
+        self.assertEqual(sum(1 for c in cases if c['category'] in ('question', 'trap')), 25)
+        self.assertEqual(sum(1 for c in cases if c['category'] == 'multi'), 6)
+        self.assertEqual(len(manifest['unsupported_cases']), 12)
+        self.assertEqual(len(manifest['readiness_cases']), 6)
+
+    def test_fake_specialist_serves_health_and_json(self):
+        import json
+        import urllib.request
+        from validation.checks import routing
+        server = routing.FakeSpecialist(mode='ok')
+        try:
+            self.assertEqual(urllib.request.urlopen(server.url + '/health', timeout=5).status, 200)
+            request = urllib.request.Request(server.url + '/run/string', data=b'{}', method='POST')
+            self.assertEqual(json.loads(urllib.request.urlopen(request, timeout=5).read())['ok'], True)
+        finally:
+            server.stop()
+
+
 class OrbitValenceTests(unittest.TestCase):
     def test_valence_electrons_not_all_electrons(self):
         from validation.checks import orbit
