@@ -601,3 +601,26 @@ All of these run in-process. Specialist services are made "remote" by setting th
 **Known limits.** Complexes are single-chain, single-ligand, high-resolution structures, an easier population than typical docking targets, so the rate probably overstates real use. Only the top-ranked pocket is scored, because MUMO docks into one box. P2Rank was not run (Java missing).
 
 **Addendum 0.9b (written after the second Interactions run, disclosed as such).** The first run failed I1 on H-bond recall (0.463, precision 0.679). A diagnosis of the 11 PLIP H-bonds that MUMO missed in 8 complexes found 8 within 3.5 angstrom of a ligand atom but rejected because RDKit places hydroxyl and amino hydrogens at arbitrary torsions, 2 slightly beyond 3.5 angstrom, and 1 a histidine whose tautomer is fixed arbitrarily. The fix turns rotatable donor hydrogens (terminal OH, SH, sp3 NH2/NH3) toward an acceptor of the other molecule within 3.5 angstrom, as Reduce and PLIP do; the 130 degree angle and 3.5 angstrom limits are unchanged. Second run (`runs/interactions/20261031T063417Z`): H-bond precision 0.743, recall 0.634, any-contact Jaccard 0.509; I1 passes, I2 119/119, I3 10/11 and I4 2/2 unchanged. **These 11 complexes are the development set for this fix, since the failures were diagnosed on them, so the I1 pass is not an independent result.** A held-out re-test on fresh complexes is still required before the manuscript cites the new numbers. The histidine tautomer and the 3.5 angstrom limit were not changed.
+
+## Version 1.5: Interactions held-out re-test of the donor-hydrogen orientation fix
+
+Frozen before any held-out complex was analysed. Tag `validation-protocol-v1.5`.
+
+**Why.** The fix in Addendum 0.9b was designed after diagnosing missed H-bonds on the 11 complexes of protocol v0.9. Its I1 pass on those 11 is therefore a development result. This version measures it on complexes the fix was never designed on.
+
+**Held-out set.** 30 entries chosen by this rule (script `scripts/select_interactions_heldout.py`, which only selects and never runs MUMO): the RCSB query of protocol v1.4 (X-ray, resolution at most 2.0 angstrom, one polymer entity of 150 to 450 residues, one non-polymer entity, released before 2020; 7,674 hits), shuffled with seed 20261031; take entries in that order, skipping the 11 development entries of v0.9, any whose single hetero code is in `src/crystal_additives.py`, and any whose first ligand residue has fewer than 15 or more than 45 heavy atoms; stop at 30. The list, with the 78 entries skipped on the way, is frozen in `manifests/interactionsheldout.json`.
+
+**Method.** As in protocol v0.9: crystal ligand pose rebuilt from the deposited SMILES at pH 7.4, cleaned protein, PLIP 3.0.0 on the raw file as comparator, contacts compared at residue level. The identity-guard handling of Addendum 0.9a applies from the start. Every complex is analysed **twice with identical preparation**: once with the hydrogen-orientation step switched off (the code before the fix) and once with it on (the shipped code). Only H-bond residues are scored for the fix; any-contact agreement is a sanity check.
+
+**Counting rules.** Pooled true positives, false positives and false negatives over all complexes. A complex whose preparation or MUMO analysis fails counts as an error and its PLIP H-bond residues enter the denominators as false negatives for both arms. A complex where PLIP itself fails has no reference and cannot be counted; those are listed, not hidden.
+
+**Check IH1, floors.** H-bond precision at least 0.6 **and** recall at least 0.6 for the shipped code. These are the floors of check I1, not re-tuned.
+**Check IH2, the fix helps.** Strictly more true positives with orientation on than off.
+**Check IH3, precision cost.** Precision with orientation on is at least the precision with it off minus 0.05.
+**Check IH4, sanity.** Any-contact Jaccard at least 0.4, as in I1.
+
+**Recorded, no pass/fail.** Recall and precision of both arms; a paired bootstrap 95% interval (2,000 resamples over complexes, seed 20261031) of the recall gain; per-complex counts.
+
+**Commitments.** Whatever the outcome is recorded here and in `RESULTS.md`, including a failure. The code is not changed to rescue a failed floor on this set; if the held-out set fails, any later change needs another fresh set. Failed or errored complexes are not replaced.
+
+**Known limits.** The set is single-ligand, high-resolution complexes, an easier population than typical docking targets. PLIP is a geometric detector, not experimental truth, so agreement with it is not a measure of correctness. Histidine tautomers and water bridges are not addressed by the fix and may cost recall here too.
