@@ -564,6 +564,87 @@ def pose_matches_ligand(molecule, smiles, ph=7.4):
             Chem.MolToSmiles(Chem.RemoveAllHs(expected)))
 
 
+def _acceptor_atoms(mol):
+    """Indices of N/O atoms that can accept a hydrogen bond (an N must carry no hydrogen of its own)."""
+    return [a.GetIdx() for a in mol.GetAtoms()
+            if a.GetSymbol() == "O" or (a.GetSymbol() == "N" and
+                                        not any(n.GetAtomicNum() == 1 for n in a.GetNeighbors()))]
+
+
+def _rotatable_donor_groups(mol):
+    """(donor, anchor, [hydrogens]) for terminal OH, SH and sp3 NH2/NH3 groups, whose hydrogens
+    can turn about the anchor-donor bond. Planar N-H (amide, aromatic, guanidinium) is excluded."""
+    groups = []
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() not in ("O", "N", "S"):
+            continue
+        hydrogens = [n.GetIdx() for n in atom.GetNeighbors() if n.GetAtomicNum() == 1]
+        heavy = [n for n in atom.GetNeighbors() if n.GetAtomicNum() > 1]
+        if not hydrogens or len(heavy) != 1:
+            continue
+        anchor = heavy[0]
+        if atom.GetSymbol() == "N" and (anchor.GetIsAromatic()
+                                        or anchor.GetHybridization() != Chem.HybridizationType.SP3):
+            continue
+        groups.append((atom.GetIdx(), anchor.GetIdx(), hydrogens))
+    return groups
+
+
+def _orient_donor_hydrogens(ligand, protein, max_distance=3.5, step=10):
+    """Turn rotatable donor hydrogens (ligand and protein OH, SH, sp3 NH2/NH3) toward the nearest
+    acceptor within `max_distance`, keeping every bond length and angle.
+
+    RDKit places these hydrogens at arbitrary torsions, so a hydroxyl pointing away from an
+    acceptor 2.7 A off failed ProLIF's angle test and the bond was missed (found by the Pose
+    interaction validation: 8 of 11 missed H-bonds were within 3.5 A). This is what Reduce and
+    PLIP do before counting H-bonds. A group is only moved if that improves the best D-H...A
+    angle. Returns the number of groups turned. Both molecules need exactly one conformer.
+    """
+    import numpy as np
+    from rdkit.Geometry import Point3D
+
+    def xyz(conf, i):
+        p = conf.GetAtomPosition(i)
+        return np.array([p.x, p.y, p.z])
+
+    def angle(d, h, a):
+        u, v = d - h, a - h
+        return math.degrees(math.acos(float(np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v)))))
+
+    def turn(points, origin, axis, degrees):
+        t = math.radians(degrees)
+        rel = points - origin
+        return (rel * math.cos(t) + np.cross(axis, rel) * math.sin(t)
+                + np.outer(rel @ axis, axis) * (1 - math.cos(t))) + origin
+
+    turned = 0
+    for donor_mol, other_mol in ((ligand, protein), (protein, ligand)):
+        conf, other_conf = donor_mol.GetConformer(), other_mol.GetConformer()
+        acceptors = np.array([xyz(other_conf, i) for i in _acceptor_atoms(other_mol)])
+        if not len(acceptors):
+            continue
+        for donor, anchor, hydrogens in _rotatable_donor_groups(donor_mol):
+            d = xyz(conf, donor)
+            near = acceptors[np.linalg.norm(acceptors - d, axis=1) <= max_distance]
+            if not len(near):
+                continue
+            axis = d - xyz(conf, anchor)
+            axis = axis / np.linalg.norm(axis)
+            original = np.array([xyz(conf, h) for h in hydrogens])
+            current = max(angle(d, h, a) for h in original for a in near)
+            best_phi, best = 0, current
+            for phi in range(step, 360, step):
+                moved = turn(original, d, axis, phi)
+                score = max(angle(d, h, a) for h in moved for a in near)
+                if score > best + 1e-6:
+                    best_phi, best = phi, score
+            if best_phi:
+                for h, point in zip(hydrogens, turn(original, d, axis, best_phi)):
+                    conf.SetAtomPosition(h, Point3D(*[float(c) for c in point]))
+                turned += 1
+    return turned
+
+
 def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None, receptor_ctx=None):
     lig_mol = _ligand_mol_from_pose(ligand_pdbqt, ligand_smiles)
     if lig_mol is None:
@@ -577,7 +658,11 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
     ctx = receptor_ctx or prepare_receptor_context(receptor_pdb)
     if ctx is None or ctx.get("source_sha256") != _sha256(receptor_pdb):
         raise RuntimeError("Receptor preparation missing or does not match input")
-    lig_h, prot_h, artifacts = _export_prepared(lig_h, ctx["prot_mol"], out_complex_pdb)
+    # Work on a copy: the prepared receptor is shared across ligands, and hydrogen orientation
+    # depends on the ligand.
+    prot_work = Chem.Mol(ctx["prot_mol"])
+    turned_groups = _orient_donor_hydrogens(lig_h, prot_work)
+    lig_h, prot_h, artifacts = _export_prepared(lig_h, prot_work, out_complex_pdb)
     fp = plf.Fingerprint(_PROLIF_INTERACTIONS, count=True)
     lig_plf = plf.Molecule.from_rdkit(lig_h)
     prot_plf = prolif_molecule(prot_h)
@@ -591,7 +676,10 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
     evidence = {"status": "partial" if rejected else "qualified", "records": recs, "rejected_records": rejected,
                 "versions": {"rdkit": Chem.rdBase.rdkitVersion, "prolif": plf.__version__},
                 "settings": settings, "artifacts": artifacts,
-                "preparation": "RDKit residue charge templates and AddHs; hydrogen geometry not optimized",
+                "preparation": ("RDKit residue charge templates and AddHs; rotatable donor hydrogens (OH, SH, "
+                                "sp3 NH2/NH3) turned toward acceptors within 3.5 A; other hydrogen geometry "
+                                "not optimized; histidine tautomers fixed by RDKit defaults"),
+                "hydrogen_orientation": {"groups_turned": turned_groups, "max_distance_angstrom": 3.5},
                 "source_receptor_sha256": _sha256(receptor_pdb),
                 "source_pose_sha256": _sha256(ligand_pdbqt),
                 "checks": {"export_reload": "passed", "analysis_uses_reloaded_artifacts": True},
@@ -630,7 +718,9 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
         "status": "partial" if rejected else "qualified", "records": recs, "artifacts": artifacts,
         "count_scope": "retained verified contacts only; incomplete" if rejected else "configured ProLIF interactions",
         "verification": evidence,
-        "note": "Predicted contacts depend on residue charge templates and unoptimized hydrogen geometry.",
+        "note": ("Predicted contacts depend on residue charge templates, histidine tautomers and "
+                 "hydrogen geometry (rotatable donor hydrogens are turned toward nearby acceptors; "
+                 "other hydrogens are not optimized)."),
         "total_interactions": len(recs),
         "n_hbonds": len(hb), "hbond_residues": _tags(hb),
         "n_hydrophobic": len(hy), "hydrophobic_residues": _tags(hy),

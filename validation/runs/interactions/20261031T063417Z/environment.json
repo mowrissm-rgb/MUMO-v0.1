@@ -1,0 +1,30 @@
+{
+  "created_utc": "20261031T063417Z",
+  "git": {
+    "branch": "fix/pose-hbond-recall",
+    "commit": "087782c641d91f1fff8a6e02800872563a9b0106",
+    "dirty_files": [
+      "M src/agents/interaction_analyst.py",
+      " M tests/test_interaction_verification.py"
+    ],
+    "protocol_tag": "validation-protocol-v1.4"
+  },
+  "manifest": {
+    "path": "validation\\manifests\\interactions.json",
+    "sha256": "b97738c8347196c25e2c1ad6eb12cbdf55ed90c14e254621621cec94daa363ad"
+  },
+  "packages": {
+    "pandas": "3.0.3",
+    "python-docx": "1.2.0",
+    "rdkit": "2025.9.6",
+    "requests": "2.34.2"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "protocol": {
+    "path": "validation/PROTOCOL.md",
+    "sha256": "56b5b116486f8aec4e9c98b4b87e8e536a82b025da9438468e6c737c355f6120"
+  },
+  "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+  "seeds": "none: checks are deterministic given the recorded inputs",
+  "wall_seconds": 59.15
+}
