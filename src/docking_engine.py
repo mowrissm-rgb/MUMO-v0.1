@@ -63,6 +63,28 @@ _RESIDUE_HEAVY_ATOMS = {
 }
 
 
+def _choose_altlocs(input_path):
+    """For every residue with alternate conformers, the one with the highest summed occupancy.
+
+    Keeping conformer 'A' of every residue can put mutually exclusive conformers of
+    neighbouring residues side by side (6R67: Lys15 NZ and Met13 CE 1.44 A apart), because
+    the labels are only meaningful inside one residue. The best-populated conformer is the
+    usual choice; ties go to the alphabetically first label, which is 'A'."""
+    weight = {}
+    with open(input_path, 'r') as infile:
+        for line in infile:
+            if line.startswith("ATOM") and line[16] not in (" ",):
+                try:
+                    occupancy = float(line[54:60])
+                except ValueError:
+                    occupancy = 0.0
+                key = (line[21], line[22:27])
+                per_alt = weight.setdefault(key, {})
+                per_alt[line[16]] = per_alt.get(line[16], 0.0) + occupancy
+    return {key: sorted(per_alt.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+            for key, per_alt in weight.items()}
+
+
 def clean_protein_pdb(input_path, output_path):
     """
     Cleans a protein PDB file by:
@@ -150,15 +172,16 @@ def clean_protein_pdb(input_path, output_path):
     # ASP into an ALA would silently delete a charge from the pocket and change
     # the chemistry being reported. A gap in the backbone is honest; an invented
     # residue is not. Whatever is dropped is printed so it is never silent.
+    chosen_alt = _choose_altlocs(input_path)
     seen_atoms = {}
     for line in open(input_path, 'r'):
         if line.startswith("ATOM"):
             res_name = line[17:20].strip()
             if line[21] in valid_chains and res_name in STANDARD_AMINOS:
                 alt = line[16]
-                if alt not in (" ", "A"):
-                    continue                      # alternate conformer B/C/...
                 key = (line[21], line[22:27])
+                if alt != " " and alt != chosen_alt.get(key):
+                    continue                      # the other alternate conformers
                 seen_atoms.setdefault(key, (res_name, set()))[1].add(line[12:16].strip())
 
     incomplete = set()
@@ -180,10 +203,13 @@ def clean_protein_pdb(input_path, output_path):
             if line.startswith("ATOM"):
                 res_name = line[17:20].strip()
                 chain_id = line[21]
+                key = (chain_id, line[22:27])
                 if (chain_id in valid_chains and res_name in STANDARD_AMINOS
-                        and (chain_id, line[22:27]) not in incomplete
-                        and line[16] in (" ", "A")):
-                    outfile.write(line)
+                        and key not in incomplete
+                        and line[16] in (" ", chosen_alt.get(key))):
+                    # The conformer label is dropped: it is now the only one, and
+                    # downstream tools default to keeping only 'A'.
+                    outfile.write(line[:16] + " " + line[17:])
                     atom_count += 1
             elif line.startswith("TER") or line.startswith("END"):
                 # Retain chain termination and structure end markers

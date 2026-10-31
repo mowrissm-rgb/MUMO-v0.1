@@ -1,0 +1,394 @@
+{
+  "all_criteria_passed": false,
+  "counts": {
+    "ERROR": 1,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 12
+  },
+  "criteria": [
+    {
+      "description": "H-bond precision and recall >= 0.6; any-contact Jaccard >= 0.4 vs PLIP (pooled)",
+      "id": "I1",
+      "passed": true,
+      "value": "H-bond precision 0.743, recall 0.634; any-contact Jaccard 0.509"
+    },
+    {
+      "description": "hydrophobic record distances equal geometry and are within 4.5 A (100%, at least one record)",
+      "id": "I2",
+      "passed": true,
+      "value": "119/119 records ok"
+    },
+    {
+      "description": "counts and residue lists consistent with records (100% of complexes)",
+      "id": "I3",
+      "passed": false,
+      "value": "10/11 complexes"
+    },
+    {
+      "description": "bad input returns failed status with null counts (2 of 2)",
+      "id": "I4",
+      "passed": true,
+      "value": "2/2"
+    }
+  ],
+  "extras": {
+    "any_contact_jaccard": 0.509,
+    "i2_problems": [],
+    "not_tested": [
+      "docked poses",
+      "experimental truth",
+      "water bridges",
+      "2D/3D rendering"
+    ],
+    "per_complex": {
+      "1ATP": {
+        "mumo": null,
+        "only_mumo_any": [],
+        "only_plip_any": [
+          "121E",
+          "123E",
+          "127E",
+          "168E",
+          "18I",
+          "21I",
+          "53E",
+          "54E",
+          "55E",
+          "72E"
+        ],
+        "plip": {
+          "H-bond": 8,
+          "Halogen": 0,
+          "Hydrophobic": 0,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 2
+        }
+      },
+      "1CX2": {
+        "mumo": {
+          "H-bond": 1,
+          "Halogen": 1,
+          "Hydrophobic": 7,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        },
+        "only_mumo_any": [
+          "381A",
+          "385A",
+          "387A"
+        ],
+        "only_plip_any": [
+          "349A",
+          "513A",
+          "90A"
+        ],
+        "plip": {
+          "H-bond": 4,
+          "Halogen": 0,
+          "Hydrophobic": 4,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        }
+      },
+      "1HCK": {
+        "mumo": {
+          "H-bond": 8,
+          "Halogen": 0,
+          "Hydrophobic": 0,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 2
+        },
+        "only_mumo_any": [],
+        "only_plip_any": [],
+        "plip": {
+          "H-bond": 6,
+          "Halogen": 0,
+          "Hydrophobic": 0,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 2
+        }
+      },
+      "1HSG": {
+        "mumo": {
+          "H-bond": 4,
+          "Halogen": 0,
+          "Hydrophobic": 5,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        },
+        "only_mumo_any": [
+          "50A"
+        ],
+        "only_plip_any": [
+          "23A",
+          "25B",
+          "28A",
+          "28B",
+          "32A",
+          "32B",
+          "47A",
+          "81A",
+          "81B",
+          "82A"
+        ],
+        "plip": {
+          "H-bond": 4,
+          "Halogen": 0,
+          "Hydrophobic": 13,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 2
+        }
+      },
+      "1M17": {
+        "mumo": {
+          "H-bond": 1,
+          "Halogen": 0,
+          "Hydrophobic": 3,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        },
+        "only_mumo_any": [
+          "831A"
+        ],
+        "only_plip_any": [
+          "694A",
+          "766A",
+          "768A"
+        ],
+        "plip": {
+          "H-bond": 1,
+          "Halogen": 0,
+          "Hydrophobic": 5,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        }
+      },
+      "1STP": {
+        "mumo": {
+          "H-bond": 7,
+          "Halogen": 0,
+          "Hydrophobic": 2,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        },
+        "only_mumo_any": [
+          "128A",
+          "45A",
+          "92A"
+        ],
+        "only_plip_any": [
+          "110A"
+        ],
+        "plip": {
+          "H-bond": 5,
+          "Halogen": 0,
+          "Hydrophobic": 2,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        }
+      },
+      "2OJG": {
+        "mumo": {
+          "H-bond": 3,
+          "Halogen": 0,
+          "Hydrophobic": 2,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        },
+        "only_mumo_any": [
+          "103A"
+        ],
+        "only_plip_any": [
+          "154A",
+          "165A"
+        ],
+        "plip": {
+          "H-bond": 3,
+          "Halogen": 0,
+          "Hydrophobic": 3,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        }
+      },
+      "2RH1": {
+        "mumo": {
+          "H-bond": 2,
+          "Halogen": 0,
+          "Hydrophobic": 6,
+          "Pi-cation": 0,
+          "Pi-stack": 1,
+          "Salt bridge": 0
+        },
+        "only_mumo_any": [],
+        "only_plip_any": [
+          "109A",
+          "316A"
+        ],
+        "plip": {
+          "H-bond": 3,
+          "Halogen": 0,
+          "Hydrophobic": 6,
+          "Pi-cation": 0,
+          "Pi-stack": 1,
+          "Salt bridge": 0
+        }
+      },
+      "3ERT": {
+        "mumo": {
+          "H-bond": 2,
+          "Halogen": 0,
+          "Hydrophobic": 10,
+          "Pi-cation": 0,
+          "Pi-stack": 1,
+          "Salt bridge": 0
+        },
+        "only_mumo_any": [
+          "343A",
+          "349A",
+          "391A",
+          "421A",
+          "524A"
+        ],
+        "only_plip_any": [
+          "350A",
+          "351A",
+          "384A",
+          "428A"
+        ],
+        "plip": {
+          "H-bond": 2,
+          "Halogen": 0,
+          "Hydrophobic": 8,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 1
+        }
+      },
+      "3PTB": {
+        "mumo": {
+          "H-bond": 2,
+          "Halogen": 0,
+          "Hydrophobic": 1,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 1
+        },
+        "only_mumo_any": [
+          "192A"
+        ],
+        "only_plip_any": [
+          "213A"
+        ],
+        "plip": {
+          "H-bond": 2,
+          "Halogen": 0,
+          "Hydrophobic": 1,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 0
+        }
+      },
+      "4DFR": {
+        "mumo": {
+          "H-bond": 5,
+          "Halogen": 0,
+          "Hydrophobic": 4,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 3
+        },
+        "only_mumo_any": [
+          "50A",
+          "94A"
+        ],
+        "only_plip_any": [
+          "113A",
+          "54A"
+        ],
+        "plip": {
+          "H-bond": 3,
+          "Halogen": 0,
+          "Hydrophobic": 3,
+          "Pi-cation": 0,
+          "Pi-stack": 0,
+          "Salt bridge": 4
+        }
+      }
+    },
+    "per_type_precision_recall": {
+      "H-bond": {
+        "fn": 15,
+        "fp": 9,
+        "precision": 0.743,
+        "recall": 0.634,
+        "tp": 26
+      },
+      "Halogen": {
+        "fn": 0,
+        "fp": 1,
+        "precision": 0.0,
+        "recall": null,
+        "tp": 0
+      },
+      "Hydrophobic": {
+        "fn": 21,
+        "fp": 16,
+        "precision": 0.6,
+        "recall": 0.533,
+        "tp": 24
+      },
+      "Pi-cation": {
+        "fn": 0,
+        "fp": 0,
+        "precision": null,
+        "recall": null,
+        "tp": 0
+      },
+      "Pi-stack": {
+        "fn": 1,
+        "fp": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0
+      },
+      "Salt bridge": {
+        "fn": 6,
+        "fp": 1,
+        "precision": 0.833,
+        "recall": 0.455,
+        "tp": 5
+      }
+    },
+    "plip_version": "3.0.0",
+    "plip_water_bridges": {
+      "1ATP": 3,
+      "1CX2": 0,
+      "1HCK": 1,
+      "1HSG": 4,
+      "1M17": 1,
+      "1STP": 0,
+      "2OJG": 1,
+      "2RH1": 0,
+      "3ERT": 2,
+      "3PTB": 0,
+      "4DFR": 3
+    }
+  },
+  "n_items": 13,
+  "protocol_version": "0.9",
+  "workflow": "Interactions"
+}
