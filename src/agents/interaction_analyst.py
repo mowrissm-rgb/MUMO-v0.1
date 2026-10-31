@@ -218,9 +218,24 @@ def _protonate_protein(receptor_pdb):
     """Load the receptor and give ionizable residues their physiological formal
     charges, then add explicit hydrogens — the preparation ProLIF needs to detect
     salt bridges and hydrogen bonds. Returns an RDKit mol (with Hs) or None."""
-    mol = Chem.MolFromPDBFile(receptor_pdb, sanitize=True, removeHs=False)
-    if mol is None:
-        mol = Chem.MolFromPDBFile(receptor_pdb, sanitize=False, removeHs=False)
+    try:
+        return _protonate_loaded(Chem.MolFromPDBFile(receptor_pdb, sanitize=True, removeHs=False)
+                                 or Chem.MolFromPDBFile(receptor_pdb, sanitize=False, removeHs=False))
+    except ValueError:
+        # Some depositions carry hydrogens placed at impossible distances (an arginine H 1.5 A
+        # from CZ, for example); RDKit then bonds them and the residue has too many bonds.
+        # MUMO adds its own hydrogens, so retry once without the deposited ones.
+        with open(receptor_pdb, encoding="utf-8", errors="replace") as handle:
+            has_hydrogens = any(line[:6] in ("ATOM  ", "HETATM") and
+                                (line[76:78].strip() == "H" or line[12:16].strip().startswith("H"))
+                                for line in handle)
+        if not has_hydrogens:
+            raise
+        return _protonate_loaded(Chem.MolFromPDBFile(receptor_pdb, sanitize=True, removeHs=True)
+                                 or Chem.MolFromPDBFile(receptor_pdb, sanitize=False, removeHs=True))
+
+
+def _protonate_loaded(mol):
     if mol is None:
         return None
     for atom in mol.GetAtoms():
@@ -276,13 +291,17 @@ def _centroid(conf, idxs):
     return (sum(p.x for p in ps) / n, sum(p.y for p in ps) / n, sum(p.z for p in ps) / n)
 
 
-def _collect_interactions(ifp, lig_conf, prot_conf, rejected=None):
+def _collect_interactions(ifp, lig_conf, prot_conf, rejected=None, number_offset=0):
     """
     THE single source of truth. Walk every interaction ProLIF found and return one
     flat list of records — each with its type, residue, the ligand-side and
     protein-side 3D points, the measured distance, and a colour. The CSV counts,
     the 2D diagram and the 3D lines are ALL derived from this list, so they can
     never disagree. Interactions whose 3D points can't be resolved are dropped.
+
+    `number_offset` is the shift `prolif_molecule` applied to residue numbers so negative
+    numbers (expression tags) fit ProLIF's unsigned storage; it is removed again here so
+    records carry the residue numbers of the input file.
     """
     recs = []
     for pair, inters in ifp.items():
@@ -306,9 +325,10 @@ def _collect_interactions(ifp, lig_conf, prot_conf, rejected=None):
                         rejected.append({'method': iname, 'residue': str(prot_res), 'reason': 'Atom coordinates unavailable'})
                         continue
                     raise ValueError("Interaction atom coordinates unavailable")
+                resnr = int(prot_res.number) - number_offset
                 recs.append({
-                    "type": itype, "restype": prot_res.name, "resnr": int(prot_res.number),
-                    "reschain": chain, "tag": f"{prot_res.name}{prot_res.number}({chain})",
+                    "type": itype, "restype": prot_res.name, "resnr": resnr,
+                    "reschain": chain, "tag": f"{prot_res.name}{resnr}({chain})",
                     "lig_xyz": lig_xyz, "prot_xyz": prot_xyz,
                     "distance": float(m["distance"]) if m.get("distance") is not None else None,
                     "method": "ProLIF." + iname, "distance_unit": "angstrom",
@@ -348,8 +368,20 @@ def _geometric_hbonds(lig_mol, polar_atoms, existing, cutoff=3.5):
     return []
 
 
-def prolif_molecule(molecule):
-    """Split inter-residue bonds once while preserving global atom indices."""
+def residue_number_offset(molecule):
+    """Shift that makes every residue number non-negative (0 when none is negative).
+
+    ProLIF stores residue numbers as unsigned integers, so a structure with negative
+    numbering (tag residues such as -8) would fail outright without it."""
+    numbers = [a.GetPDBResidueInfo().GetResidueNumber() for a in molecule.GetAtoms() if a.GetPDBResidueInfo()]
+    return max(0, -min(numbers)) if numbers else 0
+
+
+def prolif_molecule(molecule, number_offset=0):
+    """Split inter-residue bonds once while preserving global atom indices.
+
+    Residue numbers are shifted by `number_offset` in the views ProLIF sees only; see
+    `residue_number_offset` and `_collect_interactions`."""
     from prolif.residue import Residue
     mol = Chem.Mol(molecule)
     keys = []
@@ -358,6 +390,13 @@ def prolif_molecule(molecule):
         info = atom.GetPDBResidueInfo()
         if info is None:
             return plf.Molecule.from_rdkit(mol)
+        if number_offset:
+            # Shift the atoms themselves too: ProLIF resolves residues from atom identity.
+            atom.SetMonomerInfo(Chem.AtomPDBResidueInfo(
+                info.GetName(), info.GetSerialNumber(), info.GetAltLoc(), info.GetResidueName(),
+                info.GetResidueNumber() + number_offset, info.GetChainId(), info.GetInsertionCode(),
+                info.GetOccupancy(), info.GetTempFactor(), info.GetIsHeteroAtom()))
+            info = atom.GetPDBResidueInfo()
         keys.append((info.GetChainId(), info.GetResidueNumber(),
                      info.GetInsertionCode(), info.GetResidueName()))
     # Build the residue views directly. Whole-protein GetMolFrags(asMols=True)
@@ -564,6 +603,87 @@ def pose_matches_ligand(molecule, smiles, ph=7.4):
             Chem.MolToSmiles(Chem.RemoveAllHs(expected)))
 
 
+def _acceptor_atoms(mol):
+    """Indices of N/O atoms that can accept a hydrogen bond (an N must carry no hydrogen of its own)."""
+    return [a.GetIdx() for a in mol.GetAtoms()
+            if a.GetSymbol() == "O" or (a.GetSymbol() == "N" and
+                                        not any(n.GetAtomicNum() == 1 for n in a.GetNeighbors()))]
+
+
+def _rotatable_donor_groups(mol):
+    """(donor, anchor, [hydrogens]) for terminal OH, SH and sp3 NH2/NH3 groups, whose hydrogens
+    can turn about the anchor-donor bond. Planar N-H (amide, aromatic, guanidinium) is excluded."""
+    groups = []
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() not in ("O", "N", "S"):
+            continue
+        hydrogens = [n.GetIdx() for n in atom.GetNeighbors() if n.GetAtomicNum() == 1]
+        heavy = [n for n in atom.GetNeighbors() if n.GetAtomicNum() > 1]
+        if not hydrogens or len(heavy) != 1:
+            continue
+        anchor = heavy[0]
+        if atom.GetSymbol() == "N" and (anchor.GetIsAromatic()
+                                        or anchor.GetHybridization() != Chem.HybridizationType.SP3):
+            continue
+        groups.append((atom.GetIdx(), anchor.GetIdx(), hydrogens))
+    return groups
+
+
+def _orient_donor_hydrogens(ligand, protein, max_distance=3.5, step=10):
+    """Turn rotatable donor hydrogens (ligand and protein OH, SH, sp3 NH2/NH3) toward the nearest
+    acceptor within `max_distance`, keeping every bond length and angle.
+
+    RDKit places these hydrogens at arbitrary torsions, so a hydroxyl pointing away from an
+    acceptor 2.7 A off failed ProLIF's angle test and the bond was missed (found by the Pose
+    interaction validation: 8 of 11 missed H-bonds were within 3.5 A). This is what Reduce and
+    PLIP do before counting H-bonds. A group is only moved if that improves the best D-H...A
+    angle. Returns the number of groups turned. Both molecules need exactly one conformer.
+    """
+    import numpy as np
+    from rdkit.Geometry import Point3D
+
+    def xyz(conf, i):
+        p = conf.GetAtomPosition(i)
+        return np.array([p.x, p.y, p.z])
+
+    def angle(d, h, a):
+        u, v = d - h, a - h
+        return math.degrees(math.acos(float(np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v)))))
+
+    def turn(points, origin, axis, degrees):
+        t = math.radians(degrees)
+        rel = points - origin
+        return (rel * math.cos(t) + np.cross(axis, rel) * math.sin(t)
+                + np.outer(rel @ axis, axis) * (1 - math.cos(t))) + origin
+
+    turned = 0
+    for donor_mol, other_mol in ((ligand, protein), (protein, ligand)):
+        conf, other_conf = donor_mol.GetConformer(), other_mol.GetConformer()
+        acceptors = np.array([xyz(other_conf, i) for i in _acceptor_atoms(other_mol)])
+        if not len(acceptors):
+            continue
+        for donor, anchor, hydrogens in _rotatable_donor_groups(donor_mol):
+            d = xyz(conf, donor)
+            near = acceptors[np.linalg.norm(acceptors - d, axis=1) <= max_distance]
+            if not len(near):
+                continue
+            axis = d - xyz(conf, anchor)
+            axis = axis / np.linalg.norm(axis)
+            original = np.array([xyz(conf, h) for h in hydrogens])
+            current = max(angle(d, h, a) for h in original for a in near)
+            best_phi, best = 0, current
+            for phi in range(step, 360, step):
+                moved = turn(original, d, axis, phi)
+                score = max(angle(d, h, a) for h in moved for a in near)
+                if score > best + 1e-6:
+                    best_phi, best = phi, score
+            if best_phi:
+                for h, point in zip(hydrogens, turn(original, d, axis, best_phi)):
+                    conf.SetAtomPosition(h, Point3D(*[float(c) for c in point]))
+                turned += 1
+    return turned
+
+
 def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None, receptor_ctx=None):
     lig_mol = _ligand_mol_from_pose(ligand_pdbqt, ligand_smiles)
     if lig_mol is None:
@@ -577,13 +697,18 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
     ctx = receptor_ctx or prepare_receptor_context(receptor_pdb)
     if ctx is None or ctx.get("source_sha256") != _sha256(receptor_pdb):
         raise RuntimeError("Receptor preparation missing or does not match input")
-    lig_h, prot_h, artifacts = _export_prepared(lig_h, ctx["prot_mol"], out_complex_pdb)
+    # Work on a copy: the prepared receptor is shared across ligands, and hydrogen orientation
+    # depends on the ligand.
+    prot_work = Chem.Mol(ctx["prot_mol"])
+    turned_groups = _orient_donor_hydrogens(lig_h, prot_work)
+    lig_h, prot_h, artifacts = _export_prepared(lig_h, prot_work, out_complex_pdb)
     fp = plf.Fingerprint(_PROLIF_INTERACTIONS, count=True)
     lig_plf = plf.Molecule.from_rdkit(lig_h)
-    prot_plf = prolif_molecule(prot_h)
+    number_offset = residue_number_offset(prot_h)
+    prot_plf = prolif_molecule(prot_h, number_offset)
     ifp = fp.generate(lig_plf, prot_plf, metadata=True)
     rejected = []
-    recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_h.GetConformer(), rejected)
+    recs = _collect_interactions(ifp, lig_h.GetConformer(), prot_h.GetConformer(), rejected, number_offset)
     settings = {name: _json_value(vars(getattr(detector, "__self__", detector)))
                 for name, detector in fp.interactions.items()}
     for record in recs:
@@ -591,7 +716,10 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
     evidence = {"status": "partial" if rejected else "qualified", "records": recs, "rejected_records": rejected,
                 "versions": {"rdkit": Chem.rdBase.rdkitVersion, "prolif": plf.__version__},
                 "settings": settings, "artifacts": artifacts,
-                "preparation": "RDKit residue charge templates and AddHs; hydrogen geometry not optimized",
+                "preparation": ("RDKit residue charge templates and AddHs; rotatable donor hydrogens (OH, SH, "
+                                "sp3 NH2/NH3) turned toward acceptors within 3.5 A; other hydrogen geometry "
+                                "not optimized; histidine tautomers fixed by RDKit defaults"),
+                "hydrogen_orientation": {"groups_turned": turned_groups, "max_distance_angstrom": 3.5},
                 "source_receptor_sha256": _sha256(receptor_pdb),
                 "source_pose_sha256": _sha256(ligand_pdbqt),
                 "checks": {"export_reload": "passed", "analysis_uses_reloaded_artifacts": True},
@@ -630,7 +758,9 @@ def _run_prolif(receptor_pdb, ligand_pdbqt, out_complex_pdb, ligand_smiles=None,
         "status": "partial" if rejected else "qualified", "records": recs, "artifacts": artifacts,
         "count_scope": "retained verified contacts only; incomplete" if rejected else "configured ProLIF interactions",
         "verification": evidence,
-        "note": "Predicted contacts depend on residue charge templates and unoptimized hydrogen geometry.",
+        "note": ("Predicted contacts depend on residue charge templates, histidine tautomers and "
+                 "hydrogen geometry (rotatable donor hydrogens are turned toward nearby acceptors; "
+                 "other hydrogens are not optimized)."),
         "total_interactions": len(recs),
         "n_hbonds": len(hb), "hbond_residues": _tags(hb),
         "n_hydrophobic": len(hy), "hydrophobic_residues": _tags(hy),

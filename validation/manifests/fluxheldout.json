@@ -1,0 +1,43 @@
+{
+  "workflow": "Flux held-out",
+  "protocol_version": "1.3",
+  "source": "ChEMBL metabolism table (same release as the development run)",
+  "licence": "CC BY-SA 3.0 (ChEMBL)",
+  "development_snapshot": "validation/runs/flux/20261029T101227Z/reference_snapshot.json",
+  "new_rule_names": [
+    "Methyl hydroxylation",
+    "Ketone or aldehyde reduction",
+    "Tertiary C-H hydroxylation",
+    "Secondary amine N-hydroxylation",
+    "O-deethylation"
+  ],
+  "flux_settings": {
+    "depth": 2,
+    "min_score": 0.01,
+    "max_results": 40
+  },
+  "top_k": 10,
+  "bootstrap_resamples": 2000,
+  "seed": 20261030,
+  "min_recall_gain": 0.05,
+  "max_top_k_loss": 0.02,
+  "faults": [
+    {
+      "name": "fault:invalid_smiles",
+      "smiles": "not a smiles",
+      "kwargs": {}
+    },
+    {
+      "name": "fault:empty_smiles",
+      "smiles": "",
+      "kwargs": {}
+    },
+    {
+      "name": "fault:bad_depth",
+      "smiles": "CCO",
+      "kwargs": {
+        "depth": 0
+      }
+    }
+  ]
+}

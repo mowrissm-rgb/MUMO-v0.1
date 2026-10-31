@@ -1,0 +1,69 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 1,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 2
+  },
+  "criteria": [
+    {
+      "description": "H-bond precision and recall of the shipped code >= 0.6 (pooled, vs PLIP)",
+      "id": "IH1",
+      "passed": true,
+      "value": "precision 0.889, recall 0.889 (tp 8, fp 1, fn 1)"
+    },
+    {
+      "description": "orientation finds strictly more PLIP H-bonds than the code before the fix",
+      "id": "IH2",
+      "passed": true,
+      "value": "true positives 8 vs 3; recall 0.889 vs 0.333"
+    },
+    {
+      "description": "precision does not fall by more than 0.05",
+      "id": "IH3",
+      "passed": true,
+      "value": "precision 0.889 vs 0.75"
+    },
+    {
+      "description": "any-contact Jaccard >= 0.4",
+      "id": "IH4",
+      "passed": true,
+      "value": "0.5"
+    }
+  ],
+  "extras": {
+    "after_fix": {
+      "precision": 0.889,
+      "recall": 0.889,
+      "tp_fp_fn": [
+        8,
+        1,
+        1
+      ]
+    },
+    "before_fix": {
+      "precision": 0.75,
+      "recall": 0.333,
+      "tp_fp_fn": [
+        3,
+        1,
+        6
+      ]
+    },
+    "n_complexes": 3,
+    "n_rows": 3,
+    "not_tested": [
+      "docked poses",
+      "experimental truth",
+      "water bridges"
+    ],
+    "recall_gain_bootstrap_95": [
+      0.5,
+      0.667
+    ]
+  },
+  "n_items": 3,
+  "protocol_version": "1.5",
+  "workflow": "Interactions held-out: post-hoc re-run of the 3 MUMO failures after fixes (not the registered result)"
+}

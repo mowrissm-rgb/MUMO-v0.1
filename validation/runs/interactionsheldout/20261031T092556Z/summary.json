@@ -1,0 +1,69 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 5,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 25
+  },
+  "criteria": [
+    {
+      "description": "H-bond precision and recall of the shipped code >= 0.6 (pooled, vs PLIP)",
+      "id": "IH1",
+      "passed": true,
+      "value": "precision 0.67, recall 0.645 (tp 69, fp 34, fn 38)"
+    },
+    {
+      "description": "orientation finds strictly more PLIP H-bonds than the code before the fix",
+      "id": "IH2",
+      "passed": true,
+      "value": "true positives 69 vs 57; recall 0.645 vs 0.533"
+    },
+    {
+      "description": "precision does not fall by more than 0.05",
+      "id": "IH3",
+      "passed": true,
+      "value": "precision 0.67 vs 0.663"
+    },
+    {
+      "description": "any-contact Jaccard >= 0.4",
+      "id": "IH4",
+      "passed": true,
+      "value": "0.489"
+    }
+  ],
+  "extras": {
+    "after_fix": {
+      "precision": 0.67,
+      "recall": 0.645,
+      "tp_fp_fn": [
+        69,
+        34,
+        38
+      ]
+    },
+    "before_fix": {
+      "precision": 0.663,
+      "recall": 0.533,
+      "tp_fp_fn": [
+        57,
+        29,
+        50
+      ]
+    },
+    "n_complexes": 30,
+    "n_rows": 28,
+    "not_tested": [
+      "docked poses",
+      "experimental truth",
+      "water bridges"
+    ],
+    "recall_gain_bootstrap_95": [
+      0.059,
+      0.172
+    ]
+  },
+  "n_items": 30,
+  "protocol_version": "1.5",
+  "workflow": "Interactions held-out"
+}

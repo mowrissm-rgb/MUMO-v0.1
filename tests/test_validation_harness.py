@@ -433,6 +433,36 @@ class RoutingManifestTests(unittest.TestCase):
             server.stop()
 
 
+class FluxHeldoutHelperTests(unittest.TestCase):
+    def _rows(self, hits):
+        return {f'D{i}': {'n_refs': 4, 'hits': h, 'hits_top': h} for i, h in enumerate(hits)}
+
+    def test_recall_is_micro_averaged(self):
+        from validation.checks import fluxheldout
+        self.assertAlmostEqual(fluxheldout.recall(self._rows([1, 3])), 4 / 8)
+
+    def test_paired_gain_interval_is_positive_when_every_drug_gains(self):
+        from validation.checks import fluxheldout
+        old, new = self._rows([0, 1, 1, 0, 1]), self._rows([2, 2, 2, 1, 2])
+        lo, hi = fluxheldout.paired_gain_ci(old, new, 500, 7)
+        self.assertGreater(lo, 0)
+        self.assertLessEqual(lo, hi)
+
+    def test_paired_gain_interval_straddles_zero_when_nothing_changes(self):
+        from validation.checks import fluxheldout
+        same = self._rows([1, 2, 0, 1])
+        lo, hi = fluxheldout.paired_gain_ci(same, same, 200, 7)
+        self.assertEqual((lo, hi), (0.0, 0.0))
+
+    def test_manifest_new_rules_exist_in_the_rule_list(self):
+        import json
+        from agents import metabolism
+        manifest = json.loads((ROOT / 'validation' / 'manifests' / 'fluxheldout.json').read_text(encoding='utf-8'))
+        names = {r[0] for r in metabolism.ALL_RULES}
+        for rule in manifest['new_rule_names']:
+            self.assertIn(rule, names)
+
+
 class OrbitValenceTests(unittest.TestCase):
     def test_valence_electrons_not_all_electrons(self):
         from validation.checks import orbit
