@@ -1,0 +1,79 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 3,
+    "INCONCLUSIVE": 0,
+    "PASS": 17
+  },
+  "criteria": [
+    {
+      "description": "redocking success (RMSD < 2.0 A, expected ligand) rate >= 0.5",
+      "id": "D1",
+      "passed": true,
+      "value": "8/11 = 0.73 (Wilson 95% CI 0.43-0.90)"
+    },
+    {
+      "description": "identical RMSD on repeat (3 of 3)",
+      "id": "D2",
+      "passed": true,
+      "value": "3/3"
+    },
+    {
+      "description": "replica report internally consistent (3 of 3)",
+      "id": "D3",
+      "passed": true,
+      "value": "3/3"
+    },
+    {
+      "description": "bad input fails safely (3 of 3)",
+      "id": "D4",
+      "passed": true,
+      "value": "3/3"
+    }
+  ],
+  "extras": {
+    "cpu_count": 16,
+    "excluded_by_rule": [
+      {
+        "ligand": "AP5",
+        "pdb": "1AKE",
+        "reason": "ligand has more than 50 heavy atoms"
+      },
+      {
+        "ligand": "02J",
+        "pdb": "6LU7",
+        "reason": "ligand is covalently bound to the protein"
+      }
+    ],
+    "not_tested": [
+      "scoring power",
+      "screening power",
+      "cross-docking",
+      "AlphaFold/apo targets",
+      "ProLIF interaction analysis"
+    ],
+    "score_only_abs_diff_by_complex": {
+      "1STP": null,
+      "3PTB": null,
+      "4DFR": null
+    },
+    "settings": {
+      "exhaustiveness": 16,
+      "n_replicas": 3,
+      "seed": 42
+    },
+    "success_rate": 0.7272727272727273,
+    "vina_bytes": 1203712,
+    "vina_sha256": "b5a23b226ee5dc1b028df04082d13a7b0e5b9b12b988bbcf9498cb351e20b38f",
+    "vina_version": "1.2.5",
+    "wilson_95": [
+      0.4343497069897537,
+      0.9025411942607853
+    ],
+    "wrong_ligand_chosen": []
+  },
+  "n_items": 20,
+  "protocol_version": "0.7",
+  "workflow": "Pose"
+}

@@ -546,3 +546,87 @@ All of these run in-process. Specialist services are made "remote" by setting th
 **Recorded, no pass/fail.** Which routing cases failed and what they returned (a confusion table by category), the false triggers by message, runtimes, and the wording of the unavailable and referral messages.
 
 **Known limits.** The labelled set is small and written by one person. The outage tests simulate failure with unreachable addresses and a fake server, not a real crashed Pose container (the original failure, a segmentation fault, is not reproduced). The message wording is checked only for the named points. The registry docstring says the unavailable message "always says what is still available"; the code does not say so, and this check does not require it. The README promise that MUMO "keeps serving everything else" is tested by O3.
+
+---
+
+# Version 1.3 (draft), 2026-10-30. Flux held-out re-test of rules added after seeing failures. Earlier criteria are unchanged.
+
+## Flux held-out: do rules added from development misses generalise?
+
+**Why.** After the first Flux run (protocol v0.5) five new rules were added to `agents.metabolism` because they recover development misses. Re-testing them on the same data would only show the data they were fitted to. This protocol tests them once on drugs that were never examined.
+
+**Development data (seen, used to choose the rules).** The 66 drugs with one-step *human* records from the v0.5 run (`validation/runs/flux/20261029T101227Z/reference_snapshot.json`). The five rules were chosen by testing candidate rules against the misses on this set only. Rule inclusion criterion, fixed before looking at held-out data: a candidate rule is added only if it recovers **at least two** development misses. Candidates that recovered one or none (N-deethylation, desaturation, aromatic N-oxidation, N-glucuronidation of primary amines, sulfone formation, acyl glucuronidation, secondary-alcohol oxidation, deamination, amide N-hydroxylation) were **not** added, even where they are standard chemistry, because there is no development evidence for them.
+
+**The five added rules.** Methyl hydroxylation (recovered 14 development misses), ketone or aldehyde reduction (7), secondary amine N-hydroxylation (3), tertiary C-H hydroxylation (2), O-deethylation (2). Their weights (0.10 to 0.22) are relative ranking choices set by analogy with existing rules, not occurrence ratios from Ridder and Wagener (2008). The rules and weights are in `src/agents/metabolism.py` at the commit this protocol is tagged on; they are not to change before the held-out run.
+
+**Held-out data (never examined).** ChEMBL `metabolism` records whose organism is **not** `Homo sapiens` (rat, mouse, marmoset, dog, macaque, or unspecified species), where the substrate equals the drug (one-step edges), for drugs **not** in the development set, with both structures resolvable. The query found 132 drugs and 504 edges before structure filtering. This set was counted but its contents were not looked at.
+
+**Limits of the held-out set, stated up front.** Most records (413 of 504) have no species recorded, so this is not a human test. Reference completeness differs from the human set. Metabolic chemistry is shared across mammals but not identical, so a gain here supports generality of the added transformations, not human accuracy.
+
+**Method.** One run, same drugs, two rule sets: the *old* set is `ALL_RULES` without the five new rules, the *new* set is the current `ALL_RULES`. `predict_metabolites(smiles, depth=2, min_score=0.01, max_results=40)`. Matching, selection and metrics are as in protocol v0.5 (InChIKey connectivity block of the largest fragment; micro recall; score AUC with a drug-level bootstrap).
+
+**Check FH1, recall gain.** Held-out micro recall with the new rules minus with the old rules is at least 0.05, **and** the lower bound of a paired 95% bootstrap interval of that difference (resampling drugs, 2000 resamples, seed 20261030) is above 0.
+**Check FH2, ranking signal kept.** The new-rule score AUC lower bound (drug-level bootstrap, as in v0.5) is above 0.5.
+**Check FH3, no burying.** Held-out top-10 micro recall with the new rules is no more than 0.02 below that with the old rules (more rules must not push hits out of the top of the list).
+**Check FH4, integrity.** For every held-out drug under the new rules: every SMILES parses, no duplicates and the parent not listed, scores in (0, 1] and descending, `generation` equals pathway length, and two runs are identical. The three fault inputs (invalid SMILES, empty SMILES, `depth=0`) each return an error record without raising.
+- Pass for each of FH1 to FH4 as stated. All thresholds are methodological choices fixed before the run.
+
+**Recorded, no pass/fail.** Old and new recall, top-10 recall and AUC on the held-out set and on the development set (development numbers must not be quoted as evidence); mean predictions per drug and drugs that reach the 400-metabolite ceiling, old versus new; held-out recall split by unspecified-species versus named-species records; the hits recovered by each new rule; drugs whose structures could not be resolved.
+
+**Known limits.** Ten more rules could be added without end. This test says whether these five generalise, not whether the rule set is good. A positive result here does not extend to the human-specific claims of protocol v0.5.
+
+---
+
+# Version 1.4 (draft), 2026-10-30. Atlas pocket detector: development comparison and held-out test. Earlier criteria are unchanged.
+
+## Pocket detector: does anything beat the original, and how does the original do on unseen complexes?
+
+**Why.** In protocol v0.6 the geometric pocket detector found the ligand site (centre within 4 angstrom) in 5 of 13 complexes, below the 0.5 floor. Any change tuned on those 13 would be scored on the data it was tuned on. So: develop on those 13 only, then test once on complexes chosen by a fixed rule.
+
+**Development set (seen).** The 13 complexes of protocol v0.6. Candidate changes were compared there only. Adoption rule, fixed before the comparison: a change replaces the default only if it adds **at least 2** successes over the original (5 of 13, so 7 or more).
+
+**Development outcome (recorded in `manifests/pocketheldout.json`).** Four cavity rankings (largest cluster, summed burial, size times squared burial, capped size times burial) all scored 5 of 13, and top-3 equalled top-1. Eight detection settings: original 5/13; burial threshold 0.60 5/13; 0.55 4/13; 0.50 2/13; link distance 2.6 5/13; threshold 0.55 with link 2.6 3/13; burial radius 14 6/13; threshold 0.55 with summed-burial ranking 4/13. **No change reached the adoption threshold, so no default was changed.** The only code change is a refactor: `detect_pockets` returns a ranked list and `detect_pocket` still returns the best one with unchanged defaults.
+
+**Held-out set (never examined by the detector).** 40 entries chosen by this rule: RCSB search for X-ray structures with resolution at most 2.0 angstrom, exactly one polymer entity of 150 to 450 residues, exactly one non-polymer entity, released before 2020 (7,674 hits); shuffled with seed 20261030; take entries in that order, skipping the 13 development entries and any whose single hetero code is a listed additive (`src/crystal_additives.py`) or whose first ligand residue has fewer than 15 or more than 45 heavy atoms; stop at 40. The list is frozen in the manifest. One bound used while querying (a molecular-weight filter) returned no hits and was dropped before any selection; ligand size is checked from the structure file instead.
+
+**Method.** As in protocol v0.6, part P: the protein ATOM records of the first model are passed to the detector with default parameters; the reference point is the heavy-atom centroid of the first residue with the ligand code; success is a centre-to-centre distance of at most 4.0 angstrom for the top-ranked pocket. The baseline is the protein-atom centroid scored the same way.
+
+**Check PH1, success rate.** Success rate of the unchanged detector of at least 0.5.
+**Check PH2, beats guessing.** Strictly more successes than the protein-centroid baseline.
+**Check PH3, coverage.** The detector returns a pocket (not an empty result) for at least 90% of complexes.
+- The 0.5 floor repeats the one fixed in v0.6, so a second miss would be a genuine second finding, not a re-tuned bar.
+
+**Recorded, no pass/fail.** Wilson 95% interval of the success rate; top-3 success; the success rate of the best development variant (burial radius 14) on the same complexes (it missed the adoption threshold, so this is descriptive and not a recommendation); every distance, box size and whether the ligand centroid lies inside the predicted box; ligand size and protein size against success.
+
+**Known limits.** Complexes are single-chain, single-ligand, high-resolution structures, an easier population than typical docking targets, so the rate probably overstates real use. Only the top-ranked pocket is scored, because MUMO docks into one box. P2Rank was not run (Java missing).
+
+**Addendum 0.9b (written after the second Interactions run, disclosed as such).** The first run failed I1 on H-bond recall (0.463, precision 0.679). A diagnosis of the 11 PLIP H-bonds that MUMO missed in 8 complexes found 8 within 3.5 angstrom of a ligand atom but rejected because RDKit places hydroxyl and amino hydrogens at arbitrary torsions, 2 slightly beyond 3.5 angstrom, and 1 a histidine whose tautomer is fixed arbitrarily. The fix turns rotatable donor hydrogens (terminal OH, SH, sp3 NH2/NH3) toward an acceptor of the other molecule within 3.5 angstrom, as Reduce and PLIP do; the 130 degree angle and 3.5 angstrom limits are unchanged. Second run (`runs/interactions/20261031T063417Z`): H-bond precision 0.743, recall 0.634, any-contact Jaccard 0.509; I1 passes, I2 119/119, I3 10/11 and I4 2/2 unchanged. **These 11 complexes are the development set for this fix, since the failures were diagnosed on them, so the I1 pass is not an independent result.** A held-out re-test on fresh complexes is still required before the manuscript cites the new numbers. The histidine tautomer and the 3.5 angstrom limit were not changed.
+
+## Version 1.5: Interactions held-out re-test of the donor-hydrogen orientation fix
+
+Frozen before any held-out complex was analysed. Tag `validation-protocol-v1.5`.
+
+**Why.** The fix in Addendum 0.9b was designed after diagnosing missed H-bonds on the 11 complexes of protocol v0.9. Its I1 pass on those 11 is therefore a development result. This version measures it on complexes the fix was never designed on.
+
+**Held-out set.** 30 entries chosen by this rule (script `scripts/select_interactions_heldout.py`, which only selects and never runs MUMO): the RCSB query of protocol v1.4 (X-ray, resolution at most 2.0 angstrom, one polymer entity of 150 to 450 residues, one non-polymer entity, released before 2020; 7,674 hits), shuffled with seed 20261031; take entries in that order, skipping the 11 development entries of v0.9, any whose single hetero code is in `src/crystal_additives.py`, and any whose first ligand residue has fewer than 15 or more than 45 heavy atoms; stop at 30. The list, with the 78 entries skipped on the way, is frozen in `manifests/interactionsheldout.json`.
+
+**Method.** As in protocol v0.9: crystal ligand pose rebuilt from the deposited SMILES at pH 7.4, cleaned protein, PLIP 3.0.0 on the raw file as comparator, contacts compared at residue level. The identity-guard handling of Addendum 0.9a applies from the start. Every complex is analysed **twice with identical preparation**: once with the hydrogen-orientation step switched off (the code before the fix) and once with it on (the shipped code). Only H-bond residues are scored for the fix; any-contact agreement is a sanity check.
+
+**Counting rules.** Pooled true positives, false positives and false negatives over all complexes. A complex whose preparation or MUMO analysis fails counts as an error and its PLIP H-bond residues enter the denominators as false negatives for both arms. A complex where PLIP itself fails has no reference and cannot be counted; those are listed, not hidden.
+
+**Check IH1, floors.** H-bond precision at least 0.6 **and** recall at least 0.6 for the shipped code. These are the floors of check I1, not re-tuned.
+**Check IH2, the fix helps.** Strictly more true positives with orientation on than off.
+**Check IH3, precision cost.** Precision with orientation on is at least the precision with it off minus 0.05.
+**Check IH4, sanity.** Any-contact Jaccard at least 0.4, as in I1.
+
+**Recorded, no pass/fail.** Recall and precision of both arms; a paired bootstrap 95% interval (2,000 resamples over complexes, seed 20261031) of the recall gain; per-complex counts.
+
+**Commitments.** Whatever the outcome is recorded here and in `RESULTS.md`, including a failure. The code is not changed to rescue a failed floor on this set; if the held-out set fails, any later change needs another fresh set. Failed or errored complexes are not replaced.
+
+**Known limits.** The set is single-ligand, high-resolution complexes, an easier population than typical docking targets. PLIP is a geometric detector, not experimental truth, so agreement with it is not a measure of correctness. Histidine tautomers and water bridges are not addressed by the fix and may cost recall here too.
+
+**Result of v1.5 (run `runs/interactionsheldout/20261031T092556Z`, code at commit 4500fa4).** IH1 pass: precision 0.670, recall 0.645 (tp 69, fp 34, fn 38). IH2 pass: true positives 69 with orientation against 57 without (recall 0.645 against 0.533; paired bootstrap 95% interval of the recall gain +0.059 to +0.172). IH3 pass: precision 0.670 against 0.663. IH4 pass: any-contact Jaccard 0.489. 25 complexes ran, 5 errored. Two errors happened before a PLIP reference existed and so cannot be scored (2QXI: ligand template matching failed; 1LLO: PLIP produced no interaction set); three were MUMO failures and are counted as missed H-bonds in both arms (6R67 and 2B54: "Receptor preparation missing or does not match input"; 3QVH: "Python integer -8 out of bounds for uint32"). No complex was replaced and no code was changed after the run. The three MUMO failures are product defects that the fix does not touch and are carried forward as open items.
+
+**Addendum 1.5a (written after the v1.5 result, disclosed as such).** The three MUMO failures were investigated and have three different causes. (1) 3QVH has a residue numbered -8 (expression tag); ProLIF stores residue numbers as unsigned integers and raised an overflow. MUMO now shifts residue numbers for ProLIF only and reports the numbers of the input file. (2) 2B54 carries deposited hydrogens at impossible distances (an arginine hydrogen 1.5 angstrom from CZ), so RDKit bonded them and the residue had five bonds on one atom; MUMO now retries once without the deposited hydrogens and adds its own. These two fixes only change inputs that failed before. (3) 6R67 fails because the cleaner keeps conformer A of every residue and the A conformers of Lys15 and Met13 are mutually exclusive in the crystal (NZ and CE 1.44 angstrom apart); this one is **not fixed**, because the cleaner is shared with docking and choosing a different conformer rule is a design decision. The three complexes were re-run once after fixes 1 and 2 (`manifests/interactionsheldout_rerun3.json`, `runs/interactionsheldout/20261031T094730Z`): 3QVH and 2B54 now analyse (H-bond true positives 8 with orientation, 3 without, over the three complexes; false positive 1), 6R67 still errors. **The registered v1.5 result above is unchanged and remains the result of record;** this re-run is post-hoc, was not pre-registered, and its numbers are not pooled into it. An earlier intermediate run of the same three complexes (after fix 1 was only half correct) was discarded.
+
+**Addendum 1.5b (written after Addendum 1.5a).** The 6R67 failure was fixed by changing the receptor cleaner (`docking_engine.clean_protein_pdb`, shared with docking) to keep, for each residue with alternate conformers, the one with the highest summed occupancy (ties to 'A') and to blank the conformer label in its output, instead of keeping conformer 'A' of every residue. Re-run of the three complexes (`runs/interactionsheldout/20261031T094909Z`): all three analyse (H-bond true positives 8 with orientation, 3 without, over the three; false positive 1); PLIP reports no H-bonds on 6R67, so it does not move the scores. Because the cleaner is shared, Pose docking and Interactions were re-run on their original 11 complexes: Pose D1 is unchanged at 8/11 (the three misses, 1HSG 11.38, 1M17 7.83 and 4DFR 5.91 angstrom, are identical to the earlier run; `runs/pose/20261031T094927Z`), and Interactions I1 is unchanged (precision 0.743, recall 0.634, Jaccard 0.509; `runs/interactions/20261031T101332Z`). The registered v1.5 result is still the result of record; this is a post-hoc check.

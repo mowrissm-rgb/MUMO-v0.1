@@ -1,0 +1,4 @@
+item,status,details_json
+IH:6R67/JTE,PASS,"{""identity_guard_bypassed"": false, ""mumo_off"": [0, 0, 0], ""mumo_on"": [0, 0, 0], ""plip_hbond_residues"": 0}"
+IH:3QVH/ADP,PASS,"{""identity_guard_bypassed"": true, ""mumo_off"": [2, 1, 4], ""mumo_on"": [5, 1, 1], ""plip_hbond_residues"": 6}"
+IH:2B54/D05,PASS,"{""identity_guard_bypassed"": false, ""mumo_off"": [1, 0, 2], ""mumo_on"": [3, 0, 0], ""plip_hbond_residues"": 3}"

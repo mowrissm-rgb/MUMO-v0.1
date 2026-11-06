@@ -1,0 +1,56 @@
+{
+  "all_criteria_passed": false,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 27,
+    "INCONCLUSIVE": 0,
+    "PASS": 13
+  },
+  "criteria": [
+    {
+      "description": "unchanged detector success rate >= 0.5",
+      "id": "PH1",
+      "passed": false,
+      "value": "13/40 = 0.33 (Wilson 95% CI 0.20-0.48)"
+    },
+    {
+      "description": "strictly more successes than the protein-centroid baseline",
+      "id": "PH2",
+      "passed": true,
+      "value": "13/40 detector vs 2/40 centroid"
+    },
+    {
+      "description": "a pocket is returned for >= 0.9 of complexes",
+      "id": "PH3",
+      "passed": true,
+      "value": "39/40"
+    }
+  ],
+  "extras": {
+    "baseline_successes": 2,
+    "box_contains_ligand_centroid": 27,
+    "development_summary": {
+      "burial_R 14": "6/13",
+      "burial_min 0.50": "2/13",
+      "burial_min 0.55": "4/13",
+      "burial_min 0.55 + burial_sum": "4/13",
+      "burial_min 0.55 + link 2.6": "3/13",
+      "burial_min 0.60": "5/13",
+      "link 2.6": "5/13",
+      "original": "5/13",
+      "rankings (size, burial_sum, burial_sq, capped_size_burial)": "all 5/13"
+    },
+    "n": 40,
+    "note": "No default was changed after the development comparison; the variant is descriptive only.",
+    "success_top1": 13,
+    "success_top3": 17,
+    "variant_burial_R_14_successes": 15,
+    "wilson_95": [
+      0.20084316962661725,
+      0.4798254191110201
+    ]
+  },
+  "n_items": 40,
+  "protocol_version": "1.4",
+  "workflow": "Atlas pocket held-out"
+}

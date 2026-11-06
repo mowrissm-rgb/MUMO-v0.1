@@ -68,6 +68,79 @@ class ChemicalFixtures(unittest.TestCase):
                 lig, _prot, files = agent._export_prepared(ligand, protein, str(Path(directory)/'complex.pdb'))
                 self.assertEqual(lig.GetNumAtoms(), ligand.GetNumAtoms(), smiles)
 
+    def _methanol_and_acceptor(self, distance=2.7):
+        """Methanol (donor) and formaldehyde (acceptor) with the acceptor 2.7 A from the hydroxyl
+        oxygen, perpendicular to the C-O bond and on the side OPPOSITE to where the hydrogen now
+        points: reachable by turning the hydroxyl, but wrong as built."""
+        import numpy as np
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+        from rdkit.Geometry import Point3D
+        ligand = Chem.AddHs(Chem.MolFromSmiles('CO'))
+        AllChem.EmbedMolecule(ligand, randomSeed=5)
+        acceptor = Chem.AddHs(Chem.MolFromSmiles('C=O'))
+        AllChem.EmbedMolecule(acceptor, randomSeed=6)
+        lc, ac = ligand.GetConformer(), acceptor.GetConformer()
+        o = next(a for a in ligand.GetAtoms() if a.GetSymbol() == 'O')
+        h = next(n for n in o.GetNeighbors() if n.GetAtomicNum() == 1)
+        c = next(n for n in o.GetNeighbors() if n.GetAtomicNum() == 6)
+        po, ph = np.array(lc.GetAtomPosition(o.GetIdx())), np.array(lc.GetAtomPosition(h.GetIdx()))
+        axis = po - np.array(lc.GetAtomPosition(c.GetIdx()))
+        axis = axis / np.linalg.norm(axis)
+        h_vec = ph - po
+        h_perp = h_vec - np.dot(h_vec, axis) * axis
+        away = -h_perp / np.linalg.norm(h_perp)
+        ao = next(a for a in acceptor.GetAtoms() if a.GetSymbol() == 'O').GetIdx()
+        shift = (po + distance * away) - np.array(ac.GetAtomPosition(ao))
+        for i in range(acceptor.GetNumAtoms()):
+            ac.SetAtomPosition(i, Point3D(*(np.array(ac.GetAtomPosition(i)) + shift)))
+        return ligand, acceptor, o.GetIdx(), h.GetIdx(), ao
+
+    @staticmethod
+    def _dha_angle(ligand, acceptor, o, h, ao):
+        import math
+        import numpy as np
+        lc, ac = ligand.GetConformer(), acceptor.GetConformer()
+        d, hh, a = (np.array(lc.GetAtomPosition(o)), np.array(lc.GetAtomPosition(h)),
+                    np.array(ac.GetAtomPosition(ao)))
+        u, v = d - hh, a - hh
+        return math.degrees(math.acos(float(np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v)))))
+
+    def test_hydroxyl_hydrogen_is_turned_toward_a_nearby_acceptor(self):
+        # Found by the Pose-interactions validation: 8 of 11 missed H-bonds were within 3.5 A but
+        # the donor hydrogen pointed the wrong way, so ProLIF's angle test rejected them.
+        import numpy as np
+        ligand, acceptor, o, h, ao = self._methanol_and_acceptor()
+        before = self._dha_angle(ligand, acceptor, o, h, ao)
+        lc = ligand.GetConformer()
+        bond_before = float(np.linalg.norm(np.array(lc.GetAtomPosition(o)) - np.array(lc.GetAtomPosition(h))))
+        self.assertLess(before, 100.0)
+        self.assertEqual(agent._orient_donor_hydrogens(ligand, acceptor), 1)
+        after = self._dha_angle(ligand, acceptor, o, h, ao)
+        bond_after = float(np.linalg.norm(np.array(lc.GetAtomPosition(o)) - np.array(lc.GetAtomPosition(h))))
+        self.assertGreaterEqual(after, 130.0)               # ProLIF's donor-hydrogen-acceptor minimum
+        self.assertAlmostEqual(bond_before, bond_after, places=6)   # bond length untouched
+
+    def test_hydrogens_are_not_moved_when_no_acceptor_is_near(self):
+        ligand, acceptor, o, h, ao = self._methanol_and_acceptor(distance=6.0)
+        from rdkit.Geometry import Point3D  # noqa: F401
+        before = [tuple(ligand.GetConformer().GetAtomPosition(i)) for i in range(ligand.GetNumAtoms())]
+        self.assertEqual(agent._orient_donor_hydrogens(ligand, acceptor), 0)
+        after = [tuple(ligand.GetConformer().GetAtomPosition(i)) for i in range(ligand.GetNumAtoms())]
+        self.assertEqual(before, after)
+
+    def test_planar_nh_is_never_rotated(self):
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+        mol = Chem.AddHs(Chem.MolFromSmiles('CC(=O)Nc1ccccc1'))      # amide N-H and aniline-type N
+        AllChem.EmbedMolecule(mol, randomSeed=3)
+        names = {mol.GetAtomWithIdx(d).GetSymbol() for d, _a, _h in agent._rotatable_donor_groups(mol)}
+        self.assertNotIn('N', names)
+
+    def test_run_uses_a_copy_of_the_shared_receptor(self):
+        source = (Path(__file__).parents[1] / 'src/agents/interaction_analyst.py').read_text(encoding='utf-8')
+        self.assertIn('prot_work = Chem.Mol(ctx["prot_mol"])', source)
+
     def test_acceptor_acceptor_proximity_is_not_hbond(self):
         from rdkit import Chem
         from rdkit.Geometry import Point3D

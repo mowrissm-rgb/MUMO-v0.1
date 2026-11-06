@@ -1,0 +1,27 @@
+{
+  "created_utc": "20261030T173148Z",
+  "git": {
+    "branch": "docs/validation-manuscript-plan",
+    "commit": "3f169a8ff358ad692da88aae5d9c76f004ae72e3",
+    "dirty_files": [],
+    "protocol_tag": "validation-protocol-v1.4"
+  },
+  "manifest": {
+    "path": "validation\\manifests\\pocketheldout.json",
+    "sha256": "2f4ca1c9265dd755ad6a90e120485f4b3ae46afde52823093e901e35b3f498bb"
+  },
+  "packages": {
+    "pandas": "3.0.3",
+    "python-docx": "1.2.0",
+    "rdkit": "2025.9.6",
+    "requests": "2.34.2"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "protocol": {
+    "path": "validation/PROTOCOL.md",
+    "sha256": "3b51ca19b44a80c3720d1144a688633eec7301b6ebbcc6135958b9253c03e7fb"
+  },
+  "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+  "seeds": "none: checks are deterministic given the recorded inputs",
+  "wall_seconds": 34.39
+}

@@ -82,6 +82,25 @@ PHASE_I = [
     ("Aromatic ring dihydrodiol",
      "[cH:1][cH:2]>>[C:1]([OX2H])[C:2][OX2H]", 0.05,
      "Ring oxidation to a dihydrodiol, via the epoxide."),
+    # ── added 2026-10-30 from the validation's DEVELOPMENT set (human one-step ChEMBL records) ──
+    # Each recovers at least two reference metabolites there; the weights are relative ranking
+    # choices set by analogy with the rules above, not occurrence ratios from the paper. They are
+    # evaluated once on a held-out set (validation/PROTOCOL.md, version 1.3).
+    ("Methyl hydroxylation",
+     "[CH3;$([CH3][#6]):1]>>[CH2:1][OX2H]", 0.20,
+     "A C-methyl group is oxidised to a hydroxymethyl group."),
+    ("Ketone or aldehyde reduction",
+     "[CX3;!$(C(=O)[O,N]):1]=[OX1]>>[CX4H:1][OX2H]", 0.18,
+     "A carbonyl reductase turns a ketone or aldehyde into an alcohol."),
+    ("Tertiary C-H hydroxylation",
+     "[CX4H1;!$(C[OX2,NX3]):1]>>[CX4:1][OX2H]", 0.12,
+     "A tertiary C-H bond is oxidised to a tertiary alcohol."),
+    ("Secondary amine N-hydroxylation",
+     "[NX3H1;!$(N-C=O);!$(N-S=O):1]>>[NX3:1][OX2H]", 0.10,
+     "A secondary amine is oxidised to a hydroxylamine."),
+    ("O-deethylation",
+     "[c,C:1]-[OX2]-[CH2]-[CH3]>>[c,C:1]-[OX2H]", 0.22,
+     "An ethyl ether is cleaved to the free phenol or alcohol."),
 ]
 
 # ── phase II: conjugation ─────────────────────────────────────────────────

@@ -1,0 +1,263 @@
+{
+ "workflow": "Atlas pocket held-out",
+ "protocol_version": "1.4",
+ "source": "RCSB PDB entries chosen by a fixed query and a seeded sample (see PROTOCOL.md v1.4)",
+ "licence": "CC0 (PDB)",
+ "selection": {
+  "seed": 20261030,
+  "query_hits": 7674,
+  "query": {
+   "query": {
+    "type": "group",
+    "logical_operator": "and",
+    "nodes": [
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "exptl.method",
+       "operator": "exact_match",
+       "value": "X-RAY DIFFRACTION"
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.resolution_combined",
+       "operator": "less_or_equal",
+       "value": 2.0
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.polymer_entity_count",
+       "operator": "equals",
+       "value": 1
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.nonpolymer_entity_count",
+       "operator": "equals",
+       "value": 1
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.deposited_polymer_monomer_count",
+       "operator": "range",
+       "value": {
+        "from": 150,
+        "to": 450,
+        "include_lower": true,
+        "include_upper": true
+       }
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_accession_info.initial_release_date",
+       "operator": "less",
+       "value": "2020-01-01"
+      }
+     }
+    ]
+   },
+   "return_type": "entry",
+   "request_options": {
+    "return_all_hits": true
+   }
+  }
+ },
+ "dcc_threshold_angstrom": 4.0,
+ "min_success_rate": 0.5,
+ "min_coverage": 0.9,
+ "descriptive_variant": {
+  "name": "burial_R 14",
+  "kwargs": {
+   "burial_R": 14.0
+  }
+ },
+ "development_summary": {
+  "original": "5/13",
+  "burial_R 14": "6/13",
+  "burial_min 0.60": "5/13",
+  "burial_min 0.55": "4/13",
+  "burial_min 0.50": "2/13",
+  "link 2.6": "5/13",
+  "burial_min 0.55 + link 2.6": "3/13",
+  "burial_min 0.55 + burial_sum": "4/13",
+  "rankings (size, burial_sum, burial_sq, capped_size_burial)": "all 5/13"
+ },
+ "complexes": [
+  {
+   "pdb": "3FUW",
+   "ligand": "MTA"
+  },
+  {
+   "pdb": "3PX9",
+   "ligand": "JP3"
+  },
+  {
+   "pdb": "3CS6",
+   "ligand": "0CO"
+  },
+  {
+   "pdb": "4QGX",
+   "ligand": "LMC"
+  },
+  {
+   "pdb": "5FQT",
+   "ligand": "7QN"
+  },
+  {
+   "pdb": "2NYU",
+   "ligand": "SAM"
+  },
+  {
+   "pdb": "1F2C",
+   "ligand": "VS4"
+  },
+  {
+   "pdb": "6ANL",
+   "ligand": "T75"
+  },
+  {
+   "pdb": "5MYS",
+   "ligand": "YP6"
+  },
+  {
+   "pdb": "3RBA",
+   "ligand": "COD"
+  },
+  {
+   "pdb": "3IMW",
+   "ligand": "IW6"
+  },
+  {
+   "pdb": "4OUK",
+   "ligand": "C63"
+  },
+  {
+   "pdb": "2BVD",
+   "ligand": "ISX"
+  },
+  {
+   "pdb": "5EKO",
+   "ligand": "N17"
+  },
+  {
+   "pdb": "6CI4",
+   "ligand": "F5P"
+  },
+  {
+   "pdb": "3W0Y",
+   "ligand": "DS4"
+  },
+  {
+   "pdb": "5GT4",
+   "ligand": "2KB"
+  },
+  {
+   "pdb": "5V82",
+   "ligand": "96Y"
+  },
+  {
+   "pdb": "6HOD",
+   "ligand": "GHK"
+  },
+  {
+   "pdb": "2UV7",
+   "ligand": "AMP"
+  },
+  {
+   "pdb": "5E4O",
+   "ligand": "L57"
+  },
+  {
+   "pdb": "5LRL",
+   "ligand": "73S"
+  },
+  {
+   "pdb": "6P3N",
+   "ligand": "SAM"
+  },
+  {
+   "pdb": "5AUW",
+   "ligand": "QUE"
+  },
+  {
+   "pdb": "1TKG",
+   "ligand": "SSA"
+  },
+  {
+   "pdb": "6ES8",
+   "ligand": "IHP"
+  },
+  {
+   "pdb": "3I7E",
+   "ligand": "DJR"
+  },
+  {
+   "pdb": "3ACX",
+   "ligand": "673"
+  },
+  {
+   "pdb": "4CGA",
+   "ligand": "QLW"
+  },
+  {
+   "pdb": "4DUH",
+   "ligand": "RLI"
+  },
+  {
+   "pdb": "3KI1",
+   "ligand": "G9F"
+  },
+  {
+   "pdb": "5ZA8",
+   "ligand": "27I"
+  },
+  {
+   "pdb": "4U93",
+   "ligand": "990"
+  },
+  {
+   "pdb": "4MNS",
+   "ligand": "2AX"
+  },
+  {
+   "pdb": "1K2V",
+   "ligand": "DEF"
+  },
+  {
+   "pdb": "3GS7",
+   "ligand": "8BD"
+  },
+  {
+   "pdb": "3G0E",
+   "ligand": "B49"
+  },
+  {
+   "pdb": "5VIQ",
+   "ligand": "BLA"
+  },
+  {
+   "pdb": "5U4E",
+   "ligand": "XLB"
+  },
+  {
+   "pdb": "5ET8",
+   "ligand": "F6P"
+  }
+ ]
+}

@@ -1,0 +1,419 @@
+{
+ "workflow": "Interactions held-out: post-hoc re-run of the 3 MUMO failures after fixes (not the registered result)",
+ "protocol_version": "1.5",
+ "source": "RCSB PDB entries chosen by a fixed query and a seeded sample (see PROTOCOL.md v1.5); PLIP 3.0.0 as comparator",
+ "licence": "CC0 (PDB); PLIP is GPL-2.0 (comparator only, not shipped with MUMO)",
+ "selection": {
+  "seed": 20261031,
+  "query_hits": 7674,
+  "query": {
+   "query": {
+    "type": "group",
+    "logical_operator": "and",
+    "nodes": [
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "exptl.method",
+       "operator": "exact_match",
+       "value": "X-RAY DIFFRACTION"
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.resolution_combined",
+       "operator": "less_or_equal",
+       "value": 2.0
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.polymer_entity_count",
+       "operator": "equals",
+       "value": 1
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.nonpolymer_entity_count",
+       "operator": "equals",
+       "value": 1
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_entry_info.deposited_polymer_monomer_count",
+       "operator": "range",
+       "value": {
+        "from": 150,
+        "to": 450,
+        "include_lower": true,
+        "include_upper": true
+       }
+      }
+     },
+     {
+      "type": "terminal",
+      "service": "text",
+      "parameters": {
+       "attribute": "rcsb_accession_info.initial_release_date",
+       "operator": "less",
+       "value": "2020-01-01"
+      }
+     }
+    ]
+   },
+   "return_type": "entry",
+   "request_options": {
+    "return_all_hits": true
+   }
+  },
+  "skipped_before_selection": [
+   [
+    "3MW8",
+    "additive EDO"
+   ],
+   [
+    "9PAP",
+    "MOH has 2 heavy atoms"
+   ],
+   [
+    "4NNO",
+    "additive ZN"
+   ],
+   [
+    "5UUI",
+    "MTN has 12 heavy atoms"
+   ],
+   [
+    "1BSR",
+    "additive SO4"
+   ],
+   [
+    "3KJH",
+    "additive ZN"
+   ],
+   [
+    "3H57",
+    "additive HEM"
+   ],
+   [
+    "2H3G",
+    "additive EDO"
+   ],
+   [
+    "5KDI",
+    "6S8 has 51 heavy atoms"
+   ],
+   [
+    "1GNY",
+    "additive NA"
+   ],
+   [
+    "4RQM",
+    "additive ZN"
+   ],
+   [
+    "1VL1",
+    "additive CIT"
+   ],
+   [
+    "3OUL",
+    "additive MN"
+   ],
+   [
+    "6MZO",
+    "additive GOL"
+   ],
+   [
+    "5NOS",
+    "92Z has 8 heavy atoms"
+   ],
+   [
+    "4U2B",
+    "additive SO4"
+   ],
+   [
+    "2W18",
+    "additive GOL"
+   ],
+   [
+    "1OEJ",
+    "additive NI"
+   ],
+   [
+    "4GHN",
+    "additive GOL"
+   ],
+   [
+    "5D1V",
+    "additive HEM"
+   ],
+   [
+    "2CEI",
+    "additive ZN"
+   ],
+   [
+    "3NH6",
+    "BME has 4 heavy atoms"
+   ],
+   [
+    "4FZP",
+    "IUM has 3 heavy atoms"
+   ],
+   [
+    "1RGH",
+    "additive SO4"
+   ],
+   [
+    "2E6M",
+    "additive SO4"
+   ],
+   [
+    "1UJP",
+    "additive CIT"
+   ],
+   [
+    "3CKG",
+    "additive MG"
+   ],
+   [
+    "5EKT",
+    "FLC has 13 heavy atoms"
+   ],
+   [
+    "1WOZ",
+    "POG has 6 heavy atoms"
+   ],
+   [
+    "3SJS",
+    "additive CA"
+   ],
+   [
+    "1MUG",
+    "additive SO4"
+   ],
+   [
+    "1UT7",
+    "AU has 1 heavy atoms"
+   ],
+   [
+    "4FBI",
+    "additive GOL"
+   ],
+   [
+    "5JB4",
+    "additive SO4"
+   ],
+   [
+    "2XET",
+    "additive SO4"
+   ],
+   [
+    "6GMF",
+    "additive HEM"
+   ],
+   [
+    "4U7Q",
+    "3EM has 114 heavy atoms"
+   ],
+   [
+    "5J1U",
+    "P93 has 14 heavy atoms"
+   ],
+   [
+    "3K0Z",
+    "NHE has 13 heavy atoms"
+   ],
+   [
+    "2NOG",
+    "additive MG"
+   ],
+   [
+    "1KSD",
+    "additive CA"
+   ],
+   [
+    "1PSR",
+    "HO has 1 heavy atoms"
+   ],
+   [
+    "5W38",
+    "FLC has 13 heavy atoms"
+   ],
+   [
+    "5AZ3",
+    "additive HEM"
+   ],
+   [
+    "1M2D",
+    "FES has 4 heavy atoms"
+   ],
+   [
+    "3WJD",
+    "additive GOL"
+   ],
+   [
+    "5AC6",
+    "additive SO4"
+   ],
+   [
+    "1HVK",
+    "A79 has 58 heavy atoms"
+   ],
+   [
+    "3HBO",
+    "2NC has 54 heavy atoms"
+   ],
+   [
+    "2E2O",
+    "BGC has 12 heavy atoms"
+   ],
+   [
+    "4E98",
+    "additive CL"
+   ],
+   [
+    "6QYB",
+    "CU1 has 1 heavy atoms"
+   ],
+   [
+    "2Z4P",
+    "ILE has 9 heavy atoms"
+   ],
+   [
+    "6E71",
+    "additive PEG"
+   ],
+   [
+    "6MK9",
+    "7O7 has 92 heavy atoms"
+   ],
+   [
+    "5NMZ",
+    "additive GOL"
+   ],
+   [
+    "5B0F",
+    "additive GOL"
+   ],
+   [
+    "5D2T",
+    "6VP has 12 heavy atoms"
+   ],
+   [
+    "1RSY",
+    "additive SO4"
+   ],
+   [
+    "5CLY",
+    "additive GOL"
+   ],
+   [
+    "5K26",
+    "additive MES"
+   ],
+   [
+    "3N38",
+    "additive FE2"
+   ],
+   [
+    "5XG2",
+    "MPD has 8 heavy atoms"
+   ],
+   [
+    "3SOJ",
+    "additive SO4"
+   ],
+   [
+    "3S3Z",
+    "additive NA"
+   ],
+   [
+    "4DD1",
+    "MEB has 4 heavy atoms"
+   ],
+   [
+    "5JK4",
+    "additive PO4"
+   ],
+   [
+    "3M72",
+    "additive BOG"
+   ],
+   [
+    "3ZXN",
+    "additive SCN"
+   ],
+   [
+    "3AKB",
+    "additive CA"
+   ],
+   [
+    "6IHU",
+    "additive MG"
+   ],
+   [
+    "4RTT",
+    "additive SO4"
+   ],
+   [
+    "5XP0",
+    "additive MG"
+   ],
+   [
+    "4P82",
+    "additive SO4"
+   ],
+   [
+    "1YTT",
+    "YB has 1 heavy atoms"
+   ],
+   [
+    "2YJM",
+    "NHE has 13 heavy atoms"
+   ],
+   [
+    "4LK8",
+    "CO has 1 heavy atoms"
+   ],
+   [
+    "6PKF",
+    "additive GOL"
+   ]
+  ]
+ },
+ "ph": 7.4,
+ "complexes": [
+  {
+   "pdb": "6R67",
+   "ligand": "JTE",
+   "heavy_atoms": 20
+  },
+  {
+   "pdb": "3QVH",
+   "ligand": "ADP",
+   "heavy_atoms": 27
+  },
+  {
+   "pdb": "2B54",
+   "ligand": "D05",
+   "heavy_atoms": 30
+  }
+ ],
+ "hbond_min_precision": 0.6,
+ "hbond_min_recall": 0.6,
+ "any_contact_min_jaccard": 0.4,
+ "max_precision_loss": 0.05,
+ "bootstrap_seed": 20261031,
+ "bootstrap_resamples": 2000
+}

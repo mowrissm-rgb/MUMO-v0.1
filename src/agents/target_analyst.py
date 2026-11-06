@@ -286,8 +286,32 @@ def _box_from_points(points, padding=5.0, min_size=16.0, max_size=22.0):
     return center, (round(size, 1), round(size, 1), round(size, 1))
 
 
-def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
-                  link=3.2, min_pts=12, pad=5.0, min_size=16.0, max_size=22.0):
+POCKET_RANKING = "size"       # how detected cavities are ranked; see _POCKET_SCORES
+
+
+def _pocket_score(ranking, n_points, burial_values):
+    """Score one cavity cluster. 'size' is the original rule (largest cluster wins)."""
+    mean = float(burial_values.mean())
+    if ranking == "size":
+        return float(n_points)
+    if ranking == "burial_sum":
+        return float(burial_values.sum())
+    if ranking == "burial_sq":
+        return n_points * mean * mean
+    if ranking == "capped_size_burial":
+        return min(n_points, 200) * mean
+    raise ValueError(f"unknown pocket ranking {ranking!r}")
+
+
+def detect_pocket(all_atoms, **kwargs):
+    """Best-ranked cavity as (center, size) or None. Same behaviour as before for ranking='size'."""
+    pockets = detect_pockets(all_atoms, limit=1, **kwargs)
+    return (pockets[0]["center"], pockets[0]["size"]) if pockets else None
+
+
+def detect_pockets(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
+                   link=3.2, min_pts=12, pad=5.0, min_size=16.0, max_size=22.0,
+                   ranking=None, limit=None):
     """
     Geometric binding-pocket detection (LIGSITE / burial style — pure numpy + scipy,
     permissive licences). Replaces weak "blind docking over the whole protein" when
@@ -296,18 +320,18 @@ def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
     How: lay a grid over the protein; keep grid points that are EMPTY (not inside an
     atom) yet ENCLOSED by protein on most sides — a real cavity, not open surface
     (measured by how evenly the surrounding atoms wrap the point). Cluster those
-    points; box the largest pocket. Returns (center, size) or None (→ caller falls
-    back) when nothing convincing is found. Validated on 6LU7: centre lands ~3.7 Å
+    points; rank the clusters (see POCKET_RANKING) and box the best. Returns a ranked list of
+    pocket dicts (empty when nothing convincing is found). Validated on 6LU7: centre lands ~3.7 Å
     from the true inhibitor site.
     """
     try:
         import numpy as np
         from scipy.spatial import cKDTree
     except Exception:
-        return None
+        return []
     pts = np.asarray(all_atoms, dtype=float)
     if len(pts) < 100:
-        return None
+        return []
     tree = cKDTree(pts)
     lo, hi = pts.min(0) - 3, pts.max(0) + 3
     grid = np.stack(np.meshgrid(
@@ -316,7 +340,7 @@ def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
     dn, _ = tree.query(grid, k=1)
     empty = grid[(dn > 2.6) & (dn < 4.5)]                 # empty but near the surface
     if len(empty) < min_pts:
-        return None
+        return []
     nb = tree.query_ball_point(empty, burial_R)
     bur = np.zeros(len(empty))
     for i, idx in enumerate(nb):
@@ -325,13 +349,15 @@ def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
         v = pts[idx] - empty[i]
         v /= np.linalg.norm(v, axis=1, keepdims=True) + 1e-9
         bur[i] = 1 - np.linalg.norm(v.mean(0))            # ~1 enclosed, ~0 open surface
-    pk = empty[bur >= burial_min]
+    keep = bur >= burial_min
+    pk, pk_bur = empty[keep], bur[keep]
     if len(pk) < min_pts:
-        return None
+        return []
     bt = cKDTree(pk)
     nn = bt.query_ball_tree(bt, link)
     seen = [False] * len(pk)
-    best = []
+    ranking = ranking or POCKET_RANKING
+    pockets = []
     for i in range(len(pk)):
         if seen[i]:
             continue
@@ -343,15 +369,17 @@ def detect_pocket(all_atoms, spacing=1.8, burial_R=10.0, burial_min=0.66,
             seen[j] = True
             comp.append(j)
             stack.extend(nn[j])
-        if len(comp) > len(best):
-            best = comp
-    if len(best) < min_pts:
-        return None
-    cl = pk[best]
-    center = tuple(round(float(c), 3) for c in cl.mean(0))
-    span = float((cl.max(0) - cl.min(0)).max())
-    size = max(min_size, min(max_size, span + pad))
-    return center, (round(size, 1), round(size, 1), round(size, 1))
+        if len(comp) < min_pts:
+            continue
+        cl = pk[comp]
+        span = float((cl.max(0) - cl.min(0)).max())
+        size = max(min_size, min(max_size, span + pad))
+        pockets.append({"center": tuple(round(float(c), 3) for c in cl.mean(0)),
+                        "size": (round(size, 1), round(size, 1), round(size, 1)),
+                        "n_points": len(comp),
+                        "score": _pocket_score(ranking, len(comp), pk_bur[comp])})
+    pockets.sort(key=lambda p: -p["score"])       # stable: equal scores keep discovery order
+    return pockets[:limit] if limit else pockets
 
 
 # Things in a PDB that are NOT the drug: water, ions, common crystallisation junk.
