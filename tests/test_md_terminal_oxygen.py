@@ -110,3 +110,14 @@ class SeedTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class IsolatedResidueTests(unittest.TestCase):
+    def test_a_residue_alone_in_its_chain_is_found(self):
+        from types import SimpleNamespace as NS
+
+        def chain(*names):
+            return NS(residues=lambda names=names: iter([NS(name=n, id=str(i)) for i, n in enumerate(names)]))
+        topology = NS(chains=lambda: iter([chain('MET', 'SER'), chain('CYS'), chain('VAL'), chain('GLY', 'ALA', 'PRO')]))
+        self.assertEqual([r.name for r in md._isolated_residues(topology)], ['CYS', 'VAL'])
+

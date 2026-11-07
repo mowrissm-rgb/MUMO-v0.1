@@ -107,6 +107,16 @@ def run_stability_md(receptor_pdb, lig_rdkit, out_dir, relax_ps=2.0,
 RANDOM_SEED = 42
 
 
+def _isolated_residues(topology):
+    """Residues that form a chain of their own (a gap on each side).
+
+    Amber has separate N-terminal and C-terminal templates but none for a residue that is
+    both, so one cannot be parameterised ("No template found for residue ... (CYS)") even
+    when every atom is present. 3ERT Cys530 sits between two chain breaks."""
+    return [r for chain in topology.chains() if len(list(chain.residues())) == 1
+            for r in chain.residues()]
+
+
 def _seed_everything(seed=RANDOM_SEED):
     """Fix the random sources a run uses. OpenMM's Modeller.addHydrogens places some hydrogens
     at random (unseeded, two runs differed by up to 1.9 A), so identical inputs gave different
@@ -200,6 +210,10 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
     protein = app.PDBFile(capped)
     modeller = app.Modeller(protein.topology, protein.positions)
     modeller.deleteWater()
+    isolated = _isolated_residues(modeller.topology)
+    isolated_names = [f"{r.name}{r.id}" for r in isolated]
+    if isolated:
+        modeller.delete(isolated)
 
     status("Parameterising the ligand (this can take a moment)…")
     off_lig = _ligand_offmol(lig_rdkit)
@@ -298,8 +312,11 @@ def _run(receptor_pdb, lig_rdkit, out_dir, relax_ps, min_iters, restrain_k,
         "relax_ps": relax_ps,
         "refined_pdb": refined,
         "terminal_oxygens_added": n_capped,
+        "isolated_residues_removed": isolated_names,
         "note": ("Fast gas-phase pose refinement + short relaxation (protein restrained) "
-                 "— a lightweight precursor to full solvated molecular dynamics."),
+                 "— a lightweight precursor to full solvated molecular dynamics."
+                 + (f" Residues left alone between two chain gaps cannot be parameterised and were "
+                    f"left out: {', '.join(isolated_names)}." if isolated_names else "")),
     }
 
 
