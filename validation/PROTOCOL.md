@@ -646,3 +646,5 @@ Frozen before any run of this check. Tag `validation-protocol-v1.6`.
 **Counting.** A target that errors fails every criterion. No target is replaced and the floors are not re-tuned.
 
 **Known limits.** The filter is a name match on the Swiss-Prot header, so it works only for the organism string as UniProt writes it. Paralogues are the choice of the author, not of an orthology database. This tests the wrapper against BLAST, not whether the hits are biologically meaningful.
+
+**Result of v1.6 (run `runs/helixspecies/20261108T005438Z`, code at commit 39750d1).** HF1 to HF5 all pass: 10/10, 10/10, 10/10, never fewer with the filter and more for 2 targets, 10/10. No target errored and nothing was changed after the run. For reading the result: without the filter the 25 hits already contained all listed paralogues for 8 of the 10 targets; the filter changed the outcome for SRC (2 of 2 paralogues against 0 of 2) and CA2 (2 against 1). The options are not yet reachable from the chat front door.

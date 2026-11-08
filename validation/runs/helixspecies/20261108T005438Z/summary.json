@@ -1,0 +1,53 @@
+{
+  "all_criteria_passed": true,
+  "counts": {
+    "ERROR": 0,
+    "FAIL": 0,
+    "INCONCLUSIVE": 0,
+    "PASS": 10
+  },
+  "criteria": [
+    {
+      "description": "filtered top-25 equals the independent blastp restricted to Homo sapiens (all targets)",
+      "id": "HF1",
+      "passed": true,
+      "value": "10/10"
+    },
+    {
+      "description": "unfiltered default output still equals the independent blastp (all targets)",
+      "id": "HF2",
+      "passed": true,
+      "value": "10/10"
+    },
+    {
+      "description": "all listed human paralogues in the filtered top 25 (at least 9 of 10 targets)",
+      "id": "HF3",
+      "passed": true,
+      "value": "10/10"
+    },
+    {
+      "description": "the filter never recovers fewer paralogues than no filter, and recovers more for at least one target",
+      "id": "HF4",
+      "passed": true,
+      "value": "never fewer 10/10; more for 2 targets"
+    },
+    {
+      "description": "max_hits=50 returns twice as many hits and its first 25 equal the 25-hit list (all targets)",
+      "id": "HF5",
+      "passed": true,
+      "value": "10/10"
+    }
+  ],
+  "extras": {
+    "blast_version": "blastp: 2.17.0+",
+    "not_tested": [
+      "species filters other than a scientific-name match",
+      "the chat front door (not wired to these options)",
+      "databases other than Swiss-Prot"
+    ],
+    "swissprot_fasta_gz_sha256": "a9c3496aa727e61d25d9e1291c9ba28d2c2ad19c0e26569dc083d53ec4169536"
+  },
+  "n_items": 10,
+  "protocol_version": "1.6",
+  "workflow": "Helix species filter and hit count"
+}
