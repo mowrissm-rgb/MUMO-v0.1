@@ -1,0 +1,96 @@
+{
+ "source": "NCBI BLAST+ 2.17.0 (win64); UniProt Swiss-Prot FASTA (current release at download, 2026-10-30)",
+ "licence": "public domain (BLAST+); CC BY 4.0 (UniProt)",
+ "blast_bin": "bin/blast/ncbi-blast-2.17.0+/bin",
+ "blast_expected_version": "2.17.0+",
+ "blast_archive_md5": "dcd973097407a2910061ff4fb51b09fb",
+ "blast_db": "E:/mumo-validation-env/blastdb/swissprot",
+ "swissprot_fasta_gz_sha256": "a9c3496aa727e61d25d9e1291c9ba28d2c2ad19c0e26569dc083d53ec4169536",
+ "swissprot_sequences": 575748,
+ "max_hits": 25,
+ "bitscore_tolerance": 0.1,
+ "identity_tolerance": 0.1,
+ "evalue_relative_tolerance": 0.01,
+ "workflow": "Helix species filter and hit count",
+ "protocol_version": "1.6",
+ "organism": "Homo sapiens",
+ "paralog_min_items": 9,
+ "targets": [
+  {
+   "gene": "ABL1",
+   "uniprot": "P00519",
+   "paralogs": [
+    "P42684"
+   ]
+  },
+  {
+   "gene": "SRC",
+   "uniprot": "P12931",
+   "paralogs": [
+    "P06239",
+    "P06241"
+   ]
+  },
+  {
+   "gene": "JAK2",
+   "uniprot": "O60674",
+   "paralogs": [
+    "P23458",
+    "P29597"
+   ]
+  },
+  {
+   "gene": "PPARG",
+   "uniprot": "P37231",
+   "paralogs": [
+    "Q07869",
+    "Q03181"
+   ]
+  },
+  {
+   "gene": "HDAC2",
+   "uniprot": "Q92769",
+   "paralogs": [
+    "Q13547"
+   ]
+  },
+  {
+   "gene": "CA2",
+   "uniprot": "P00918",
+   "paralogs": [
+    "P00915",
+    "O43570"
+   ]
+  },
+  {
+   "gene": "ADRB2",
+   "uniprot": "P07550",
+   "paralogs": [
+    "P08588"
+   ]
+  },
+  {
+   "gene": "AKT1",
+   "uniprot": "P31749",
+   "paralogs": [
+    "P31751",
+    "Q9Y243"
+   ]
+  },
+  {
+   "gene": "BRAF",
+   "uniprot": "P15056",
+   "paralogs": [
+    "P04049",
+    "P10398"
+   ]
+  },
+  {
+   "gene": "GSK3B",
+   "uniprot": "P49841",
+   "paralogs": [
+    "P49840"
+   ]
+  }
+ ]
+}

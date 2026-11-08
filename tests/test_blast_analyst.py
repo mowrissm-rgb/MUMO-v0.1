@@ -36,6 +36,27 @@ class ParseTests(unittest.TestCase):
         self.assertEqual([h['accession'] for h in hits], ['P9', 'P8', 'P7'])
 
 
+class OrganismFilterTests(unittest.TestCase):
+    MOUSE = 'Protein OS=Mus musculus OX=10090 GN=X PE=1 SV=1'
+
+    def test_default_keeps_every_species(self):
+        text = chr(10).join([row('P1', 99.0, 300, 0.0, 600), row('P2', 95.0, 300, 0.0, 590, self.MOUSE)])
+        self.assertEqual(len(blast._parse_blast_tab(text)), 2)
+
+    def test_filter_is_applied_before_the_top_n_cut(self):
+        # three stronger mouse orthologues must not crowd out the human paralogue
+        lines = [row(f'M{i}', 90.0, 300, 0.0, 600 - i, self.MOUSE) for i in range(3)]
+        lines.append(row('H1', 60.0, 280, '1e-90', 300))
+        hits = blast._parse_blast_tab(chr(10).join(lines), max_hits=2, organism='homo sapiens')
+        self.assertEqual([h['accession'] for h in hits], ['H1'])
+        unfiltered = blast._parse_blast_tab(chr(10).join(lines), max_hits=2)
+        self.assertNotIn('H1', [h['accession'] for h in unfiltered])
+
+    def test_blank_organism_matches_nothing_rather_than_everything(self):
+        text = row('P1', 99.0, 300, 0.0, 600)
+        self.assertEqual(blast._parse_blast_tab(text, organism=' '), [])
+
+
 class RunTests(unittest.TestCase):
     def test_blast_is_asked_for_far_more_hits_than_are_shown(self):
         seen = {}

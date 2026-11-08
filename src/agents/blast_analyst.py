@@ -73,7 +73,7 @@ def fetch_sequence(gene, species=HUMAN):
     return it["primaryAccession"], name, it["sequence"]["value"]
 
 
-def _parse_blast_tab(text, max_hits=25):
+def _parse_blast_tab(text, max_hits=25, organism=None):
     """Parse blastp tabular output (outfmt 6 sseqid pident length evalue bitscore
     stitle) from a UniProt SwissProt DB into hit dicts, keeping ONE (best) HSP per
     subject. UniProt headers carry the organism as 'OS=...' and the accession in
@@ -102,11 +102,18 @@ def _parse_blast_tab(text, max_hits=25):
             best[acc] = hit
     # BLAST lists hits by E-value, and E-values underflow to 0 for strong matches, so the
     # order among them is not by score. Rank explicitly: best bit score first.
-    ranked = sorted(best.values(), key=lambda h: (-h["bit_score"], h["evalue"]))
+    pool = best.values()
+    if organism:
+        # Optional species filter, applied BEFORE the top-N cut so that orthologues from other
+        # species cannot crowd out same-species paralogues. Matches the organism name in the
+        # UniProt header ("Homo sapiens"), case-insensitively; the default (None) keeps all.
+        want = organism.strip().lower()
+        pool = [h for h in pool if want and want in h["sciname"].lower()]
+    ranked = sorted(pool, key=lambda h: (-h["bit_score"], h["evalue"]))
     return ranked[:max_hits]
 
 
-def run_blastp(seq, max_hits=25, timeout=300):
+def run_blastp(seq, max_hits=25, timeout=300, organism=None):
     """Run the self-hosted blastp against the local SwissProt DB → hit dicts."""
     with tempfile.NamedTemporaryFile("w", suffix=".fasta", delete=False) as f:
         f.write(f">query\n{seq}\n")
@@ -122,7 +129,7 @@ def run_blastp(seq, max_hits=25, timeout=300):
             capture_output=True, text=True, timeout=timeout)
         if proc.returncode != 0:
             raise RuntimeError(f"blastp failed: {(proc.stderr or '').strip()[:200]}")
-        return _parse_blast_tab(proc.stdout, max_hits)
+        return _parse_blast_tab(proc.stdout, max_hits, organism)
     finally:
         try:
             os.unlink(qpath)
@@ -130,10 +137,13 @@ def run_blastp(seq, max_hits=25, timeout=300):
             pass
 
 
-def analyze_blast(query, species=HUMAN, program="blastp", database="swissprot", status_cb=None):
+def analyze_blast(query, species=HUMAN, program="blastp", database="swissprot", status_cb=None,
+                  max_hits=25, hit_organism=None):
     """
     Full BLAST. `query` = a gene/protein NAME (sequence auto-fetched from UniProt)
-    OR a raw sequence / FASTA. Returns:
+    OR a raw sequence / FASTA. `max_hits` (default 25) sets how many hits are kept and
+    `hit_organism` (e.g. "Homo sapiens"; default None = all species) keeps only hits from
+    that organism. `species` is only the taxon used to look the query gene up. Returns:
       query_name, accession, seq_len, hits, database, program, rid.
     Fast — the search runs on the self-hosted BLAST+ (seconds, not minutes).
     """
@@ -147,7 +157,7 @@ def analyze_blast(query, species=HUMAN, program="blastp", database="swissprot", 
         raise ValueError("The sequence is too short to BLAST (need ≥10 residues).")
     if status_cb:
         status_cb(0)
-    hits = run_blastp(seq)
+    hits = run_blastp(seq, max_hits=max_hits, organism=hit_organism)
     return {"query_name": qname, "accession": acc, "seq_len": len(seq),
             "hits": hits, "database": database, "program": program, "rid": "local"}
 
