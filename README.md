@@ -66,12 +66,20 @@ chat included. The fix was a specialist split, not a rewrite:
 | **C — Fate** | ADMET, metabolism, QM | light, no native deps |
 | **D — Quill** | reports, exports | carries a full headless Chromium |
 
-Each specialist can run locally in-process (today's default) or as its own
-deployed service, switched purely by an environment variable — no code change,
-no redeploy of the front door. When a specialist is down, MUMO says exactly
-what's unavailable and keeps serving everything else; when a request lands on
-the wrong specialist, it says so and runs it anyway rather than refusing.
-Specialist A also ships as its own [Cloud Run service](deploy/space-a/).
+**What is connected today.** Every specialist runs in-process inside the main
+app. The registry and the resilience layer (`src/services/`) are live in the
+chat: a capability that cannot run here (for example a build without xtb) is
+reported plainly while everything else keeps working, and a capability that
+keeps failing is paused by a circuit breaker instead of making the user wait
+through the same failure again.
+
+**What exists but is not connected.** `src/services/client.py` can call a
+specialist over HTTP (selected by `MUMO_SPACE_*` environment variables), and
+Specialist A (docking) has its own standalone service and
+[Cloud Run deployment](deploy/space-a/). The chat does **not** call either, so
+setting those variables changes nothing in the app yet. Routing a workflow to
+a remote specialist needs each workflow's inputs and results passed over HTTP
+and has not been done or validated.
 
 ---
 
